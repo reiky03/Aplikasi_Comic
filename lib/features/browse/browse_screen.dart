@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
 import 'add_source_screen.dart';
+import 'source_detail_screen.dart';
 
 enum BrowseSubTab { own, repo }
 
@@ -276,8 +277,11 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   void _openAddSource() => openAddSource(context);
 
   void _openSource(ComicSource source) {
-    // TODO(10): push SourceDetailScreen.
-    AppToast.show(context, 'Source Detail menyusul (spek 10)');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SourceDetailScreen(sourceId: source.id),
+      ),
+    );
   }
 
   void _openLanguageSheet() {
