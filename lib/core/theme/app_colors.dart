@@ -62,6 +62,47 @@ abstract final class AppColors {
   /// Drag handle bottom sheet — rgba(255,255,255,0.2).
   static const Color sheetDragHandle = Color(0x33FFFFFF);
 
+  // --- Token komponen dari 15_shared_components.md / prototipe ---
+
+  /// Scrim bottom sheet — rgba(0,0,0,0.55).
+  static const Color scrim = Color(0x8C000000);
+
+  /// Border atas bottom sheet — rgba(255,255,255,0.08).
+  static const Color sheetTopBorder = Color(0x14FFFFFF);
+
+  /// Divider antar row opsi di sheet — rgba(255,255,255,0.05).
+  static const Color sheetRowDivider = Color(0x0DFFFFFF);
+
+  /// Background toast.
+  static const Color toastBg = Color(0xFF26262F);
+
+  /// Highlight hover/pressed row menu & bg segment inaktif.
+  static const Color rowHighlight = Color(0xFF1E1E28);
+
+  /// Warna ikon di row menu konteks.
+  static const Color menuIcon = Color(0xFFC9C9D6);
+
+  /// Stroke ikon empty-state.
+  static const Color emptyIcon = Color(0xFF3D3D4E);
+
+  /// Track pill switch posisi off (juga bg tombol disabled "Buat").
+  static const Color switchTrackOff = Color(0xFF2A2A35);
+
+  /// Segment aktif — rgba(124,92,255,0.16) bg, rgba(124,92,255,0.5) border.
+  static const Color segmentActiveBg = Color(0x297C5CFF);
+  static const Color segmentActiveBorder = Color(0x807C5CFF);
+
+  /// Border/bg affordance "Buat koleksi baru" (dashed) —
+  /// rgba(124,92,255,0.4) / rgba(124,92,255,0.06).
+  static const Color accentBorderFaint = Color(0x667C5CFF);
+  static const Color accentBgFaint = Color(0x0F7C5CFF);
+
+  /// Border tombol hapus koleksi — rgba(255,122,147,0.25).
+  static const Color dangerBorder = Color(0x40FF7A93);
+
+  /// Shadow FAB — rgba(124,92,255,0.7).
+  static const Color fabShadow = Color(0xB37C5CFF);
+
   /// Gradient aksen: logo mark, ikon splash, FAB, avatar.
   /// CSS: linear-gradient(150deg, #8A6BFF, #5B3EDE)
   static const LinearGradient accentGradient = LinearGradient(

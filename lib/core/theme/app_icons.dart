@@ -4,10 +4,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 /// Mapping ikon "My Comic" → Lucide (outline, stroke ~2, rounded caps).
 /// Sumber kebenaran: design_handoff_my_comic/01_design_system.md → Iconography.
 abstract final class AppIcons {
-  // Tab bottom nav
+  // Tab bottom nav — ikon Library pakai glyph custom dua-bar
+  // (LibraryGlyph di core/widgets) sesuai prototipe; ini fallback IconData.
   static const IconData library = LucideIcons.galleryVerticalEnd;
-  static const IconData updates = LucideIcons.clockFading;
-  static const IconData history = LucideIcons.history;
+  static const IconData updates = LucideIcons.rotateCcw;
+  static const IconData history = LucideIcons.clock;
   static const IconData browse = LucideIcons.compass;
   static const IconData settings = LucideIcons.settings;
 
