@@ -7,13 +7,15 @@ import '../../core/widgets/widgets.dart';
 import '../../data/models.dart';
 import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
+import 'add_source_screen.dart';
 
 enum BrowseSubTab { own, repo }
 
 /// Entry point Add Source — dipakai FAB (HomeShell) & CTA empty state.
 void openAddSource(BuildContext context) {
-  // TODO(09): push AddSourceScreen.
-  AppToast.show(context, 'Add Source menyusul (spek 09)');
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => const AddSourceScreen()),
+  );
 }
 
 /// Sub-tab aktif di Jelajahi (menentukan visibilitas FAB di HomeShell).
