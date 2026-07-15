@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/app_theme.dart';
-import 'dev/components_preview.dart';
+import 'features/onboarding/splash_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,9 +22,7 @@ class MyComicApp extends StatelessWidget {
       theme: AppTheme.dark,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
-      // Harness dev sementara untuk review shared components (15);
-      // diganti alur Onboarding saat 03 dibangun.
-      home: const ComponentsPreviewScreen(),
+      home: const SplashScreen(),
     );
   }
 }

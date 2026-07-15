@@ -8,8 +8,8 @@ Urutan build mengikuti `00_START_HERE.md`. Tiap item selesai → review & approv
 | # | File spek | Scope | Status | Catatan |
 |---|---|---|---|---|
 | 1 | `01_design_system.md` | Design tokens (warna, tipografi, spacing, radii, ikon, motion) | ✅ Approved | `lib/core/theme/` |
-| 2 | `15_shared_components.md` | Bottom nav, FAB, bottom sheet shell, toast, context menu, collection picker, empty state | 👀 Menunggu review | `lib/core/widgets/` |
-| 3 | `03_onboarding.md` | Splash → Login (Google) → Sync | ⬜ Belum | |
+| 2 | `15_shared_components.md` | Bottom nav, FAB, bottom sheet shell, toast, context menu, collection picker, empty state | ✅ Approved | `lib/core/widgets/` |
+| 3 | `03_onboarding.md` | Splash → Login (Google) → Sync | 👀 Menunggu review | `lib/features/onboarding/`, `lib/features/auth/`, `lib/features/sync/` |
 | 4 | `04_library.md` | Tab Library (kategori, search, sort, grid, empty state) | ⬜ Belum | |
 | 5 | `05_updates.md` | Tab Updates (feed per tanggal + refresh) | ⬜ Belum | |
 | 6 | `06_history.md` | Tab History (lanjut baca, hapus riwayat) | ⬜ Belum | |
@@ -26,6 +26,15 @@ Urutan build mengikuti `00_START_HERE.md`. Tiap item selesai → review & approv
 Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
+
+### 2026-07-15 — 03_onboarding.md
+- `lib/features/auth/auth_repository.dart` — integrasi Google Sign-In asli (google_sign_in v7: `initialize` → `attemptLightweightAuthentication` untuk restore sesi di Splash, `authenticate` untuk login interaktif) di balik interface `AuthRepository`; `FakeAuthRepository` untuk dev/preview via `--dart-define=FAKE_AUTH=true` (sesi tersimpan di SharedPreferences). `AuthController` (Riverpod Notifier) pegang user aktif.
+- `lib/features/sync/sync_service.dart` — stub sync awal (timing prototipe 1.5s) + `syncDebugFailProvider` (dipakai debug toggle Settings/14 nanti). TODO(backend).
+- `lib/features/onboarding/splash_screen.dart` — brand moment 1.7s paralel dengan cek sesi; sesi valid → skip login+sync.
+- `lib/features/onboarding/login_screen.dart` — tombol Google putih 56/r16 + logo G SVG, legal line; gagal → toast, batal → diam.
+- `lib/features/onboarding/sync_screen.dart` — spinner 64 + glyph panah sinkron custom; state error produksi: "Gagal sync, coba lagi" + tombol Coba Lagi + Lanjutkan offline (sesuai instruksi spek, bukan auto-lanjut prototipe).
+- `lib/core/widgets/app_mark.dart` (logo 4 panel) + `app_spinner.dart` (ring + track, reusable).
+- Setup platform Google Sign-In (OAuth client ID Android/iOS) masih perlu diisi saat mau rilis — dicatat di komentar `GoogleAuthRepository`.
 
 ### 2026-07-15 — 15_shared_components.md
 - `lib/core/widgets/app_bottom_nav.dart` — `AppTab` enum + nav pill mengambang (margin 8/10/22, radius 20, shadow ke atas, aktif `accentText` / inaktif `textFaint`) + backdrop gradasi; margin bawah adaptif safe-area.
