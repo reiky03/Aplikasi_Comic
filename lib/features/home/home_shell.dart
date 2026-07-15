@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_nav.dart';
+import '../history/history_screen.dart';
 import '../library/library_screen.dart';
 import '../updates/updates_screen.dart';
 
@@ -35,7 +36,7 @@ class HomeShell extends ConsumerWidget {
               children: const [
                 LibraryScreen(),
                 UpdatesScreen(),
-                _PlaceholderTab(title: 'History'), // TODO(06)
+                HistoryScreen(),
                 _PlaceholderTab(title: 'Jelajahi'), // TODO(07)
                 _PlaceholderTab(title: 'Setelan'), // TODO(14)
               ],
