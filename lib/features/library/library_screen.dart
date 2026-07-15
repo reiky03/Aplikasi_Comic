@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
+import '../detail/comic_detail_screen.dart';
 import '../home/home_shell.dart';
 
 enum LibrarySort { recent, az, unread }
@@ -242,8 +243,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   void _openDetail(Comic comic) {
-    // TODO(12): buka ComicDetailScreen (openedFrom: 'library').
-    AppToast.show(context, 'Comic Detail menyusul (spek 12)');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ComicDetailScreen(comic: comic),
+      ),
+    );
   }
 
   void _openSortSheet() {

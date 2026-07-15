@@ -6,6 +6,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/history_state.dart';
 import '../../data/models.dart';
+import '../../data/library_state.dart';
+import '../detail/comic_detail_screen.dart';
 
 /// Tab History — spek 06: lanjut baca + bersihkan riwayat.
 class HistoryScreen extends ConsumerWidget {
@@ -51,7 +53,7 @@ class HistoryScreen extends ConsumerWidget {
                     itemCount: history.length,
                     itemBuilder: (context, i) => _HistoryRow(
                       entry: history[i],
-                      onTap: () => _openDetail(context, history[i]),
+                      onTap: () => _openDetail(context, ref, history[i]),
                       onPlay: () => _resumeReading(context, history[i]),
                     ),
                   ),
@@ -61,9 +63,23 @@ class HistoryScreen extends ConsumerWidget {
     );
   }
 
-  void _openDetail(BuildContext context, HistoryEntry entry) {
-    // TODO(12): buka ComicDetailScreen (openedFrom: 'history') di chapter ini.
-    AppToast.show(context, 'Comic Detail menyusul (spek 12)');
+  void _openDetail(BuildContext context, WidgetRef ref, HistoryEntry entry) {
+    final library = ref.read(libraryProvider);
+    final comic = library.where((c) => c.title == entry.title).firstOrNull ??
+        Comic(
+          id: 'x',
+          title: entry.title,
+          src: entry.src,
+          hue: entry.hue,
+          ch: entry.chNum,
+          read: entry.chNum,
+        );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            ComicDetailScreen(comic: comic, initialChapter: entry.chNum),
+      ),
+    );
   }
 
   void _resumeReading(BuildContext context, HistoryEntry entry) {

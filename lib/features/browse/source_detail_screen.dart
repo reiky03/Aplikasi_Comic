@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models.dart';
 import '../../data/sources_state.dart';
+import '../detail/comic_detail_screen.dart';
 import 'add_source_screen.dart';
 import 'web_view_screen.dart';
 
@@ -363,8 +364,11 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   }
 
   void _openComic(Comic comic) {
-    // TODO(12): buka ComicDetailScreen (openedFrom: 'sourceDetail').
-    AppToast.show(context, 'Comic Detail menyusul (spek 12)');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ComicDetailScreen(comic: comic),
+      ),
+    );
   }
 
   // --- State B: error / butuh WebView ---

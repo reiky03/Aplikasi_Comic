@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models.dart';
 import '../../data/updates_state.dart';
+import '../detail/comic_detail_screen.dart';
 
 /// Tab Updates — spek 05: feed chapter baru per tanggal + refresh.
 class UpdatesScreen extends ConsumerStatefulWidget {
@@ -114,8 +115,14 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
   }
 
   void _openDetail(UpdateEntry entry) {
-    // TODO(12): buka ComicDetailScreen (openedFrom: 'updates').
-    AppToast.show(context, 'Comic Detail menyusul (spek 12)');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ComicDetailScreen(
+          comic: entry.toComic(),
+          initialChapter: entry.ch,
+        ),
+      ),
+    );
   }
 }
 
