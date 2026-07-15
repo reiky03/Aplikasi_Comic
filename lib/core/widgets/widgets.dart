@@ -2,6 +2,7 @@ export 'app_bottom_nav.dart';
 export 'app_context_menu.dart';
 export 'app_empty_state.dart';
 export 'app_fab.dart';
+export 'app_header_icon_button.dart';
 export 'app_mark.dart';
 export 'app_sheet.dart';
 export 'app_spinner.dart';

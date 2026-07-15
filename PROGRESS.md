@@ -9,8 +9,8 @@ Urutan build mengikuti `00_START_HERE.md`. Tiap item selesai → review & approv
 |---|---|---|---|---|
 | 1 | `01_design_system.md` | Design tokens (warna, tipografi, spacing, radii, ikon, motion) | ✅ Approved | `lib/core/theme/` |
 | 2 | `15_shared_components.md` | Bottom nav, FAB, bottom sheet shell, toast, context menu, collection picker, empty state | ✅ Approved | `lib/core/widgets/` |
-| 3 | `03_onboarding.md` | Splash → Login (Google) → Sync | 👀 Menunggu review | `lib/features/onboarding/`, `lib/features/auth/`, `lib/features/sync/` |
-| 4 | `04_library.md` | Tab Library (kategori, search, sort, grid, empty state) | ⬜ Belum | |
+| 3 | `03_onboarding.md` | Splash → Login (Google) → Sync | ✅ Approved | `lib/features/onboarding/`, `lib/features/auth/`, `lib/features/sync/` |
+| 4 | `04_library.md` | Tab Library (kategori, search, sort, grid, empty state) | 👀 Menunggu review | `lib/features/library/`, `lib/features/home/`, `lib/data/` |
 | 5 | `05_updates.md` | Tab Updates (feed per tanggal + refresh) | ⬜ Belum | |
 | 6 | `06_history.md` | Tab History (lanjut baca, hapus riwayat) | ⬜ Belum | |
 | 7 | `07_browse_sumber_saya.md` | Tab Jelajahi — sub-tab "Sumber Saya" | ⬜ Belum | |
@@ -26,6 +26,14 @@ Urutan build mengikuti `00_START_HERE.md`. Tiap item selesai → review & approv
 Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
+
+### 2026-07-15 — 04_library.md
+- `lib/data/models.dart` — model `Comic` + `ComicCollection` + `comicCover(hue)` (gradient placeholder 155°, formula prototipe).
+- `lib/data/library_state.dart` — `LibraryNotifier` & `CollectionsNotifier` (Riverpod) seeded data demo prototipe; mutasi: pindah koleksi, tandai selesai, hapus, buat/hapus koleksi (hapus koleksi → komik lepas ke "Semua").
+- `lib/features/home/home_shell.dart` — shell 5 tab (IndexedStack + bottom nav persisten) + `activeTabProvider`; tab lain masih placeholder judul.
+- `lib/features/library/library_screen.dart` — header + tombol search/filter, search inline (border accent, filter judul live), chips koleksi (aktif accent, badge count, "+" dashed → Kelola koleksi), grid 3 kolom (`ComicGridCard` reusable: cover 2:3 r13, inisial 52px 14%, badge unread, scrim bawah, judul 2 baris + "Ch. N"), sort sheet 3 opsi, context menu long-press ter-wire penuh, empty state library + pesan ringan untuk koleksi kosong/hasil pencarian kosong.
+- Splash/Sync sekarang mendarat di `HomeShell`; harness dev `lib/dev/` dihapus.
+- Tap kartu → Comic Detail masih toast placeholder (menunggu spek 12).
 
 ### 2026-07-15 — 03_onboarding.md
 - `lib/features/auth/auth_repository.dart` — integrasi Google Sign-In asli (google_sign_in v7: `initialize` → `attemptLightweightAuthentication` untuk restore sesi di Splash, `authenticate` untuk login interaktif) di balik interface `AuthRepository`; `FakeAuthRepository` untuk dev/preview via `--dart-define=FAKE_AUTH=true` (sesi tersimpan di SharedPreferences). `AuthController` (Riverpod Notifier) pegang user aktif.

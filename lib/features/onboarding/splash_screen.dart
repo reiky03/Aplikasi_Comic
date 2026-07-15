@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_mark.dart';
 import '../../core/widgets/app_spinner.dart';
-import '../../dev/components_preview.dart';
+import '../home/home_shell.dart';
 import '../auth/auth_repository.dart';
 import 'login_screen.dart';
 
@@ -34,10 +34,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     final user = results.first as AuthUser?;
     if (user != null) {
-      // TODO(04): arahkan ke LibraryScreen saat sudah dibangun.
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => const ComponentsPreviewScreen(),
+          builder: (_) => const HomeShell(),
         ),
       );
     } else {

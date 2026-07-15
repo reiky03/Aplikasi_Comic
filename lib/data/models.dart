@@ -1,0 +1,78 @@
+import 'package:flutter/widgets.dart';
+
+/// Komik di library / hasil discover.
+class Comic {
+  const Comic({
+    required this.id,
+    required this.title,
+    required this.src,
+    required this.hue,
+    required this.ch,
+    this.unread = 0,
+    this.read = 0,
+    this.col,
+  });
+
+  final String id;
+  final String title;
+
+  /// Nama sumber asal (mis. "MangaVerse").
+  final String src;
+
+  /// Hue placeholder cover (belum ada artwork asli).
+  final int hue;
+
+  /// Total chapter.
+  final int ch;
+
+  final int unread;
+  final int read;
+
+  /// id koleksi; null = tanpa koleksi ("Semua" saja).
+  final String? col;
+
+  String get initial => title.isEmpty ? '?' : title[0];
+
+  /// Caption "Ch. N" di bawah judul (logika prototipe: read || ch).
+  String get lastLabel => 'Ch. ${read != 0 ? read : ch}';
+
+  Comic copyWith({
+    int? unread,
+    int? read,
+    String? col,
+    bool clearCol = false,
+  }) {
+    return Comic(
+      id: id,
+      title: title,
+      src: src,
+      hue: hue,
+      ch: ch,
+      unread: unread ?? this.unread,
+      read: read ?? this.read,
+      col: clearCol ? null : (col ?? this.col),
+    );
+  }
+}
+
+/// Koleksi (kategori) buatan user di Library.
+class ComicCollection {
+  const ComicCollection({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
+/// Gradient placeholder cover dari prototipe:
+/// linear-gradient(155deg, hsl(h 46% 26%), hsl((h+28)%360 58% 12%)).
+LinearGradient comicCover(int hue) {
+  return LinearGradient(
+    // CSS 155deg → vektor (sin155, -cos155)
+    begin: const Alignment(-0.42, -0.91),
+    end: const Alignment(0.42, 0.91),
+    colors: [
+      HSLColor.fromAHSL(1, hue.toDouble(), 0.46, 0.26).toColor(),
+      HSLColor.fromAHSL(1, ((hue + 28) % 360).toDouble(), 0.58, 0.12).toColor(),
+    ],
+  );
+}

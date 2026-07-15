@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_spinner.dart';
-import '../../dev/components_preview.dart';
+import '../home/home_shell.dart';
 import '../sync/sync_service.dart';
 
 /// Sync — spek 03: loading pasca-login (library, sumber, riwayat).
@@ -39,9 +39,8 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
   }
 
   void _goHome() {
-    // TODO(04): arahkan ke LibraryScreen saat sudah dibangun.
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const ComponentsPreviewScreen()),
+      MaterialPageRoute<void>(builder: (_) => const HomeShell()),
     );
   }
 
