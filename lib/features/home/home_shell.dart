@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_nav.dart';
 import '../library/library_screen.dart';
+import '../updates/updates_screen.dart';
 
 /// Tab yang sedang aktif di shell utama.
 class ActiveTab extends Notifier<AppTab> {
@@ -33,7 +34,7 @@ class HomeShell extends ConsumerWidget {
               index: tab.index,
               children: const [
                 LibraryScreen(),
-                _PlaceholderTab(title: 'Updates'), // TODO(05)
+                UpdatesScreen(),
                 _PlaceholderTab(title: 'History'), // TODO(06)
                 _PlaceholderTab(title: 'Jelajahi'), // TODO(07)
                 _PlaceholderTab(title: 'Setelan'), // TODO(14)

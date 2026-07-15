@@ -10,8 +10,8 @@ Urutan build mengikuti `00_START_HERE.md`. Tiap item selesai → review & approv
 | 1 | `01_design_system.md` | Design tokens (warna, tipografi, spacing, radii, ikon, motion) | ✅ Approved | `lib/core/theme/` |
 | 2 | `15_shared_components.md` | Bottom nav, FAB, bottom sheet shell, toast, context menu, collection picker, empty state | ✅ Approved | `lib/core/widgets/` |
 | 3 | `03_onboarding.md` | Splash → Login (Google) → Sync | ✅ Approved | `lib/features/onboarding/`, `lib/features/auth/`, `lib/features/sync/` |
-| 4 | `04_library.md` | Tab Library (kategori, search, sort, grid, empty state) | 👀 Menunggu review | `lib/features/library/`, `lib/features/home/`, `lib/data/` |
-| 5 | `05_updates.md` | Tab Updates (feed per tanggal + refresh) | ⬜ Belum | |
+| 4 | `04_library.md` | Tab Library (kategori, search, sort, grid, empty state) | ✅ Approved | `lib/features/library/`, `lib/features/home/`, `lib/data/` |
+| 5 | `05_updates.md` | Tab Updates (feed per tanggal + refresh) | 👀 Menunggu review | `lib/features/updates/`, `lib/data/updates_state.dart` |
 | 6 | `06_history.md` | Tab History (lanjut baca, hapus riwayat) | ⬜ Belum | |
 | 7 | `07_browse_sumber_saya.md` | Tab Jelajahi — sub-tab "Sumber Saya" | ⬜ Belum | |
 | 8 | `09_add_source.md` | Layar Add Source URL (form, test/validate, simpan) | ⬜ Belum | |
@@ -26,6 +26,11 @@ Urutan build mengikuti `00_START_HERE.md`. Tiap item selesai → review & approv
 Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
+
+### 2026-07-15 — 05_updates.md
+- `lib/data/updates_state.dart` — model `UpdateEntry` (grup tanggal, chapter, waktu relatif) + `UpdatesNotifier` seeded data prototipe; `refresh()` stub 1.2s (TODO backend).
+- `lib/features/updates/updates_screen.dart` — header + tombol refresh (ikon ↻ berubah spinner 17px selama refresh, lalu toast "Updates diperbarui — memeriksa chapter baru"), feed grup per tanggal (eyebrow uppercase HARI INI/KEMARIN), row: thumbnail 44×58 + judul + "Chapter N" accentText + sumber + waktu kanan; empty state "Belum ada update terbaru" tanpa CTA.
+- Tab Updates di-wire ke `HomeShell`. Tap row → Comic Detail masih placeholder (spek 12).
 
 ### 2026-07-15 — 04_library.md
 - `lib/data/models.dart` — model `Comic` + `ComicCollection` + `comicCover(hue)` (gradient placeholder 155°, formula prototipe).
