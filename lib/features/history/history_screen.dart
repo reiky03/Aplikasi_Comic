@@ -8,6 +8,7 @@ import '../../data/history_state.dart';
 import '../../data/models.dart';
 import '../../data/library_state.dart';
 import '../detail/comic_detail_screen.dart';
+import '../reader/reader_screen.dart';
 
 /// Tab History — spek 06: lanjut baca + bersihkan riwayat.
 class HistoryScreen extends ConsumerWidget {
@@ -54,7 +55,7 @@ class HistoryScreen extends ConsumerWidget {
                     itemBuilder: (context, i) => _HistoryRow(
                       entry: history[i],
                       onTap: () => _openDetail(context, ref, history[i]),
-                      onPlay: () => _resumeReading(context, history[i]),
+                      onPlay: () => _resumeReading(context, ref, history[i]),
                     ),
                   ),
           ),
@@ -82,9 +83,23 @@ class HistoryScreen extends ConsumerWidget {
     );
   }
 
-  void _resumeReading(BuildContext context, HistoryEntry entry) {
-    // TODO(13): langsung buka Reader di halaman terakhir dibaca.
-    AppToast.show(context, 'Reader menyusul (spek 13)');
+  void _resumeReading(
+      BuildContext context, WidgetRef ref, HistoryEntry entry) {
+    final library = ref.read(libraryProvider);
+    final comic = library.where((c) => c.title == entry.title).firstOrNull ??
+        Comic(
+          id: 'x',
+          title: entry.title,
+          src: entry.src,
+          hue: entry.hue,
+          ch: entry.chNum,
+          read: entry.chNum,
+        );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderScreen(comic: comic, chapter: entry.chNum),
+      ),
+    );
   }
 }
 

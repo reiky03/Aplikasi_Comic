@@ -8,6 +8,7 @@ import '../../core/widgets/widgets.dart';
 import '../../data/downloads_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
+import '../reader/reader_screen.dart';
 
 /// Comic Detail — spek 12.
 class ComicDetailScreen extends ConsumerWidget {
@@ -354,8 +355,11 @@ class ComicDetailScreen extends ConsumerWidget {
   }
 
   void _openReader(BuildContext context, Comic comic, int chapter) {
-    // TODO(13): push ReaderScreen di chapter ini.
-    AppToast.show(context, 'Reader menyusul (spek 13)');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderScreen(comic: comic, chapter: chapter),
+      ),
+    );
   }
 
   void _openCollectionPicker(
