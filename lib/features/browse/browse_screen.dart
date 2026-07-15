@@ -9,6 +9,7 @@ import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
 import 'add_source_screen.dart';
 import 'repo_browse_tab.dart';
+import 'repository_screens.dart';
 import 'source_detail_screen.dart';
 
 enum BrowseSubTab { own, repo }
@@ -287,8 +288,9 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   void _openLanguageSheet() => showLanguageSheet(context);
 
   void _openRepositoryList() {
-    // TODO(11): push RepositoryListScreen.
-    AppToast.show(context, 'Repository List menyusul (spek 11)');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const RepositoryListScreen()),
+    );
   }
 
   void _openSourceMenu(ComicSource source) {
