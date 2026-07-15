@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
 import 'add_source_screen.dart';
+import 'repo_browse_tab.dart';
 import 'source_detail_screen.dart';
 
 enum BrowseSubTab { own, repo }
@@ -270,8 +271,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   // --- Repository (08) ---
 
   Widget _buildRepoTab() {
-    // TODO(08): konten sub-tab Repository.
-    return const SizedBox.shrink();
+    return RepoBrowseTab(onOpenRepoList: _openRepositoryList);
   }
 
   void _openAddSource() => openAddSource(context);
@@ -284,10 +284,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
     );
   }
 
-  void _openLanguageSheet() {
-    // TODO(08): language picker sheet.
-    AppToast.show(context, 'Language picker menyusul (spek 08)');
-  }
+  void _openLanguageSheet() => showLanguageSheet(context);
 
   void _openRepositoryList() {
     // TODO(11): push RepositoryListScreen.

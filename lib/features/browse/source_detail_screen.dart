@@ -13,9 +13,16 @@ enum _DiscoverTab { popular, latest, search }
 
 /// Source Detail — spek 10: grid discover (parsable) / error state + WebView.
 class SourceDetailScreen extends ConsumerStatefulWidget {
-  const SourceDetailScreen({super.key, required this.sourceId});
+  const SourceDetailScreen({
+    super.key,
+    required this.sourceId,
+    this.fallbackSource,
+  });
 
   final String sourceId;
+
+  /// Untuk sumber sintetis dari repository (tidak ada di sourcesProvider).
+  final ComicSource? fallbackSource;
 
   @override
   ConsumerState<SourceDetailScreen> createState() =>
@@ -40,7 +47,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     for (final s in sources) {
       if (s.id == widget.sourceId) return s;
     }
-    return null;
+    return widget.fallbackSource;
   }
 
   /// Refresh daftar komik. Timing prototipe ~1.1s. TODO(backend).
