@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_nav.dart';
+import '../../core/widgets/app_fab.dart';
+import '../browse/browse_screen.dart';
 import '../history/history_screen.dart';
 import '../library/library_screen.dart';
 import '../updates/updates_screen.dart';
@@ -26,6 +28,9 @@ class HomeShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tab = ref.watch(activeTabProvider);
+    final browseSubTab = ref.watch(browseSubTabProvider);
+    final showFab =
+        tab == AppTab.browse && browseSubTab == BrowseSubTab.own;
 
     return Scaffold(
       body: Stack(
@@ -37,7 +42,7 @@ class HomeShell extends ConsumerWidget {
                 LibraryScreen(),
                 UpdatesScreen(),
                 HistoryScreen(),
-                _PlaceholderTab(title: 'Jelajahi'), // TODO(07)
+                BrowseScreen(),
                 _PlaceholderTab(title: 'Setelan'), // TODO(14)
               ],
             ),
@@ -51,6 +56,12 @@ class HomeShell extends ConsumerWidget {
               ),
             ),
           ),
+          if (showFab)
+            Positioned(
+              right: AppDimens.fabRight,
+              bottom: AppDimens.fabBottom,
+              child: AppFab(onTap: () => openAddSource(context)),
+            ),
         ],
       ),
     );
