@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models.dart';
+import '../../data/demo_state.dart';
 import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
 import 'browse_screen.dart';
@@ -90,7 +91,10 @@ class RepoBrowseTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final repositories = ref.watch(repositoriesProvider);
+    final demoEmpty = ref.watch(demoRepoEmptyProvider);
+    final repositories = demoEmpty
+        ? const <ComicRepository>[]
+        : ref.watch(repositoriesProvider);
     final activeLangs = ref.watch(activeLangsProvider);
     final bookmarks = ref.watch(repoBookmarksProvider);
 

@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/demo_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../detail/comic_detail_screen.dart';
@@ -53,7 +54,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final library = ref.watch(libraryProvider);
+    final demoEmpty = ref.watch(demoLibEmptyProvider);
+    final library =
+        demoEmpty ? const <Comic>[] : ref.watch(libraryProvider);
     final collections = ref.watch(collectionsProvider);
     final visible = _visibleComics(library);
     final libraryEmpty = library.isEmpty;

@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models.dart';
+import '../../data/demo_state.dart';
 import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
 import 'add_source_screen.dart';
@@ -152,7 +153,9 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   // --- Sumber Saya (07) ---
 
   Widget _buildOwnTab() {
-    final sources = ref.watch(sourcesProvider);
+    final demoEmpty = ref.watch(demoBrowseEmptyProvider);
+    final sources =
+        demoEmpty ? const <ComicSource>[] : ref.watch(sourcesProvider);
     final q = _search.trim().toLowerCase();
     final visible = sources
         .where((s) =>

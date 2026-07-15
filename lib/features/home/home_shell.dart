@@ -7,6 +7,7 @@ import '../../core/widgets/app_fab.dart';
 import '../browse/browse_screen.dart';
 import '../history/history_screen.dart';
 import '../library/library_screen.dart';
+import '../settings/settings_screen.dart';
 import '../updates/updates_screen.dart';
 
 /// Tab yang sedang aktif di shell utama.
@@ -43,7 +44,7 @@ class HomeShell extends ConsumerWidget {
                 UpdatesScreen(),
                 HistoryScreen(),
                 BrowseScreen(),
-                _PlaceholderTab(title: 'Setelan'), // TODO(14)
+                SettingsScreen(),
               ],
             ),
           ),
@@ -63,27 +64,6 @@ class HomeShell extends ConsumerWidget {
               child: AppFab(onTap: () => openAddSource(context)),
             ),
         ],
-      ),
-    );
-  }
-}
-
-/// Placeholder tab yang belum dibangun — diganti per file spek.
-class _PlaceholderTab extends StatelessWidget {
-  const _PlaceholderTab({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Text(title, style: AppTypography.screenTitle),
-        ),
       ),
     );
   }

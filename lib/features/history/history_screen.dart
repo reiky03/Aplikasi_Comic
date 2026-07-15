@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/demo_state.dart';
 import '../../data/history_state.dart';
 import '../../data/models.dart';
 import '../../data/library_state.dart';
@@ -16,7 +17,9 @@ class HistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final history = ref.watch(historyProvider);
+    final demoEmpty = ref.watch(demoHistEmptyProvider);
+    final history =
+        demoEmpty ? const <HistoryEntry>[] : ref.watch(historyProvider);
 
     return SafeArea(
       bottom: false,
