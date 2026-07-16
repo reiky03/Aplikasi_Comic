@@ -56,6 +56,7 @@ class Comic {
   String get lastLabel => 'Ch. ${read != 0 ? read : ch}';
 
   Comic copyWith({
+    int? ch,
     int? unread,
     int? read,
     String? col,
@@ -67,7 +68,7 @@ class Comic {
       title: title,
       src: src,
       hue: hue,
-      ch: ch,
+      ch: ch ?? this.ch,
       unread: unread ?? this.unread,
       read: read ?? this.read,
       col: clearCol ? null : (col ?? this.col),

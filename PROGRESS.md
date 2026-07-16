@@ -847,3 +847,45 @@ kadang lolos kadang enggak — persis gejala yang dilaporkan.
   ("Akhir chapter" footer kelihatan, slider "8/8"), balik ke Comic
   Detail → "Chapter 41" ketandai "Dibaca", header "1 dibaca" muncul
   benar.
+
+### 2026-07-16 — Updates jadi nyata: pengecekan chapter baru sungguhan
+Dikonfirmasi via pilihan user (bukan cuma performa) — feed Updates
+selama ini 100% data contoh statis, gak pernah beneran ngecek chapter
+baru. Sekarang benar-benar mengecek lewat parser sumber asli.
+
+- `lib/data/updates_state.dart` — ditulis ulang total. `UpdateEntry`
+  sekarang nyimpen `comicId` + `detectedAt` (bukan string
+  `dateGroup`/`time` statis) — label grup tanggal & waktu relatif
+  dihitung saat render (getter), sama seperti pola `HistoryEntry`.
+  `UpdatesNotifier.refresh()`: iterasi semua komik Library yang punya
+  `sourceMangaUrl` (dari sumber asli, lib/sources/), cocokkan
+  `MangaSource`-nya lewat `SourceCatalog`, panggil `fetchChapterList`
+  SUNGGUHAN. Kalau jumlah chapter di situs > `totalChapters` yang
+  tercatat, catat sebagai entri Updates baru + panggil
+  `LibraryNotifier.applyNewChapters()` biar `totalChapters`/badge
+  unread di Library ikut ke-update. Sekuensial (bukan paralel) —
+  sengaja, biar tidak membanjiri situs sumber dengan banyak request
+  sekaligus. Komik dari sumber tanpa parser native (WebView-only)
+  dilewati (gak bisa dicek otomatis, konsisten prinsip "tanpa bypass
+  otomatis"). Kegagalan per-komik (situs down/parser meleset)
+  dilewati, tidak menggagalkan keseluruhan pengecekan — balikin
+  `UpdateCheckResult` (checked/updated/failed) buat toast yang jujur,
+  bukan generik "diperbarui" doang.
+- `lib/data/library_state.dart` — method baru `applyNewChapters()`.
+- `lib/data/models.dart` — `Comic.copyWith()` sekarang bisa ubah `ch`
+  juga (sebelumnya cuma unread/read/col/readChapters).
+- `lib/features/updates/updates_screen.dart` — `_refresh()` sekarang
+  nampilin toast sesuai hasil sungguhan (jumlah chapter baru/gagal
+  diperiksa, bukan pesan generik). Tap row sekarang resolve ke komik
+  ASLI dari Library (`_resolveComic`, pola sama seperti History) —
+  sebelumnya `UpdateEntry.toComic()` bikin komik palsu dengan id `'u'`
+  yang gak ada hubungannya sama data Library sungguhan.
+- `docs/DATABASE.md` — dokumentasi skema `updates/{comicId}` baru.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — label tanggal/waktu dinamis kebukti benar (cocok
+  dengan seed lama), refresh dengan komik demo (tanpa `sourceMangaUrl`)
+  kasih toast jujur "belum ada komik dari sumber asli buat dicek", tap
+  entri resolve ke komik ASLI dari Library (bukan stub palsu). Cek
+  chapter baru sungguhan lewat parser tidak bisa dites live dari
+  sandbox (jaringan ke situs sumber diblok) — perlu dicoba di HP asli
+  dengan komik dari salah satu 4 sumber native.

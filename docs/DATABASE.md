@@ -16,6 +16,7 @@ users/{uid}                          ← profil + meta sync
 ├── collections/{collectionId}       ← koleksi/kategori library (spek 04/15)
 ├── history/{comicId}                ← posisi baca terakhir per komik (spek 06)
 ├── bookmarks/{bookmarkId}           ← halaman ditandai manual saat baca (spek 13)
+├── updates/{comicId}                ← chapter baru terdeteksi per komik (spek 05)
 └── settings/
     ├── reader                       ← preferensi reader (spek 13)
     └── app                          ← bahasa aktif, bookmark repo, tema (spek 08/14)
@@ -112,6 +113,28 @@ set/delete dokumen yang sama, tidak ada duplikat untuk halaman yang sama.
 | `chapterLabel` | string | nama chapter asli, atau "Chapter N" untuk komik demo |
 | `page`, `pages` | number | posisi halaman yang ditandai |
 | `createdAt` | timestamp | urutan tampil (terbaru dulu), diurutkan di client (alasan sama seperti `history`) |
+
+### `updates/{comicId}` — mapping dari `UpdateEntry`
+Satu dokumen per komik (chapter TERBARU yang terdeteksi), doc id = comicId.
+Diisi lewat `UpdatesNotifier.refresh()` — iterasi semua komik Library yang
+punya `sourceMangaUrl` (dari sumber asli, lihat lib/sources/), panggil
+`fetchChapterList` sungguhan, dan cuma nulis dokumen kalau jumlah chapter
+di situs > `totalChapters` yang tercatat di `library`. Komik dari sumber
+tanpa parser native (WebView-only) dilewati — tidak bisa dicek otomatis,
+konsisten dengan prinsip "tanpa bypass otomatis" di app ini. Sekuensial
+(bukan paralel) biar tidak membanjiri situs sumber sekaligus; kegagalan
+per-komik (situs down/parser meleset) dilewati, tidak menggagalkan
+keseluruhan pengecekan.
+| Field | Tipe | Catatan |
+|---|---|---|
+| `comicId` | string | sama dengan doc id, disimpan juga buat kemudahan query |
+| `title`, `sourceName`, `hue` | | denormalized untuk render row tanpa join |
+| `chapter` | number | nomor chapter terbaru yang terdeteksi |
+| `detectedAt` | timestamp | dasar hitung `dateGroup`/`time` relatif saat render, tanpa `orderBy` di query (alasan sama seperti `history`) |
+
+> Begitu chapter baru ketemu, `library/{comicId}` ikut di-update
+> (`totalChapters` + `unread`) lewat `LibraryNotifier.applyNewChapters()` —
+> badge unread di grid Library otomatis kebawa tanpa perlu baca `updates`.
 
 ### `settings/reader` — mapping dari `ReaderSettings`
 | Field | Tipe |

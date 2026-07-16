@@ -174,6 +174,33 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
+
+  /// Terapkan chapter baru yang ketemu dari pengecekan Updates
+  /// (`updates_state.dart`) — update total chapter & tambah badge unread.
+  Future<void> applyNewChapters(
+    String comicId, {
+    required int newTotal,
+    required int deltaUnread,
+  }) async {
+    final current = state.where((c) => c.id == comicId).firstOrNull;
+    if (current == null) return;
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final c in state)
+          if (c.id == comicId)
+            c.copyWith(ch: newTotal, unread: current.unread + deltaUnread)
+          else
+            c,
+      ];
+      return;
+    }
+    await col.doc(comicId).update({
+      'totalChapters': newTotal,
+      'unread': current.unread + deltaUnread,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 }
 
 final libraryProvider =

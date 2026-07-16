@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/updates_state.dart';
 import '../detail/comic_detail_screen.dart';
@@ -22,10 +23,21 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
   Future<void> _refresh() async {
     if (_refreshing) return;
     setState(() => _refreshing = true);
-    await ref.read(updatesProvider.notifier).refresh();
+    final result = await ref.read(updatesProvider.notifier).refresh();
     if (!mounted) return;
     setState(() => _refreshing = false);
-    AppToast.show(context, 'Updates diperbarui — memeriksa chapter baru');
+    AppToast.show(
+      context,
+      switch (result) {
+        UpdateCheckResult(checked: 0) =>
+          'Belum ada komik dari sumber asli di Library buat dicek',
+        UpdateCheckResult(updated: 0, failed: 0) => 'Tidak ada chapter baru',
+        UpdateCheckResult(updated: 0) =>
+          '${result.failed} sumber gagal diperiksa, tidak ada chapter baru',
+        _ => '${result.updated} komik ada chapter baru'
+            '${result.failed > 0 ? ' · ${result.failed} sumber gagal diperiksa' : ''}',
+      },
+    );
   }
 
   @override
@@ -125,11 +137,28 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     );
   }
 
+  /// Ambil komik ASLI dari Library (biar `sourceMangaUrl`/`coverUrl`/dst
+  /// ikut terbawa ke Comic Detail & Reader, bukan versi tiruan) — fallback
+  /// ke stub minimal kalau entrinya somehow sudah tidak ada di Library lagi.
+  Comic _resolveComic(UpdateEntry entry) {
+    final library = ref.read(libraryProvider);
+    return library.where((c) => c.id == entry.comicId).firstOrNull ??
+        Comic(
+          id: entry.comicId,
+          title: entry.title,
+          src: entry.src,
+          hue: entry.hue,
+          ch: entry.ch,
+          read: entry.ch - 1,
+        );
+  }
+
   void _openDetail(UpdateEntry entry) {
+    final comic = _resolveComic(entry);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ComicDetailScreen(
-          comic: entry.toComic(),
+          comic: comic,
           initialChapter: entry.ch,
         ),
       ),
