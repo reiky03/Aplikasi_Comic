@@ -11,19 +11,28 @@ import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/reader_settings.dart';
+import '../../sources/manga_source.dart';
+import '../../sources/source_catalog.dart';
 import '../detail/comic_detail_screen.dart';
 import 'reader_settings_sheet.dart';
 
-const _totalPages = 8;
+const _mockTotalPages = 8;
 
 /// Reader — spek 13: mode webtoon (scroll vertikal) & manga (per halaman,
 /// opsi R→L), chrome toggle, slider dua arah, navigasi chapter.
+///
+/// Bila [sourceChapters] terisi (komik dari sumber asli — lihat
+/// lib/sources/), halaman & navigasi chapter memakai data sungguhan
+/// (`MangaSource.fetchPageList`); kalau null, tetap pakai placeholder
+/// gradient prototipe seperti sebelumnya.
 class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({
     super.key,
     required this.comic,
     required this.chapter,
     this.fromDetail = false,
+    this.sourceChapters,
+    this.initialChapterUrl,
   });
 
   final Comic comic;
@@ -31,6 +40,13 @@ class ReaderScreen extends ConsumerStatefulWidget {
 
   /// true bila di-push dari Comic Detail — "Lihat detail komik" cukup pop.
   final bool fromDetail;
+
+  /// Daftar chapter asli (urutan terbaru→terlama, sama seperti hasil
+  /// `MangaSource.fetchChapterList`) — null untuk komik demo/lokal.
+  final List<SourceChapter>? sourceChapters;
+
+  /// Chapter yang dibuka pertama kali (harus ada di [sourceChapters]).
+  final String? initialChapterUrl;
 
   @override
   ConsumerState<ReaderScreen> createState() => _ReaderScreenState();
@@ -44,11 +60,29 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final _scrollController = ScrollController();
   Timer? _progressDebounce;
 
+  int? _sourceChapterIndex;
+  List<SourcePage>? _realPages;
+  bool _pagesLoading = false;
+  String? _pagesError;
+
+  bool get _isRealSource => widget.sourceChapters != null;
+  int get _totalPages => _realPages?.length ?? _mockTotalPages;
+
+  MangaSource? get _matchedSource => SourceCatalog.sources
+      .where((s) => s.name == widget.comic.src)
+      .firstOrNull;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
     _applyWakelock();
+    if (_isRealSource) {
+      final chapters = widget.sourceChapters!;
+      final idx = chapters.indexWhere((c) => c.url == widget.initialChapterUrl);
+      _sourceChapterIndex = idx == -1 ? 0 : idx;
+      _loadRealPages();
+    }
   }
 
   @override
@@ -59,6 +93,32 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _scrollController.dispose();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  Future<void> _loadRealPages() async {
+    final source = _matchedSource;
+    final index = _sourceChapterIndex;
+    if (source == null || index == null) return;
+    setState(() {
+      _pagesLoading = true;
+      _pagesError = null;
+      _realPages = null;
+    });
+    try {
+      final pages =
+          await source.fetchPageList(widget.sourceChapters![index].url);
+      if (!mounted) return;
+      setState(() {
+        _realPages = pages;
+        _pagesLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _pagesError = '$e';
+        _pagesLoading = false;
+      });
+    }
   }
 
   /// Progres (chapter/halaman) disimpan ke history + library dengan jeda
@@ -127,6 +187,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   void _changeChapter(int delta) {
+    if (_isRealSource) {
+      _changeSourceChapter(delta);
+      return;
+    }
     final next = _chapter + delta;
     if (next < 1 || next > widget.comic.ch) {
       AppToast.show(
@@ -145,6 +209,31 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _scheduleProgressSave();
   }
 
+  /// Daftar chapter urut terbaru→terlama — "Next" (delta +1, ch lebih
+  /// baru) berarti maju ke index lebih kecil; "Prev" sebaliknya.
+  void _changeSourceChapter(int delta) {
+    final chapters = widget.sourceChapters!;
+    final current = _sourceChapterIndex ?? 0;
+    final newIndex = current - delta;
+    if (newIndex < 0 || newIndex >= chapters.length) {
+      AppToast.show(
+        context,
+        delta > 0 ? 'Sudah chapter terakhir' : 'Sudah chapter pertama',
+      );
+      return;
+    }
+    setState(() {
+      _sourceChapterIndex = newIndex;
+      _chapter = chapters.length - newIndex;
+      _page = 0;
+      _showChrome = true;
+    });
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    AppToast.show(context, chapters[newIndex].name);
+    _loadRealPages();
+    _scheduleProgressSave();
+  }
+
   void _nextPage() {
     setState(() => _page = (_page + 1).clamp(0, _totalPages - 1));
     _scheduleProgressSave();
@@ -155,7 +244,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _scheduleProgressSave();
   }
 
-  /// Gradient halaman placeholder (formula prototipe).
+  /// Gradient halaman placeholder (formula prototipe) — dipakai saat
+  /// komik demo, atau sebagai fallback loading/error gambar asli.
   Gradient _pageGradient(int i) {
     final hue = (widget.comic.hue + i * 10) % 360;
     final angle = (160 + i * 8) * 3.1415926535 / 180;
@@ -166,6 +256,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         HSLColor.fromAHSL(1, hue.toDouble(), 0.40, 0.09).toColor(),
       ],
     );
+  }
+
+  String get _chapterLabel {
+    final index = _sourceChapterIndex;
+    if (_isRealSource && index != null) {
+      return widget.sourceChapters![index].name;
+    }
+    return 'Chapter $_chapter';
   }
 
   @override
@@ -181,7 +279,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (settings.isWebtoon)
+            if (_isRealSource && _pagesLoading)
+              const Center(
+                child: AppSpinner(size: 30, strokeWidth: 2.5, color: Colors.white),
+              )
+            else if (_isRealSource && _pagesError != null)
+              _buildPagesError()
+            else if (settings.isWebtoon)
               _buildWebtoon(settings)
             else
               _buildManga(settings),
@@ -202,6 +306,71 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
+  Widget _buildPagesError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Gagal memuat halaman.\n${_pagesError ?? ''}',
+              textAlign: TextAlign.center,
+              style: AppTypography.jakarta(
+                size: 13.5,
+                weight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.8),
+              ),
+            ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: _loadRealPages,
+              borderRadius: BorderRadius.circular(11),
+              child: Container(
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                ),
+                child: Text('Coba Lagi',
+                    style: AppTypography.jakarta(
+                        size: 13, weight: FontWeight.w700, color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pageContent(int i, {bool large = false}) {
+    final pages = _realPages;
+    if (pages != null && i < pages.length) {
+      return Image.network(
+        pages[i].imageUrl,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) => progress == null
+            ? child
+            : DecoratedBox(
+                decoration: BoxDecoration(gradient: _pageGradient(i)),
+                child: const Center(
+                  child: AppSpinner(size: 22, strokeWidth: 2, color: Colors.white),
+                ),
+              ),
+        errorBuilder: (_, _, _) => DecoratedBox(
+          decoration: BoxDecoration(gradient: _pageGradient(i)),
+          child: _PageMock(number: i + 1, large: large),
+        ),
+      );
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(gradient: _pageGradient(i)),
+      child: _PageMock(number: i + 1, large: large),
+    );
+  }
+
   Widget _buildWebtoon(ReaderSettings settings) {
     final width = MediaQuery.sizeOf(context).width;
     return ListView(
@@ -214,8 +383,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             width: width,
             height: width * 1.5,
             margin: EdgeInsets.only(bottom: settings.gap.toDouble()),
-            decoration: BoxDecoration(gradient: _pageGradient(i)),
-            child: _PageMock(number: i + 1),
+            child: _pageContent(i),
           ),
         GestureDetector(
           onTap: () => _changeChapter(1),
@@ -256,10 +424,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         Center(
           child: AspectRatio(
             aspectRatio: AppDimens.coverAspectRatio,
-            child: Container(
-              decoration: BoxDecoration(gradient: _pageGradient(_page)),
-              child: _PageMock(number: _page + 1, large: true),
-            ),
+            child: _pageContent(_page, large: true),
           ),
         ),
         // Tap zone kiri/kanan 32% — prev/next halaman (terbalik saat RTL).
@@ -327,7 +492,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                       ),
                     ),
                     Text(
-                      'Chapter $_chapter',
+                      _chapterLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: AppTypography.jakarta(
                         size: 11.5,
                         weight: FontWeight.w400,
@@ -548,6 +715,7 @@ class _ReaderSlider extends StatelessWidget {
 }
 
 /// Placeholder isi halaman (blok panel + label PAGE N) — persis prototipe.
+/// Dipakai untuk komik demo, dan sebagai fallback error gambar asli.
 class _PageMock extends StatelessWidget {
   const _PageMock({required this.number, this.large = false});
 

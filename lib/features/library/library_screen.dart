@@ -411,15 +411,9 @@ class ComicGridCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Center(
-                    child: Text(
-                      comic.initial,
-                      style: AppTypography.jakarta(
-                        size: 52,
-                        weight: FontWeight.w800,
-                        color: Colors.white.withValues(alpha: 0.14),
-                      ),
-                    ),
+                  comicCoverContent(
+                    coverUrl: comic.coverUrl,
+                    initial: comic.initial,
                   ),
                   Align(
                     alignment: Alignment.bottomCenter,

@@ -291,3 +291,52 @@ Ikiru, Komiku, Komikindo) + 2 link "repository" Tachiyomi/Mihon
   gambar chapter asli, ganti placeholder gradient "PAGE N"); comic
   detail & search juga belum pakai parser ini. `flutter analyze` bersih,
   seluruh test lolos.
+
+### 2026-07-16 — Wiring komik asli: Source Detail, Comic Detail, Reader
+Lanjutan dari parser native — sekarang beneran dipakai di UI (bukan cuma
+kode parser doang), sesuai keluhan user "berasa kurang isian list grid".
+
+- `lib/core/widgets/comic_cover_content.dart` (baru) — `comicCoverContent()`
+  render gambar cover asli (`Image.network`, fallback ke gradient+inisial
+  kalau null/gagal dimuat) — dipakai konsisten di grid Library & Source
+  Detail; Comic Detail hero juga pakai cover asli (banner + poster).
+- `lib/data/models.dart` — `Comic` ditambah `coverUrl` (URL cover asli) &
+  `sourceMangaUrl` (identifier manga di parser sumber; null = komik demo/
+  lokal). `toMap`/`fromMap` disesuaikan (Firestore ikut simpan field ini).
+- `source_detail_screen.dart` — kalau URL sumber cocok salah satu dari 4
+  parser (`SourceCatalog.matchByUrl`), tab Populer/Terbaru/Hasil Cari
+  benar-benar fetch dari situs asli (loading spinner, error state +
+  Coba Lagi, search di-debounce 500ms) — menggantikan 9 judul dummy statis.
+  Sumber di luar 4 itu (termasuk sumber sintetis dari Repository) tidak
+  berubah sama sekali.
+- `comic_detail_screen.dart` — diubah dari `ConsumerWidget` ke
+  `ConsumerStatefulWidget`. Kalau `comic.sourceMangaUrl != null`: fetch
+  `fetchMangaDetails`+`fetchChapterList` paralel saat dibuka (loading
+  state, error + Coba Lagi), lalu render deskripsi/genre/author/status
+  ASLI dan daftar chapter ASLI (nomor sintetis tetap dihitung turun dari
+  total→1 biar kompatibel dengan logika "dibaca" yang sudah ada). Simpan
+  ke koleksi otomatis isi `ch` sungguhan (sebelumnya 0 sampai chapter
+  ter-fetch).
+- `reader_screen.dart` — constructor baru `sourceChapters`/
+  `initialChapterUrl` (null = komik demo, perilaku lama 100% tidak
+  berubah). Kalau ada: fetch `fetchPageList` sungguhan per pindah chapter
+  (loading spinner, error + Coba Lagi), render `Image.network` per
+  halaman (fallback ke placeholder gradient saat masih loading/gagal),
+  navigasi Prev/Next chapter jalan di atas index list asli (bukan
+  aritmetika int seperti komik demo, karena penomoran chapter asli bisa
+  tidak berurutan/desimal).
+- Diverifikasi: `flutter analyze` bersih, semua test lolos (18/18), plus
+  smoke-test manual jalur komik DEMO end-to-end (Library → Comic Detail →
+  Reader, build web + Playwright headless) — tampilan & interaksi persis
+  sama seperti sebelum perubahan ini, tidak ada regresi.
+- Ditemukan (bukan regresi): `wakelock_plus` di web build sempat
+  melempar unhandled error karena JS pendukungnya (`no_sleep.js`) gagal
+  dimuat di sandbox — murni keterbatasan web/sandbox, tidak berlaku di
+  Android/iOS asli (pakai platform channel native, bukan JS).
+- **Belum ketes ke internet asli** — user perlu coba "Test Sumber" +
+  buka salah satu dari 4 situs di HP buat verifikasi endpoint/selector
+  masih akurat (situs bisa berubah struktur sewaktu-waktu).
+- **Belum dikerjakan**: comic dari discover yang di-`_openComic` tidak
+  otomatis ke-cache identitasnya kalau title sama dari sumber beda (id
+  sintetis `src_{sourceId}_{urlEncoded}` per sumber, jadi aman); search
+  global lintas-sumber (Browse) masih belum menyentuh parser ini.

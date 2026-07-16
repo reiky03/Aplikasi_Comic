@@ -11,15 +11,19 @@ class Comic {
     this.unread = 0,
     this.read = 0,
     this.col,
+    this.coverUrl,
+    this.sourceMangaUrl,
   });
 
   final String id;
   final String title;
 
-  /// Nama sumber asal (mis. "MangaVerse").
+  /// Nama sumber asal (mis. "MangaVerse") — untuk komik dari sumber asli
+  /// (lihat [sourceMangaUrl]), ini persis `MangaSource.name` sehingga bisa
+  /// dicocokkan balik via `SourceCatalog`.
   final String src;
 
-  /// Hue placeholder cover (belum ada artwork asli).
+  /// Hue placeholder cover — dipakai kalau [coverUrl] null/gagal dimuat.
   final int hue;
 
   /// Total chapter.
@@ -30,6 +34,13 @@ class Comic {
 
   /// id koleksi; null = tanpa koleksi ("Semua" saja).
   final String? col;
+
+  /// URL cover asli dari sumber (null = pakai gradient+inisial placeholder).
+  final String? coverUrl;
+
+  /// Identifier manga di parser sumber (`MangaSource.fetchMangaDetails`
+  /// dkk) — null berarti komik demo/lokal, bukan dari sumber asli.
+  final String? sourceMangaUrl;
 
   String get initial => title.isEmpty ? '?' : title[0];
 
@@ -51,6 +62,8 @@ class Comic {
       unread: unread ?? this.unread,
       read: read ?? this.read,
       col: clearCol ? null : (col ?? this.col),
+      coverUrl: coverUrl,
+      sourceMangaUrl: sourceMangaUrl,
     );
   }
 
@@ -63,6 +76,8 @@ class Comic {
         'unread': unread,
         'read': read,
         'collectionId': col,
+        'coverUrl': coverUrl,
+        'sourceMangaUrl': sourceMangaUrl,
       };
 
   factory Comic.fromMap(String id, Map<String, dynamic> map) => Comic(
@@ -74,6 +89,8 @@ class Comic {
         unread: (map['unread'] as num?)?.toInt() ?? 0,
         read: (map['read'] as num?)?.toInt() ?? 0,
         col: map['collectionId'] as String?,
+        coverUrl: map['coverUrl'] as String?,
+        sourceMangaUrl: map['sourceMangaUrl'] as String?,
       );
 }
 

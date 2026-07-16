@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -6,6 +8,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models.dart';
 import '../../data/sources_state.dart';
+import '../../sources/manga_source.dart';
+import '../../sources/source_catalog.dart';
 import '../detail/comic_detail_screen.dart';
 import 'add_source_screen.dart';
 import 'web_view_screen.dart';
@@ -37,9 +41,27 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   bool _retrying = false;
   final _searchController = TextEditingController();
 
+  MangaSource? _matchedSource;
+  bool _discoverLoading = false;
+  String? _discoverError;
+  List<Comic> _discoverResults = const [];
+  Timer? _searchDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    final source = ref.read(sourcesProvider).where((s) => s.id == widget.sourceId).firstOrNull ??
+        widget.fallbackSource;
+    if (source != null) {
+      _matchedSource = SourceCatalog.matchByUrl(source.url);
+      if (_matchedSource != null) _loadDiscover(source);
+    }
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -51,9 +73,83 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     return widget.fallbackSource;
   }
 
-  /// Refresh daftar komik. Timing prototipe ~1.1s. TODO(backend).
+  Comic _toComic(ComicSource source, SourceManga m) => Comic(
+        id: 'src_${source.id}_${Uri.encodeComponent(m.url)}',
+        title: m.title,
+        src: source.name,
+        hue: source.hue,
+        ch: 0,
+        coverUrl: m.thumbnailUrl,
+        sourceMangaUrl: m.url,
+      );
+
+  /// Ambil daftar komik ASLI dari sumber yang punya parser native (lihat
+  /// lib/sources/) sesuai tab aktif. Sumber di luar daftar tetap pakai
+  /// daftar demo statis (lihat [_discoverItems]) — tidak berubah.
+  Future<void> _loadDiscover(ComicSource source, {int page = 1}) async {
+    final matched = _matchedSource;
+    if (matched == null) return;
+    if (_tab == _DiscoverTab.search && _search.trim().isEmpty) {
+      setState(() {
+        _discoverResults = const [];
+        _discoverLoading = false;
+        _discoverError = null;
+      });
+      return;
+    }
+    setState(() {
+      _discoverLoading = true;
+      _discoverError = null;
+    });
+    try {
+      final result = switch (_tab) {
+        _DiscoverTab.popular => await matched.fetchPopular(page),
+        _DiscoverTab.latest => await matched.fetchLatest(page),
+        _DiscoverTab.search => await matched.fetchSearch(_search.trim(), page),
+      };
+      if (!mounted) return;
+      setState(() {
+        _discoverResults = result.mangas.map((m) => _toComic(source, m)).toList();
+        _discoverLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _discoverError = '$e';
+        _discoverLoading = false;
+      });
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _search = value);
+    if (_matchedSource == null || _tab != _DiscoverTab.search) return;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      final source = _source;
+      if (source != null) _loadDiscover(source);
+    });
+  }
+
+  void _switchTab(_DiscoverTab tab) {
+    setState(() => _tab = tab);
+    final source = _source;
+    if (_matchedSource != null && source != null) _loadDiscover(source);
+  }
+
+  /// Refresh daftar komik. Sumber dengan parser native: fetch ulang
+  /// sungguhan. Sumber lain: simulasi prototipe ~1.1s.
   Future<void> _refresh() async {
     if (_refreshing) return;
+    final source = _source;
+    if (_matchedSource != null && source != null) {
+      setState(() => _refreshing = true);
+      await _loadDiscover(source);
+      if (!mounted) return;
+      setState(() => _refreshing = false);
+      AppToast.show(context, 'Daftar komik diperbarui');
+      return;
+    }
     setState(() => _refreshing = true);
     await Future<void>.delayed(const Duration(milliseconds: 1100));
     if (!mounted) return;
@@ -163,11 +259,16 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   // --- State A: parsable ---
 
   Widget _buildParsable(ComicSource source) {
-    final discover = _discoverItems(source);
-    final q = _search.trim().toLowerCase();
-    final items = _tab == _DiscoverTab.search && q.isNotEmpty
-        ? discover.where((c) => c.title.toLowerCase().contains(q)).toList()
-        : discover;
+    final List<Comic> items;
+    if (_matchedSource != null) {
+      items = _discoverResults;
+    } else {
+      final discover = _discoverItems(source);
+      final q = _search.trim().toLowerCase();
+      items = _tab == _DiscoverTab.search && q.isNotEmpty
+          ? discover.where((c) => c.title.toLowerCase().contains(q)).toList()
+          : discover;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -250,7 +351,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                 Expanded(
                   child: TextField(
                     controller: _searchController,
-                    onChanged: (v) => setState(() => _search = v),
+                    onChanged: _onSearchChanged,
                     cursorColor: AppColors.accent,
                     style: AppTypography.jakarta(
                         size: 13.5, weight: FontWeight.w400),
@@ -286,43 +387,94 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
           ),
         ),
         Expanded(
-          child: items.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.fromLTRB(30, 40, 30, 0),
-                  child: Text(
-                    'Tidak ada hasil untuk pencarian ini',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.jakarta(
-                      size: 14,
-                      weight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
+          child: _matchedSource != null && _discoverLoading
+              ? const Center(
+                  child: AppSpinner(size: 28, strokeWidth: 2.5),
                 )
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 40),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: AppDimens.gridColumns,
-                    crossAxisSpacing: AppDimens.gridGap,
-                    mainAxisSpacing: AppDimens.gridGap,
-                    childAspectRatio: 0.52,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) => _DiscoverCard(
-                    comic: items[i],
-                    onTap: () => _openComic(items[i]),
-                  ),
-                ),
+              : _matchedSource != null && _discoverError != null
+                  ? _buildDiscoverError(source)
+                  : items.isEmpty
+                      ? Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(30, 40, 30, 0),
+                          child: Text(
+                            _tab == _DiscoverTab.search &&
+                                    _search.trim().isEmpty
+                                ? 'Ketik judul untuk mencari'
+                                : 'Tidak ada hasil untuk pencarian ini',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.jakarta(
+                              size: 14,
+                              weight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        )
+                      : GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 40),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: AppDimens.gridColumns,
+                            crossAxisSpacing: AppDimens.gridGap,
+                            mainAxisSpacing: AppDimens.gridGap,
+                            childAspectRatio: 0.52,
+                          ),
+                          itemCount: items.length,
+                          itemBuilder: (context, i) => _DiscoverCard(
+                            comic: items[i],
+                            onTap: () => _openComic(items[i]),
+                          ),
+                        ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDiscoverError(ComicSource source) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(30, 40, 30, 0),
+      child: Column(
+        children: [
+          Text(
+            'Gagal memuat daftar komik.\n${_discoverError ?? ''}',
+            textAlign: TextAlign.center,
+            style: AppTypography.jakarta(
+              size: 13,
+              weight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: () => _loadDiscover(source),
+            borderRadius: BorderRadius.circular(11),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: AppColors.borderStrong),
+              ),
+              child: Text(
+                'Coba Lagi',
+                style: AppTypography.jakarta(
+                  size: 13,
+                  weight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _discoverTab(String label, _DiscoverTab tab) {
     final active = _tab == tab;
     return InkWell(
-      onTap: () => setState(() => _tab = tab),
+      onTap: () => _switchTab(tab),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
@@ -615,14 +767,11 @@ class _DiscoverCard extends StatelessWidget {
                   ),
                 ],
               ),
-              alignment: Alignment.center,
-              child: Text(
-                comic.initial,
-                style: AppTypography.jakarta(
-                  size: 48,
-                  weight: FontWeight.w800,
-                  color: Colors.white.withValues(alpha: 0.14),
-                ),
+              clipBehavior: Clip.antiAlias,
+              child: comicCoverContent(
+                coverUrl: comic.coverUrl,
+                initial: comic.initial,
+                fontSize: 48,
               ),
             ),
           ),

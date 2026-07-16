@@ -8,10 +8,15 @@ import '../../core/widgets/widgets.dart';
 import '../../data/downloads_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
+import '../../sources/manga_source.dart';
+import '../../sources/source_catalog.dart';
 import '../reader/reader_screen.dart';
 
-/// Comic Detail — spek 12.
-class ComicDetailScreen extends ConsumerWidget {
+/// Comic Detail — spek 12. Bila [comic] berasal dari sumber asli (lihat
+/// lib/sources/, ditandai `sourceMangaUrl` non-null), deskripsi/genre/
+/// status/daftar chapter diambil sungguhan lewat `MangaSource`; kalau
+/// bukan (komik demo/lokal), tampilan prototipe apa adanya.
+class ComicDetailScreen extends ConsumerStatefulWidget {
   const ComicDetailScreen({
     super.key,
     required this.comic,
@@ -24,161 +29,259 @@ class ComicDetailScreen extends ConsumerWidget {
   /// Chapter relevan saat dibuka dari History/Updates.
   final int? initialChapter;
 
+  @override
+  ConsumerState<ComicDetailScreen> createState() => _ComicDetailScreenState();
+}
+
+class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
+  SourceMangaDetails? _realDetails;
+  List<SourceChapter>? _realChapters;
+  bool _loading = false;
+  String? _error;
+
+  MangaSource? get _matchedSource => SourceCatalog.sources
+      .where((s) => s.name == widget.comic.src)
+      .firstOrNull;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.comic.sourceMangaUrl != null) _loadReal();
+  }
+
+  Future<void> _loadReal() async {
+    final source = _matchedSource;
+    final mangaUrl = widget.comic.sourceMangaUrl;
+    if (source == null || mangaUrl == null) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        source.fetchMangaDetails(mangaUrl),
+        source.fetchChapterList(mangaUrl),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _realDetails = results[0] as SourceMangaDetails;
+        _realChapters = results[1] as List<SourceChapter>;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '$e';
+        _loading = false;
+      });
+    }
+  }
+
   /// Versi terkini dari library bila ada (progress bisa berubah).
   Comic _current(WidgetRef ref) {
     final library = ref.watch(libraryProvider);
     for (final c in library) {
-      if (c.id == comic.id) return c;
+      if (c.id == widget.comic.id) return c;
     }
-    return comic;
+    return widget.comic;
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final current = _current(ref);
     final library = ref.watch(libraryProvider);
     final inLibrary = library.any((c) => c.id == current.id);
-    final chapters = _makeChapters(current);
+    final chapters = _chaptersToShow(current);
     final readCount = chapters.where((c) => c.read).length;
+    final totalChapters = _realChapters?.length ?? current.ch;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 96),
-        children: [
-          _buildHero(context, current),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-            child: Text(
-              'Ketika langit di atas kota retak dan menumpahkan cahaya asing, '
-              'seorang kurir muda menemukan bahwa ingatannya adalah kunci '
-              'untuk menutup celah antar-dunia. Perjalanan melintasi '
-              'reruntuhan yang indah dan berbahaya pun dimulai.',
-              style: AppTypography.jakarta(
-                size: 13.5,
-                weight: FontWeight.w400,
-                height: 1.6,
-                color: const Color(0xFFB9B9C6),
-              ),
-            ),
-          ),
-          // Action row
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
-            child: Row(
+      body: _loading
+          ? _buildLoading(context)
+          : ListView(
+              padding: const EdgeInsets.only(bottom: 96),
               children: [
-                InkWell(
-                  onTap: () => _openCollectionPicker(context, ref, current),
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: inLibrary ? const Color(0x291E88C8) : null,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: inLibrary
-                            ? const Color(0x801E88C8)
-                            : AppColors.borderStrong,
-                      ),
-                    ),
-                    child: Icon(
-                      inLibrary ? Icons.bookmark : AppIcons.bookmark,
-                      size: 22,
-                      color: inLibrary
-                          ? AppColors.accentText
-                          : AppColors.menuIcon,
+                _buildHero(context, current),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  child: Text(
+                    _realDetails?.description ??
+                        (widget.comic.sourceMangaUrl != null
+                            ? (_error != null
+                                ? 'Gagal memuat deskripsi.'
+                                : '')
+                            : 'Ketika langit di atas kota retak dan '
+                                'menumpahkan cahaya asing, seorang kurir '
+                                'muda menemukan bahwa ingatannya adalah '
+                                'kunci untuk menutup celah antar-dunia. '
+                                'Perjalanan melintasi reruntuhan yang indah '
+                                'dan berbahaya pun dimulai.'),
+                    style: AppTypography.jakarta(
+                      size: 13.5,
+                      weight: FontWeight.w400,
+                      height: 1.6,
+                      color: const Color(0xFFB9B9C6),
                     ),
                   ),
                 ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _openReader(
-                      context,
-                      current,
-                      current.read > 0 ? current.read + 1 : 1,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: AppColors.accent,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.play_arrow_rounded,
-                              size: 22, color: Colors.white),
-                          const SizedBox(width: 6),
-                          Text(
-                            current.read > 0 ? 'Lanjut Baca' : 'Mulai Baca',
-                            style: AppTypography.jakarta(
-                              size: 15,
-                              weight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Chapter list header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      text: 'Chapter ',
-                      style: AppTypography.jakarta(
-                          size: 15, weight: FontWeight.w800),
-                      children: [
-                        TextSpan(
-                          text: '(${current.ch})',
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                    child: InkWell(
+                      onTap: _loadReal,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 38,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.borderStrong),
+                        ),
+                        child: Text(
+                          'Gagal memuat chapter — Coba Lagi',
                           style: AppTypography.jakarta(
-                            size: 15,
-                            weight: FontWeight.w600,
-                            color: AppColors.textFaint,
+                            size: 12.5,
+                            weight: FontWeight.w700,
+                            color: AppColors.danger,
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
+                // Action row
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap: () => _openCollectionPicker(context, ref, current),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: inLibrary ? const Color(0x291E88C8) : null,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: inLibrary
+                                  ? const Color(0x801E88C8)
+                                  : AppColors.borderStrong,
+                            ),
+                          ),
+                          child: Icon(
+                            inLibrary ? Icons.bookmark : AppIcons.bookmark,
+                            size: 22,
+                            color: inLibrary
+                                ? AppColors.accentText
+                                : AppColors.menuIcon,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: InkWell(
+                          onTap: chapters.isEmpty
+                              ? null
+                              : () => _openReader(
+                                    context,
+                                    current,
+                                    current.read > 0 ? current.read + 1 : 1,
+                                  ),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: AppColors.accent,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.play_arrow_rounded,
+                                    size: 22, color: Colors.white),
+                                const SizedBox(width: 6),
+                                Text(
+                                  current.read > 0 ? 'Lanjut Baca' : 'Mulai Baca',
+                                  style: AppTypography.jakarta(
+                                    size: 15,
+                                    weight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                Text(
-                  '$readCount dibaca',
-                  style: AppTypography.jakarta(
-                    size: 12,
-                    weight: FontWeight.w400,
-                    color: AppColors.textMuted,
+                // Chapter list header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            text: 'Chapter ',
+                            style: AppTypography.jakarta(
+                                size: 15, weight: FontWeight.w800),
+                            children: [
+                              TextSpan(
+                                text: '($totalChapters)',
+                                style: AppTypography.jakarta(
+                                  size: 15,
+                                  weight: FontWeight.w600,
+                                  color: AppColors.textFaint,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '$readCount dibaca',
+                        style: AppTypography.jakarta(
+                          size: 12,
+                          weight: FontWeight.w400,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Column(
+                    children: [
+                      for (final chapter in chapters)
+                        _ChapterRow(
+                          comic: current,
+                          chapter: chapter,
+                          onTap: () => _openReader(context, current, chapter.num),
+                        ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Column(
-              children: [
-                for (final chapter in chapters)
-                  _ChapterRow(
-                    comic: current,
-                    chapter: chapter,
-                    onTap: () =>
-                        _openReader(context, current, chapter.num),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    );
+  }
+
+  Widget _buildLoading(BuildContext context) {
+    return Stack(
+      children: [
+        _buildHero(context, widget.comic),
+        const Positioned(
+          left: 0,
+          right: 0,
+          bottom: 40,
+          child: Center(child: AppSpinner(size: 26, strokeWidth: 2.5)),
+        ),
+      ],
     );
   }
 
@@ -199,6 +302,10 @@ class ComicDetailScreen extends ConsumerWidget {
                     colors: [Color(0x590E0E13), AppColors.bg],
                   ),
                 ),
+                child: current.coverUrl == null
+                    ? null
+                    : Image.network(current.coverUrl!, fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const SizedBox()),
               ),
               const Expanded(child: ColoredBox(color: AppColors.bg)),
             ],
@@ -238,6 +345,7 @@ class ComicDetailScreen extends ConsumerWidget {
                     Container(
                       width: 108,
                       height: 150,
+                      clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
                         gradient: cover,
                         borderRadius: BorderRadius.circular(14),
@@ -250,14 +358,10 @@ class ComicDetailScreen extends ConsumerWidget {
                           ),
                         ],
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        current.initial,
-                        style: AppTypography.jakarta(
-                          size: 46,
-                          weight: FontWeight.w800,
-                          color: Colors.white.withValues(alpha: 0.16),
-                        ),
+                      child: comicCoverContent(
+                        coverUrl: current.coverUrl,
+                        initial: current.initial,
+                        fontSize: 46,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -287,7 +391,7 @@ class ComicDetailScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Kaze Aoyama · Berlangsung',
+                              _subtitleLine(),
                               style: AppTypography.jakarta(
                                 size: 12.5,
                                 weight: FontWeight.w400,
@@ -299,11 +403,7 @@ class ComicDetailScreen extends ConsumerWidget {
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                for (final genre in const [
-                                  'Action',
-                                  'Fantasy',
-                                  'Drama'
-                                ])
+                                for (final genre in _genresToShow())
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 9, vertical: 4),
@@ -336,14 +436,70 @@ class ComicDetailScreen extends ConsumerWidget {
     );
   }
 
-  /// Chapter list top-down dari total ke 1 (logika prototipe).
-  List<_Chapter> _makeChapters(Comic comic) {
+  List<String> _genresToShow() {
+    final real = _realDetails;
+    if (real != null) return real.genres.take(4).toList();
+    if (widget.comic.sourceMangaUrl != null) return const [];
+    return const ['Action', 'Fantasy', 'Drama'];
+  }
+
+  String _subtitleLine() {
+    final real = _realDetails;
+    if (real == null) {
+      return widget.comic.sourceMangaUrl != null
+          ? ''
+          : 'Kaze Aoyama · Berlangsung';
+    }
+    final parts = [
+      if (real.author != null && real.author!.isNotEmpty) real.author!,
+      _statusLabel(real.status),
+    ].where((s) => s.isNotEmpty);
+    return parts.join(' · ');
+  }
+
+  String _statusLabel(SourceMangaStatus status) => switch (status) {
+        SourceMangaStatus.ongoing => 'Berlangsung',
+        SourceMangaStatus.completed => 'Tamat',
+        SourceMangaStatus.hiatus => 'Hiatus',
+        SourceMangaStatus.cancelled => 'Dihentikan',
+        SourceMangaStatus.unknown => '',
+      };
+
+  /// Chapter list top-down dari total ke 1. Pakai data asli kalau ada
+  /// (lihat [_realChapters]), kalau tidak pakai demo prototipe.
+  List<_Chapter> _chaptersToShow(Comic comic) {
+    final real = _realChapters;
+    if (real == null) return _makeDemoChapters(comic);
+    final total = real.length;
+    return [
+      for (var i = 0; i < real.length; i++)
+        _Chapter(
+          num: total - i,
+          title: real[i].name,
+          date: _relativeDate(real[i].dateUpload),
+          read: (total - i) <= comic.read,
+        ),
+    ];
+  }
+
+  String _relativeDate(DateTime? date) {
+    if (date == null) return '';
+    final diff = DateTime.now().difference(date);
+    if (diff.inHours < 24) return 'Hari ini';
+    if (diff.inDays < 2) return 'Kemarin';
+    if (diff.inDays < 7) return '${diff.inDays} hari lalu';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} minggu lalu';
+    return '${(diff.inDays / 30).floor()} bulan lalu';
+  }
+
+  List<_Chapter> _makeDemoChapters(Comic comic) {
     final total = comic.ch;
     final readUpTo = comic.read;
     return [
       for (var i = total; i >= 1; i--)
         _Chapter(
           num: i,
+          title: 'Chapter $i',
           date: i > total - 4
               ? '2 hari lalu'
               : i > total - 8
@@ -354,11 +510,25 @@ class ComicDetailScreen extends ConsumerWidget {
     ];
   }
 
+  /// URL chapter asli untuk nomor sintetis [num] (lihat [_chaptersToShow]).
+  String? _urlForChapterNum(int num) {
+    final chapters = _realChapters;
+    if (chapters == null) return null;
+    final index = chapters.length - num;
+    if (index < 0 || index >= chapters.length) return null;
+    return chapters[index].url;
+  }
+
   void _openReader(BuildContext context, Comic comic, int chapter) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            ReaderScreen(comic: comic, chapter: chapter, fromDetail: true),
+        builder: (_) => ReaderScreen(
+          comic: comic,
+          chapter: chapter,
+          fromDetail: true,
+          sourceChapters: _realChapters,
+          initialChapterUrl: _urlForChapterNum(chapter),
+        ),
       ),
     );
   }
@@ -376,9 +546,25 @@ class ComicDetailScreen extends ConsumerWidget {
             .moveToCollection(current.id, collectionId);
         AppToast.show(context, 'Dipindahkan koleksi');
       } else {
+        // Isi total chapter sungguhan (comic dari discover awalnya ch: 0
+        // karena belum ada info sampai fetchChapterList selesai).
+        final chapters = _realChapters;
+        final toSave = chapters == null
+            ? current
+            : Comic(
+                id: current.id,
+                title: current.title,
+                src: current.src,
+                hue: current.hue,
+                ch: chapters.length,
+                unread: current.unread,
+                read: current.read,
+                coverUrl: current.coverUrl,
+                sourceMangaUrl: current.sourceMangaUrl,
+              );
         ref
             .read(libraryProvider.notifier)
-            .add(current, collectionId: collectionId);
+            .add(toSave, collectionId: collectionId);
         AppToast.show(context, 'Ditambahkan ke $collectionName');
       }
     }
@@ -407,9 +593,15 @@ class ComicDetailScreen extends ConsumerWidget {
 }
 
 class _Chapter {
-  const _Chapter({required this.num, required this.date, required this.read});
+  const _Chapter({
+    required this.num,
+    required this.title,
+    required this.date,
+    required this.read,
+  });
 
   final int num;
+  final String title;
   final String date;
   final bool read;
 }
@@ -443,7 +635,9 @@ class _ChapterRow extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Chapter ${chapter.num}',
+                    chapter.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTypography.jakarta(
                       size: 14,
                       weight: FontWeight.w600,

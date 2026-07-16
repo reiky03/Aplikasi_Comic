@@ -1,5 +1,6 @@
 export 'app_bottom_nav.dart';
 export 'app_context_menu.dart';
+export 'comic_cover_content.dart';
 export 'app_empty_state.dart';
 export 'app_fab.dart';
 export 'app_header_icon_button.dart';
