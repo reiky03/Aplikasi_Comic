@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
@@ -259,6 +260,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   // --- State A: parsable ---
 
   Widget _buildParsable(ComicSource source) {
+    final libraryIds = ref.watch(libraryProvider).map((c) => c.id).toSet();
     final List<Comic> items;
     if (_matchedSource != null) {
       items = _discoverResults;
@@ -422,6 +424,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                           itemCount: items.length,
                           itemBuilder: (context, i) => _DiscoverCard(
                             comic: items[i],
+                            inLibrary: libraryIds.contains(items[i].id),
                             onTap: () => _openComic(items[i]),
                           ),
                         ),
@@ -740,10 +743,17 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
 
 /// Kartu grid discover (tanpa caption "Ch. N", inisial 48px).
 class _DiscoverCard extends StatelessWidget {
-  const _DiscoverCard({required this.comic, required this.onTap});
+  const _DiscoverCard({
+    required this.comic,
+    required this.onTap,
+    this.inLibrary = false,
+  });
 
   final Comic comic;
   final VoidCallback onTap;
+
+  /// true kalau komik ini sudah tersimpan di Library user.
+  final bool inLibrary;
 
   @override
   Widget build(BuildContext context) {
@@ -768,10 +778,39 @@ class _DiscoverCard extends StatelessWidget {
                 ],
               ),
               clipBehavior: Clip.antiAlias,
-              child: comicCoverContent(
-                coverUrl: comic.coverUrl,
-                initial: comic.initial,
-                fontSize: 48,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  comicCoverContent(
+                    coverUrl: comic.coverUrl,
+                    initial: comic.initial,
+                    fontSize: 48,
+                  ),
+                  if (inLibrary)
+                    Positioned(
+                      top: 7,
+                      right: 7,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x66000000),
+                              offset: Offset(0, 2),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.check,
+                            size: 14, color: Colors.white),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),

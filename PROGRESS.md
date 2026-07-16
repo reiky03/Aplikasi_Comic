@@ -404,3 +404,29 @@ layar (untuk komik ratusan chapter, ini ratusan widget + ratusan
 - Diverifikasi: `flutter analyze` bersih, semua test lolos (18/18),
   smoke-test visual (build web + Playwright) — tampilan identik seperti
   sebelumnya, tidak ada regresi.
+
+### 2026-07-16 — Reader lebih halus lagi + progres baca per-chapter + tanda "sudah di Library"
+- **Performa Reader**: tiap halaman webtoon/manga dibungkus `RepaintBoundary`
+  (scroll di satu halaman tidak memicu repaint halaman lain) +
+  `filterQuality: FilterQuality.low` (raster GPU lebih ringan, penting di
+  layar refresh rate tinggi) + `gaplessPlayback: true` (tidak flicker saat
+  ganti chapter). `ListView.builder` webtoon pakai `scrollCacheExtent:
+  ScrollCacheExtent.viewport(2.0)` — halaman 2 layar ke depan mulai
+  di-load sebelum kelihatan, bukan mepet muncul.
+- **Progres baca per-chapter** (`comic_detail_screen.dart`) — chapter list
+  sekarang bedain 3 status, bukan cuma "Dibaca"/belum: chapter sebelum
+  posisi terakhir = "Dibaca" (tuntas), chapter yang SEDANG dibaca
+  (cocok dengan entri `history`) tampilkan progres asli "Hal X/Y" (bukan
+  langsung dianggap tuntas begitu dibuka), chapter setelahnya = polos
+  (belum disentuh). Otomatis tersinkron lewat Firestore (`history` +
+  `library.read`) karena semua akun pakai login Google — beda dari
+  Tachiyomi yang riwayatnya lokal per-device.
+- **Tanda "sudah di Library"** (`source_detail_screen.dart`) — kartu
+  discover di Source Detail sekarang kasih badge centang biru di pojok
+  cover kalau komik itu sudah tersimpan di Library user (dicek via id
+  sintetis `src_{sourceId}_{urlEncoded}`, konsisten dari saat komik
+  pertama ditemukan sampai disimpan).
+- Diverifikasi: `flutter analyze` bersih, semua test lolos (18/18),
+  smoke-test visual (build web + Playwright) — progres "Hal 8/38"
+  muncul benar untuk chapter yang sedang dibaca (data demo), counter
+  "X dibaca" ikut ter-update akurat.

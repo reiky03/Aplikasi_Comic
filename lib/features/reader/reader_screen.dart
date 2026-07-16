@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -369,24 +370,31 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     if (pages == null || i >= pages.length) {
       return SizedBox(width: width, height: width * 1.5, child: _mockPageBlock(i));
     }
-    return Image.network(
-      pages[i].imageUrl,
-      width: width,
-      fit: BoxFit.fitWidth,
-      cacheWidth: (width * dpr).round(),
-      loadingBuilder: (context, child, progress) => progress == null
-          ? child
-          : AspectRatio(
-              aspectRatio: 0.7,
-              child: DecoratedBox(
-                decoration: BoxDecoration(gradient: _pageGradient(i)),
-                child: const Center(
-                  child: AppSpinner(size: 22, strokeWidth: 2, color: Colors.white),
+    // RepaintBoundary + FilterQuality.low: raster tiap halaman diisolasi
+    // (scroll tidak memicu repaint halaman lain) dan digambar lebih
+    // ringan di GPU — penting untuk layar refresh rate tinggi (120Hz).
+    return RepaintBoundary(
+      child: Image.network(
+        pages[i].imageUrl,
+        width: width,
+        fit: BoxFit.fitWidth,
+        cacheWidth: (width * dpr).round(),
+        filterQuality: FilterQuality.low,
+        gaplessPlayback: true,
+        loadingBuilder: (context, child, progress) => progress == null
+            ? child
+            : AspectRatio(
+                aspectRatio: 0.7,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(gradient: _pageGradient(i)),
+                  child: const Center(
+                    child: AppSpinner(size: 22, strokeWidth: 2, color: Colors.white),
+                  ),
                 ),
               ),
-            ),
-      errorBuilder: (_, _, _) =>
-          AspectRatio(aspectRatio: 0.7, child: _mockPageBlock(i)),
+        errorBuilder: (_, _, _) =>
+            AspectRatio(aspectRatio: 0.7, child: _mockPageBlock(i)),
+      ),
     );
   }
 
@@ -394,9 +402,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     // +2: spacer atas (index 0) & footer "Akhir chapter" (index terakhir).
+    // cacheExtent lebih besar (2 layar) supaya halaman berikutnya mulai
+    // di-load sebelum kelihatan, bukan pas mepet muncul di layar.
     return ListView.builder(
       controller: _scrollController,
       padding: EdgeInsets.zero,
+      scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
       itemCount: _totalPages + 2,
       itemBuilder: (context, index) {
         if (index == 0) return const SizedBox(height: 44);
@@ -447,12 +458,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       children: [
         Center(
           child: isReal
-              ? Image.network(
+              ? RepaintBoundary(
+                  child: Image.network(
                   pages[_page].imageUrl,
                   fit: BoxFit.contain,
                   cacheWidth: (MediaQuery.sizeOf(context).width *
                           MediaQuery.devicePixelRatioOf(context))
                       .round(),
+                  filterQuality: FilterQuality.low,
+                  gaplessPlayback: true,
                   loadingBuilder: (context, child, progress) => progress == null
                       ? child
                       : AspectRatio(
@@ -470,6 +484,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     aspectRatio: AppDimens.coverAspectRatio,
                     child: _mockPageBlock(_page, large: true),
                   ),
+                ),
                 )
               : AspectRatio(
                   aspectRatio: AppDimens.coverAspectRatio,

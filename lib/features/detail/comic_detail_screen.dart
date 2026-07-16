@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/downloads_state.dart';
+import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../sources/manga_source.dart';
@@ -510,20 +511,53 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   };
 
   /// Chapter list top-down dari total ke 1. Pakai data asli kalau ada
-  /// (lihat [_realChapters]), kalau tidak pakai demo prototipe.
+  /// (lihat [_realChapters]), kalau tidak pakai demo prototipe. Progres
+  /// baca per-chapter (lihat [_Chapter.progressLabel]) diambil dari
+  /// `history` (posisi baca terakhir) — bukan cuma tanda "Dibaca"/belum,
+  /// tapi "baru sampai halaman berapa" untuk chapter yang sedang dibaca.
   List<_Chapter> _chaptersToShow(Comic comic) {
+    final progress = _inProgressEntry(comic);
     final real = _realChapters;
-    if (real == null) return _makeDemoChapters(comic);
+    if (real == null) return _makeDemoChapters(comic, progress);
     final total = real.length;
     return [
       for (var i = 0; i < real.length; i++)
-        _Chapter(
+        _buildChapter(
           num: total - i,
           title: real[i].name,
           date: _relativeDate(real[i].dateUpload),
-          read: (total - i) <= comic.read,
+          comic: comic,
+          progress: progress,
         ),
     ];
+  }
+
+  /// Entri history untuk komik ini (posisi baca terakhir), kalau ada.
+  HistoryEntry? _inProgressEntry(Comic comic) {
+    for (final h in ref.watch(historyProvider)) {
+      if (h.comicId == comic.id) return h;
+    }
+    return null;
+  }
+
+  _Chapter _buildChapter({
+    required int num,
+    required String title,
+    required String date,
+    required Comic comic,
+    required HistoryEntry? progress,
+  }) {
+    final isCurrent = progress != null && progress.chNum == num;
+    final fullyRead =
+        num < comic.read || (isCurrent && progress.page >= progress.pages);
+    return _Chapter(
+      num: num,
+      title: title,
+      date: date,
+      read: fullyRead,
+      progressLabel:
+          (isCurrent && !fullyRead) ? 'Hal ${progress.page}/${progress.pages}' : null,
+    );
   }
 
   String _relativeDate(DateTime? date) {
@@ -536,12 +570,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     return '${(diff.inDays / 30).floor()} bulan lalu';
   }
 
-  List<_Chapter> _makeDemoChapters(Comic comic) {
+  List<_Chapter> _makeDemoChapters(Comic comic, HistoryEntry? progress) {
     final total = comic.ch;
-    final readUpTo = comic.read;
     return [
       for (var i = total; i >= 1; i--)
-        _Chapter(
+        _buildChapter(
           num: i,
           title: 'Chapter $i',
           date: i > total - 4
@@ -549,7 +582,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
               : i > total - 8
               ? '1 minggu lalu'
               : '${total - i} minggu lalu',
-          read: i <= readUpTo,
+          comic: comic,
+          progress: progress,
         ),
     ];
   }
@@ -645,12 +679,17 @@ class _Chapter {
     required this.title,
     required this.date,
     required this.read,
+    this.progressLabel,
   });
 
   final int num;
   final String title;
   final String date;
   final bool read;
+
+  /// Progres baca yang belum tuntas, mis. "Hal 10/40" — null kalau sudah
+  /// tuntas dibaca ([read] true) atau belum pernah disentuh.
+  final String? progressLabel;
 }
 
 class _ChapterRow extends ConsumerWidget {
@@ -712,6 +751,16 @@ class _ChapterRow extends ConsumerWidget {
                   size: 10.5,
                   weight: FontWeight.w600,
                   color: const Color(0xFF5A5A6A),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ] else if (chapter.progressLabel != null) ...[
+              Text(
+                chapter.progressLabel!,
+                style: AppTypography.jakarta(
+                  size: 10.5,
+                  weight: FontWeight.w700,
+                  color: AppColors.accentText,
                 ),
               ),
               const SizedBox(width: 12),
