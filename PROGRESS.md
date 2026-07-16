@@ -154,3 +154,8 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 - `lib/core/widgets/app_mark.dart` — disederhanakan total: `AppMark` sekarang `DecorationImage` bulat dari asset di atas (dengan shadow yang sama seperti sebelumnya), menggantikan gradient+`CustomPaint` 4-panel komik placeholder. Parameter `radius` dibiarkan ada di API (dipakai pemanggil) tapi diabaikan karena mark aslinya bundar.
 - Diverifikasi visual: build web (`--no-web-resources-cdn` supaya CanvasKit dari lokal, bukan CDN gstatic yang diblok sandbox) + screenshot headless Chromium — logo tampil bersih & kontras di Splash & Login (background gelap).
 - Tagline Splash dikonfirmasi user: tetap pakai yang sudah ada ("Baca komik dari sumber pilihanmu dan sinkronkan koleksi antar-device"), bukan opsi Inggris yang ditawarkan.
+
+### 2026-07-16 — Animasi gelombang di Splash
+- `lib/core/widgets/wave_background.dart` (baru) — 3 lapis gelombang sinus tipis (opacity 8–13%, warna `accent`/`accentText`) di-loop 8s pakai `AnimationController` + `CustomPainter`, tiap lapis beda fase/amplitudo/kecepatan biar terasa organik (bukan looping obviously berulang).
+- Dipasang di `splash_screen.dart`, `Align(bottomCenter)` di belakang logo & spinner — motif ombak yang senada sama logo Kizen (ombak navy).
+- Diverifikasi visual (build web + screenshot 2 frame beda waktu) — gerakannya halus, tidak mengganggu keterbacaan teks/logo.

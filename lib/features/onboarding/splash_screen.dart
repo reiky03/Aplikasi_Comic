@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_mark.dart';
 import '../../core/widgets/app_spinner.dart';
+import '../../core/widgets/wave_background.dart';
 import '../home/home_shell.dart';
 import '../auth/auth_repository.dart';
 import 'login_screen.dart';
@@ -61,6 +62,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         ),
         child: Stack(
           children: [
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: WaveBackground(),
+            ),
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
