@@ -241,6 +241,24 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     if (!mounted || !_scrollController.hasClients) return;
     final settings = ref.read(readerSettingsProvider);
     if (!settings.isWebtoon) return;
+    final position = _scrollController.position;
+    // Sudah discroll sampai (atau nyaris) paling bawah — termasuk mentok di
+    // footer "Akhir chapter" — pasti sudah lewat halaman terakhir. Cek ini
+    // duluan, JANGAN cuma andalkan geometri per-halaman: kalau user diam
+    // cukup lama di footer, halaman terakhir bisa ter-unmount (di luar
+    // cache extent) dan ke-prune dari `_pageKeys` di bawah, jadi `best`
+    // salah jatuh ke halaman yang lebih kecil — akibatnya kadang chapter
+    // yang udah kelar dibaca penuh tetap gak ketandain "Dibaca" (tergantung
+    // pas tidaknya timing debounce vs widget yang di-dispose).
+    if (position.hasContentDimensions &&
+        position.pixels >= position.maxScrollExtent - 4) {
+      final last = _totalPages - 1;
+      if (last != _page) {
+        setState(() => _page = last);
+        _scheduleProgressSave();
+      }
+      return;
+    }
     final viewportBox =
         _viewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.attached) return;

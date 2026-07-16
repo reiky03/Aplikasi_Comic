@@ -818,3 +818,32 @@ dan nanya soal ngikutin refresh rate HP (60/120Hz).
   update), alur buat koleksi (isi nama → tekan Buat) sheet tetap
   terbuka & toast konfirmasi muncul. Regresi fokus/keyboard spesifik
   ke perilaku keyboard virtual Android — perlu dicoba langsung di HP.
+
+### 2026-07-16 — Fix "sudah dibaca" kadang gak ke-set walau chapter sudah tamat
+User lapor: baca 1 chapter penuh, kadang statusnya berubah "Dibaca",
+kadang enggak — random, bukan konsisten gagal/berhasil terus.
+
+Root cause: `_computeCurrentPage()` nentuin `_page` dari widget
+halaman mana yang lagi ter-mount di `_pageKeys` (lihat fix "slider
+mentok" sebelumnya). Begitu user scroll sampai lewat halaman
+terakhir (mentok ke footer "Akhir chapter") dan diam beberapa saat,
+halaman TERAKHIR itu sendiri bisa ter-unmount (keluar dari cache
+extent ListView) dan ke-prune dari `_pageKeys` SEBELUM debounce 2
+detik buat simpan progres sempat jalan. Begitu itu kejadian, `_page`
+jatuh ke halaman termounted tertinggi (lebih rendah dari yang
+sebenarnya), jadi `_page + 1 >= _totalPages` gak pernah kebaca true
+— chapter gak ketandain tamat, padahal user sudah scroll sampai habis.
+Ini soal RACE antara timing debounce vs kapan widget di-dispose, jadi
+kadang lolos kadang enggak — persis gejala yang dilaporkan.
+
+- `reader_screen.dart` — `_computeCurrentPage()` sekarang cek dulu
+  posisi scroll relatif ke `maxScrollExtent`: kalau sudah di ujung
+  bawah (atau nyaris), langsung set `_page = _totalPages - 1` tanpa
+  bergantung sama sekali ke geometri per-halaman/`_pageKeys` — posisi
+  scroll itu stabil & akurat terlepas dari widget mana yang lagi
+  ter-mount atau tidak.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — scroll chapter demo sampai benar-benar mentok
+  ("Akhir chapter" footer kelihatan, slider "8/8"), balik ke Comic
+  Detail → "Chapter 41" ketandai "Dibaca", header "1 dibaca" muncul
+  benar.
