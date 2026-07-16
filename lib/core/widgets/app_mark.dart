@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 
-/// Logo mark "My Comic": kotak gradient + glyph 4 panel komik putih
+/// Logo mark "Kizen": kotak gradient + glyph 4 panel komik putih
 /// (persis SVG prototipe, viewBox 44).
 class AppMark extends StatelessWidget {
   const AppMark({

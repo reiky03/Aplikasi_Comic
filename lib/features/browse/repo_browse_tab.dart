@@ -337,7 +337,7 @@ class _RepoSourceRow extends ConsumerWidget {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: bookmarkedStyle
-                  ? const Color(0x407C5CFF) // rgba(124,92,255,.25)
+                  ? const Color(0x401E88C8) // rgba(30,136,200,.25)
                   : AppColors.border,
             ),
           ),
@@ -399,11 +399,11 @@ class _RepoSourceRow extends ConsumerWidget {
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
-                    color: saved ? const Color(0x247C5CFF) : null,
+                    color: saved ? const Color(0x241E88C8) : null,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: saved
-                          ? const Color(0x807C5CFF)
+                          ? const Color(0x801E88C8)
                           : AppColors.borderStrong,
                     ),
                   ),

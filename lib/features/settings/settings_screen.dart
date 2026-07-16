@@ -52,7 +52,7 @@ class SettingsScreen extends ConsumerWidget {
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [Color(0xFF8A6BFF), Color(0xFF5B3EDE)],
+                            colors: [Color(0xFF1E88C8), Color(0xFF123A5C)],
                           ),
                           shape: BoxShape.circle,
                         ),
@@ -164,7 +164,7 @@ class SettingsScreen extends ConsumerWidget {
                     height: 50,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: const Color(0x14FF5C7A), // rgba(255,92,122,.08)
+                      color: const Color(0x14FF5C7A), // rgba(214,66,43,.08)
                       borderRadius: BorderRadius.circular(14),
                       border:
                           Border.all(color: const Color(0x4DFF5C7A)), // .3
@@ -181,7 +181,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'My Comic v1.0.0 (MVP)',
+                  'Kizen v1.0.0 (MVP)',
                   textAlign: TextAlign.center,
                   style: AppTypography.jakarta(
                     size: 11,

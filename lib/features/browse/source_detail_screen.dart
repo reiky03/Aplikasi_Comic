@@ -525,7 +525,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 280),
             child: Text(
-              'My Comic tidak melakukan bypass otomatis. WebView memakai sesi '
+              'Kizen tidak melakukan bypass otomatis. WebView memakai sesi '
               'normal yang kamu buat sendiri.',
               textAlign: TextAlign.center,
               style: AppTypography.jakarta(

@@ -312,7 +312,7 @@ class _ChallengeOverlay extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: const Icon(LucideIcons.shield,
-                size: 30, color: Color(0xFF5B3EDE)),
+                size: 30, color: Color(0xFF123A5C)),
           ),
           const SizedBox(height: 20),
           Text(
@@ -375,7 +375,7 @@ class _ChallengeOverlay extends StatelessWidget {
                     _VerifyState.loading => const AppSpinner(
                         size: 24,
                         strokeWidth: 2.5,
-                        color: Color(0xFF5B3EDE),
+                        color: Color(0xFF123A5C),
                       ),
                     _VerifyState.done => Container(
                         width: 24,
@@ -413,7 +413,7 @@ class _ChallengeOverlay extends StatelessWidget {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 250),
             child: Text(
-              'Verifikasi diselesaikan manual di WebView. My Comic tidak '
+              'Verifikasi diselesaikan manual di WebView. Kizen tidak '
               'melakukan bypass otomatis.',
               textAlign: TextAlign.center,
               style: AppTypography.jakarta(

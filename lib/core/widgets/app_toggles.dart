@@ -60,7 +60,7 @@ class AppSegmentItem {
 }
 
 /// Segmented buttons — spek 15: tiap segmen rounded rect sendiri, gap 7–8px.
-/// Aktif: bg rgba(124,92,255,.16) + border rgba(124,92,255,.5) + teks accentText;
+/// Aktif: bg rgba(30,136,200,.16) + border rgba(30,136,200,.5) + teks accentText;
 /// inaktif: bg #1E1E28, border transparan, teks textSecondary.
 class AppSegmentedControl extends StatelessWidget {
   const AppSegmentedControl({

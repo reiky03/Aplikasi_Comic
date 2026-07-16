@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Durasi & curve animasi "My Comic".
+/// Durasi & curve animasi "Kizen".
 /// Sumber kebenaran: design_handoff_my_comic/01_design_system.md
 abstract final class AppMotion {
   /// Transisi antar layar: fade + slide naik tipis (~250–300ms, ease).

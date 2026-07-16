@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-/// Mapping ikon "My Comic" → Lucide (outline, stroke ~2, rounded caps).
+/// Mapping ikon "Kizen" → Lucide (outline, stroke ~2, rounded caps).
 /// Sumber kebenaran: design_handoff_my_comic/01_design_system.md → Iconography.
 abstract final class AppIcons {
   // Tab bottom nav — ikon Library pakai glyph custom dua-bar

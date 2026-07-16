@@ -193,10 +193,10 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
                       child: Container(
                         height: 52,
                         decoration: BoxDecoration(
-                          color: const Color(0x1A7C5CFF),
+                          color: const Color(0x1A1E88C8),
                           borderRadius: BorderRadius.circular(14),
                           border:
-                              Border.all(color: const Color(0x667C5CFF)),
+                              Border.all(color: const Color(0x661E88C8)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -373,11 +373,11 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
         height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? const Color(0x247C5CFF) : AppColors.surface,
+          color: active ? const Color(0x241E88C8) : AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color:
-                active ? const Color(0x807C5CFF) : AppColors.sheetTopBorder,
+                active ? const Color(0x801E88C8) : AppColors.sheetTopBorder,
           ),
         ),
         child: Text(

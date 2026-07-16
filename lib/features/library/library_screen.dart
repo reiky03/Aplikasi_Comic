@@ -443,7 +443,7 @@ class ComicGridCard extends StatelessWidget {
                         height: 20,
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         decoration: BoxDecoration(
-                          color: AppColors.accent,
+                          color: AppColors.badge,
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: const [
                             BoxShadow(
@@ -513,7 +513,7 @@ class _SearchField extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x597C5CFF)), // accent .35
+        border: Border.all(color: const Color(0x591E88C8)), // accent .35
       ),
       child: Row(
         children: [

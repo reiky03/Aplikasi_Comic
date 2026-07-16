@@ -56,7 +56,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             center: Alignment(0, -0.3),
             radius: 1.1,
             stops: [0, 0.65],
-            colors: [Color(0xFF1B1730), AppColors.bg],
+            colors: [Color(0xFF0D1C2E), AppColors.bg],
           ),
         ),
         child: Stack(
@@ -77,7 +77,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                   ),
                   const SizedBox(height: 22),
                   Text(
-                    'My Comic',
+                    'Kizen',
                     style: AppTypography.jakarta(
                       size: 27,
                       weight: FontWeight.w800,
