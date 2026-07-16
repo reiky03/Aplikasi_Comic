@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_scope.dart';
@@ -97,10 +98,22 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
     ref.onDispose(() => _sub?.cancel());
     final col = _col;
     if (col == null) return _seedHistory;
-    _sub = col.orderBy('readAt', descending: true).snapshots().listen((snap) {
-      state =
-          snap.docs.map((d) => HistoryEntry.fromMap(d.id, d.data())).toList();
-    });
+    // Sort di client (bukan `.orderBy('readAt')` di query) — field ini
+    // ditulis pakai FieldValue.serverTimestamp(), yang nilainya `null` di
+    // cache lokal selama tulisan masih pending. Firestore mengecualikan
+    // dokumen dari hasil orderBy kalau field urutnya null/belum ke-resolve,
+    // jadi entri baru sempat hilang total dari listener sampai ack server
+    // datang — makanya riwayat kelihatan "tidak pernah ke-track".
+    _sub = col.snapshots().listen(
+      (snap) {
+        final list = snap.docs
+            .map((d) => HistoryEntry.fromMap(d.id, d.data()))
+            .toList()
+          ..sort((a, b) => b.readAt.compareTo(a.readAt));
+        state = list;
+      },
+      onError: (Object e) => debugPrint('history stream error: $e'),
+    );
     return const [];
   }
 

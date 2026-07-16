@@ -470,3 +470,41 @@ mantengin terminal/logcat).
   — supaya kalau ada error Firestore (rules, koneksi, dll), user bisa
   langsung lihat & laporkan pesannya. Sifatnya sementara buat
   diagnosa, akan dibalikin ke silent-log setelah dipastikan beres.
+- User lapor lagi: masih tetap kosong total, toast juga tidak pernah
+  muncul (berarti bukan write yang gagal) — ditambah laporan baru:
+  counter halaman di bawah Reader ("1/8") kadang tidak sesuai jumlah
+  halaman asli & tidak reset rapi tiap ganti chapter.
+
+### 2026-07-16 — Root cause ditemukan: `orderBy` + `serverTimestamp()` bikin entri history hilang dari listener
+Toast tidak pernah muncul (berarti tulisan ke Firestore **berhasil**,
+bukan gagal) tapi History tetap kosong — artinya masalahnya di sisi
+baca/listener, bukan tulis. Ditemukan lewat baca ulang
+`history_state.dart`: query listener-nya pakai
+`col.orderBy('readAt', descending: true).snapshots()`, sedangkan
+`readAt` ditulis pakai `FieldValue.serverTimestamp()`. Selama
+tulisannya masih *pending* (server belum ack), nilai field itu `null`
+di cache lokal — dan Firestore **mengecualikan dokumen dari hasil
+`orderBy`** kalau field yang diurutkan belum ke-resolve. Efeknya:
+entri riwayat yang baru ditulis sempat (atau bahkan terus, kalau ack
+server lambat/gagal) tidak pernah muncul di listener sama sekali.
+Ini persis best-case penjelasan kenapa: tulisan sukses (toast tidak
+pernah muncul), tapi baca selalu kosong.
+- `history_state.dart` — buang `orderBy('readAt')` dari query, urutkan
+  hasilnya manual di Dart (`list..sort(...)`) setelah snapshot masuk.
+  Tidak butuh field itu ter-resolve dulu buat muncul di hasil. Juga
+  tambah `onError` di listener (`debugPrint`) sebagai jaring pengaman
+  diagnostik kalau ada masalah baca lain di masa depan.
+- `reader_screen.dart` — perbaiki laporan counter halaman: sebelumnya
+  selama `fetchPageList` masih loading untuk chapter sumber asli,
+  `_totalPages` jatuh ke nilai mock (8) karena `_realPages` belum ada,
+  padahal toolbar bawah (counter "X/Y" + slider) tetap tampil terus
+  (tidak ikut disembunyikan bareng spinner loading gambar) — jadi
+  angkanya kelihatan salah/ngasal tiap baru ganti chapter, baru benar
+  setelah selesai fetch. Ditambah getter `_pageCountKnown`; selama
+  belum diketahui, counter tampil "–" dan slider dinonaktifkan (bukan
+  nampilin "1/8" yang salah).
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web (FAKE_AUTH) — baca komik demo, tunggu >2 detik, balik
+  ke History → entri "Baru saja" muncul di posisi teratas dengan
+  progres terbaru (mengonfirmasi jalur simpan→tampil bekerja begitu
+  listenernya tidak lagi salah mengecualikan dokumen).

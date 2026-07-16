@@ -69,6 +69,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   bool get _isRealSource => widget.sourceChapters != null;
   int get _totalPages => _realPages?.length ?? _mockTotalPages;
 
+  /// false selama halaman chapter asli masih dimuat/loading — sebelum ini,
+  /// [_totalPages] jatuh ke nilai mock (8) padahal jumlah halaman
+  /// sebenarnya belum diketahui, jadi counter/slider bawah sempat
+  /// menampilkan angka yang salah tiap ganti chapter.
+  bool get _pageCountKnown => !_isRealSource || _realPages != null;
+
   MangaSource? get _matchedSource => SourceCatalog.sources
       .where((s) => s.name == widget.comic.src)
       .firstOrNull;
@@ -623,7 +629,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   SizedBox(
                     width: 44,
                     child: Text(
-                      '${_page + 1} / $_totalPages',
+                      _pageCountKnown ? '${_page + 1} / $_totalPages' : '–',
                       style: AppTypography.jakarta(
                         size: 12,
                         weight: FontWeight.w400,
@@ -634,11 +640,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _ReaderSlider(
-                      value: _page.toDouble(),
-                      max: (_totalPages - 1).toDouble(),
-                      onChanged: (v) => _seekToPage(v.round()),
-                    ),
+                    child: _pageCountKnown
+                        ? _ReaderSlider(
+                            value: _page.toDouble(),
+                            max: (_totalPages - 1).toDouble(),
+                            onChanged: (v) => _seekToPage(v.round()),
+                          )
+                        : const _ReaderSlider(
+                            value: 0,
+                            max: 1,
+                            onChanged: null,
+                          ),
                   ),
                 ],
               ),
@@ -777,7 +789,7 @@ class _ReaderSlider extends StatelessWidget {
 
   final double value;
   final double max;
-  final ValueChanged<double> onChanged;
+  final ValueChanged<double>? onChanged;
 
   @override
   Widget build(BuildContext context) {
