@@ -62,7 +62,6 @@ class DefaultFirebaseOptions {
     projectId: 'kizen-da39f',
     storageBucket: 'kizen-da39f.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDb5Rp9Oxc982c6o322qFuPalqsfnwsaJE',
     appId: '1:1029784256621:ios:bffb8ba118a531b0cebf64',
