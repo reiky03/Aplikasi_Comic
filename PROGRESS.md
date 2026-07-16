@@ -457,3 +457,16 @@ User laporan: buka komik dari Library, baca, tapi nggak ada yang
   smoke-test (build web + Playwright) — buka chapter baru, TANPA
   scroll sama sekali, tunggu >2 detik, balik ke Comic Detail →
   progres "Hal 1/8" muncul otomatis di chapter yang baru dibuka.
+
+### 2026-07-16 — Diagnostik: progres masih belum ke-track setelah fix sebelumnya
+User sudah pull+rebuild fix sebelumnya, tapi History & Comic Detail
+masih tetap kosong sama sekali — berarti kemungkinan bukan (cuma) soal
+timing debounce/dokumen belum ada, ada sesuatu yang gagal total di
+jalur Firestore write yang belum kelihatan errornya (sebelumnya cuma
+`debugPrint`, tidak pernah kelihatan user karena bukan developer yang
+mantengin terminal/logcat).
+- `reader_screen.dart` — kegagalan simpan history/library sekarang juga
+  muncul sebagai **toast di layar** (`AppToast.show`), bukan cuma log
+  — supaya kalau ada error Firestore (rules, koneksi, dll), user bisa
+  langsung lihat & laporkan pesannya. Sifatnya sementara buat
+  diagnosa, akan dibalikin ke silent-log setelah dipastikan beres.
