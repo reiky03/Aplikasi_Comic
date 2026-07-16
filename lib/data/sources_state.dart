@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:ui';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_colors.dart';
+import 'firestore_scope.dart';
 
 /// Status akses sebuah sumber.
 enum SourceStatus { normal, webview, limited, failed }
@@ -66,9 +69,35 @@ class ComicSource {
       session: session ?? this.session,
     );
   }
+
+  /// Mapping ke `users/{uid}/sources/{sourceId}` — lihat docs/DATABASE.md.
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'url': url,
+        'lang': lang,
+        'hue': hue,
+        'active': active,
+        'status': status.name,
+        'session': session,
+      };
+
+  factory ComicSource.fromMap(String id, Map<String, dynamic> map) =>
+      ComicSource(
+        id: id,
+        name: map['name'] as String? ?? '',
+        url: map['url'] as String? ?? '',
+        lang: map['lang'] as String? ?? '',
+        hue: (map['hue'] as num?)?.toInt() ?? 0,
+        active: map['active'] as bool? ?? true,
+        status: SourceStatus.values.firstWhere(
+          (s) => s.name == map['status'],
+          orElse: () => SourceStatus.normal,
+        ),
+        session: map['session'] as bool? ?? false,
+      );
 }
 
-/// Data demo mengikuti prototipe.
+/// Data demo — dipakai saat belum login/Firebase tak tersedia.
 const _seedSources = [
   ComicSource(id: 's1', name: 'AsuraToons', url: 'asuratoons.example', lang: 'EN', hue: 265),
   ComicSource(id: 's2', name: 'MangaVerse', url: 'mangaverse.example', lang: 'EN', hue: 190),
@@ -79,25 +108,74 @@ const _seedSources = [
 ];
 
 class SourcesNotifier extends Notifier<List<ComicSource>> {
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
+
+  CollectionReference<Map<String, dynamic>>? get _col =>
+      FirestoreScope.collection('sources');
+
   @override
-  List<ComicSource> build() => _seedSources;
-
-  void add(ComicSource source) => state = [...state, source];
-
-  void remove(String id) => state = state.where((s) => s.id != id).toList();
-
-  void toggleActive(String id) {
-    state = [
-      for (final s in state)
-        if (s.id == id) s.copyWith(active: !s.active) else s,
-    ];
+  List<ComicSource> build() {
+    ref.onDispose(() => _sub?.cancel());
+    final col = _col;
+    if (col == null) return _seedSources;
+    _sub = col.snapshots().listen((snap) {
+      state = snap.docs.map((d) => ComicSource.fromMap(d.id, d.data())).toList();
+    });
+    return const [];
   }
 
-  void setSession(String id, bool session) {
-    state = [
-      for (final s in state)
-        if (s.id == id) s.copyWith(session: session) else s,
-    ];
+  Future<void> add(ComicSource source) async {
+    final col = _col;
+    if (col == null) {
+      state = [...state, source];
+      return;
+    }
+    await col.doc(source.id).set({
+      ...source.toMap(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> remove(String id) async {
+    final col = _col;
+    if (col == null) {
+      state = state.where((s) => s.id != id).toList();
+      return;
+    }
+    await col.doc(id).delete();
+  }
+
+  Future<void> toggleActive(String id) async {
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final s in state)
+          if (s.id == id) s.copyWith(active: !s.active) else s,
+      ];
+      return;
+    }
+    final current = state.where((s) => s.id == id).firstOrNull;
+    if (current == null) return;
+    await col.doc(id).update({
+      'active': !current.active,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> setSession(String id, bool session) async {
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final s in state)
+          if (s.id == id) s.copyWith(session: session) else s,
+      ];
+      return;
+    }
+    await col.doc(id).update({
+      'session': session,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 }
 

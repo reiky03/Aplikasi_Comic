@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:ui';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'firestore_scope.dart';
 
 /// Arah baca.
 enum ReadingDirection { vertical, horizontal, rtl }
@@ -46,6 +50,31 @@ class ReaderSettings {
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
     );
   }
+
+  /// Mapping ke `users/{uid}/settings/reader` — lihat docs/DATABASE.md.
+  Map<String, dynamic> toMap() => {
+        'direction': direction.name,
+        'bg': '#${bg.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+        'gap': gap,
+        'brightness': brightness,
+        'keepScreenOn': keepScreenOn,
+      };
+
+  factory ReaderSettings.fromMap(Map<String, dynamic> map) {
+    final bgHex = map['bg'] as String?;
+    return ReaderSettings(
+      direction: ReadingDirection.values.firstWhere(
+        (d) => d.name == map['direction'],
+        orElse: () => ReadingDirection.vertical,
+      ),
+      bg: bgHex == null
+          ? const Color(0xFF000000)
+          : Color(int.parse('FF${bgHex.replaceFirst('#', '')}', radix: 16)),
+      gap: (map['gap'] as num?)?.toInt() ?? 10,
+      brightness: (map['brightness'] as num?)?.toInt() ?? 100,
+      keepScreenOn: map['keepScreenOn'] as bool? ?? true,
+    );
+  }
 }
 
 class ReaderSettingsNotifier extends Notifier<ReaderSettings> {
@@ -55,9 +84,23 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettings> {
   static const _kBrightness = 'reader_brightness';
   static const _kKeepOn = 'reader_keep_on';
 
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
+
+  DocumentReference<Map<String, dynamic>>? get _doc =>
+      FirestoreScope.collection('settings')?.doc('reader');
+
   @override
   ReaderSettings build() {
-    _hydrate();
+    ref.onDispose(() => _sub?.cancel());
+    final doc = _doc;
+    if (doc == null) {
+      _hydrate();
+      return const ReaderSettings();
+    }
+    _sub = doc.snapshots().listen((snap) {
+      final data = snap.data();
+      if (data != null) state = ReaderSettings.fromMap(data);
+    });
     return const ReaderSettings();
   }
 
@@ -76,18 +119,23 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettings> {
     );
   }
 
-  Future<void> _persist() async {
+  Future<void> _persist(ReaderSettings settings) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kDirection, state.direction.index);
-    await prefs.setInt(_kBg, state.bg.toARGB32());
-    await prefs.setInt(_kGap, state.gap);
-    await prefs.setInt(_kBrightness, state.brightness);
-    await prefs.setBool(_kKeepOn, state.keepScreenOn);
+    await prefs.setInt(_kDirection, settings.direction.index);
+    await prefs.setInt(_kBg, settings.bg.toARGB32());
+    await prefs.setInt(_kGap, settings.gap);
+    await prefs.setInt(_kBrightness, settings.brightness);
+    await prefs.setBool(_kKeepOn, settings.keepScreenOn);
   }
 
-  void update(ReaderSettings settings) {
+  Future<void> update(ReaderSettings settings) async {
     state = settings;
-    _persist();
+    final doc = _doc;
+    if (doc == null) {
+      await _persist(settings);
+      return;
+    }
+    await doc.set(settings.toMap(), SetOptions(merge: true));
   }
 }
 

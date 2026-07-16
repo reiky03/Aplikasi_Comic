@@ -173,3 +173,63 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 ### 2026-07-16 — Splash jadi 3.5 detik
 - Reveal logo 1.9s → 2.4s, total brand moment 2.6s → 3.5s (permintaan user).
 - `test/widget_test.dart` pump durasi splash disesuaikan (2700→3600ms).
+
+### 2026-07-16 — Backend Firestore terpasang (data layer nyata)
+Implementasi penuh skema `docs/DATABASE.md` — seluruh Notifier di `lib/data/`
+sekarang dual-mode: Firestore real-time (login asli) atau data demo in-memory
+(FAKE_AUTH/widget test/belum login), tanpa mengubah tampilan/API yang dipakai
+layar sama sekali.
+
+- `lib/data/firestore_scope.dart` (baru) — `FirestoreScope.uid`/`userDoc`/
+  `collection(name)`, semua getter aman dipanggil walau Firebase belum
+  di-init (cek `Firebase.apps.isEmpty` dulu sebelum sentuh `FirebaseAuth`/
+  `FirebaseFirestore.instance`) — inilah seam dual-mode-nya, bukan flag
+  `kUseFakeAuth` (supaya widget test yang tidak lewat `main()` tetap aman).
+- `Comic`, `ComicCollection`, `ComicSource`, `ComicRepository`+`RepoSource`,
+  `ReaderSettings` — ditambah `toMap()`/`fromMap()` sesuai kolom di docs.
+- `LibraryNotifier`/`CollectionsNotifier` (`library_state.dart`) — stream
+  `users/{uid}/library` & `collections`; mutasi (`add`/`remove`/
+  `moveToCollection`/`markFinished`/`unassignCollection`) jadi Firestore
+  write saat login asli (listener yang update `state`), tetap local-mutate
+  langsung saat fallback. Tambah `updateProgress()` baru untuk Reader.
+- `SourcesNotifier` (`sources_state.dart`), `RepositoriesNotifier` +
+  `ActiveLangsNotifier`/`RepoBookmarksNotifier` (`repository_state.dart`,
+  2 provider terakhir stream dokumen `settings/app` yang sama) — pola sama.
+- `HistoryNotifier` (`history_state.dart`) — `HistoryEntry` ditambah field
+  `comicId` (doc id Firestore = comicId, sebelumnya tidak ada id sama
+  sekali, match by title di UI). Field `time` string statis diganti
+  `readAt` (Timestamp) + label relatif dihitung saat render (`_relativeLabel`,
+  bukan disimpan) sesuai docs. `upsert()` baru dipanggil dari Reader.
+  `history_screen.dart` disesuaikan pakai `comicId` bukan title-matching.
+- `ReaderSettingsNotifier` (`reader_settings.dart`) — SharedPreferences
+  (lokal) jadi Firestore `settings/reader` doc saat login asli; dua-duanya
+  tetap optimistic-update (`state` langsung, baru persist/write).
+- `reader_screen.dart` — progres baca (chapter/halaman) sekarang ditulis ke
+  `history` + `library.read/unread` dengan debounce 2 detik (`Timer`),
+  flush sekali lagi di `dispose()` kalau ada perubahan pending — sebelumnya
+  Reader tidak menyimpan progres sama sekali (mock murni).
+- `sync_service.dart` — `SyncService` sekarang benar-benar mengisi/
+  memperbarui dokumen profil `users/{uid}` (`name`/`email`/`photoUrl`/
+  `lastSyncAt`, `createdAt` sekali saja) saat login asli, dijalankan
+  paralel dengan timing UI 1.5s brand moment (tidak berubah).
+- `firestore.rules` + `firestore.indexes.json` (baru) + `firebase.json`
+  didaftarkan (`"firestore"` key) — rules persis docs (`users/{uid}` hanya
+  bisa diakses oleh pemiliknya).
+- Diverifikasi: `flutter analyze` bersih, `flutter test` lolos (2/2, tidak
+  ada perubahan karena keduanya pakai `FakeAuthRepository` — Firestore
+  path tidak pernah tersentuh di test), smoke-test manual (build web
+  FAKE_AUTH + Playwright headless: Login → Sync → Library → History,
+  semua render benar, tidak ada Dart exception).
+- **Sengaja TETAP lokal/di luar scope** (sesuai docs): unduhan chapter
+  (`downloads_state.dart`), cookie/sesi WebView asli, dan feed Updates
+  (`updates_state.dart` — cek chapter baru butuh backend scraping sumber
+  yang berbeda sama sekali, bukan penyimpanan user; masih mock/TODO).
+  `themeModeLabelProvider` (`demo_state.dart`) juga belum disambungkan ke
+  `settings/app.themeMode` — masih dekoratif sesuai catatan docs, prioritas
+  rendah karena toggle tema terang belum aktif juga.
+- **Langkah manual yang masih perlu user** (belum bisa dari sandbox ini):
+  1. Buat database Firestore di Firebase Console (Build → Firestore
+     Database → Create database) — project `kizen-da39f` kemungkinan
+     belum punya Firestore aktif sama sekali.
+  2. Deploy `firestore.rules` — via `firebase deploy --only firestore`
+     dari terminal, atau paste manual ke tab Rules di Console.

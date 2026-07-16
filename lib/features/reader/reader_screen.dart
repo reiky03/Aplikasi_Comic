@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -5,6 +7,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/history_state.dart';
+import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/reader_settings.dart';
 import '../detail/comic_detail_screen.dart';
@@ -38,6 +42,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   bool _showChrome = true;
   bool _suppressScroll = false;
   final _scrollController = ScrollController();
+  Timer? _progressDebounce;
 
   @override
   void initState() {
@@ -48,9 +53,33 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   @override
   void dispose() {
+    final pendingSave = _progressDebounce?.isActive ?? false;
+    _progressDebounce?.cancel();
+    if (pendingSave) _saveProgress();
     _scrollController.dispose();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  /// Progres (chapter/halaman) disimpan ke history + library dengan jeda
+  /// ~2 detik biar tidak nulis tiap scroll — lihat docs/DATABASE.md.
+  void _scheduleProgressSave() {
+    _progressDebounce?.cancel();
+    _progressDebounce = Timer(const Duration(seconds: 2), _saveProgress);
+  }
+
+  void _saveProgress() {
+    final comic = widget.comic;
+    ref.read(historyProvider.notifier).upsert(
+          comicId: comic.id,
+          title: comic.title,
+          src: comic.src,
+          hue: comic.hue,
+          chNum: _chapter,
+          page: _page + 1,
+          pages: _totalPages,
+        );
+    ref.read(libraryProvider.notifier).updateProgress(comic.id, read: _chapter);
   }
 
   void _applyWakelock() {
@@ -77,13 +106,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final extent = _pageExtent(context, settings);
     var idx = ((mid - 44) / extent).floor();
     idx = idx.clamp(0, _totalPages - 1);
-    if (idx != _page) setState(() => _page = idx);
+    if (idx != _page) {
+      setState(() => _page = idx);
+      _scheduleProgressSave();
+    }
   }
 
   /// Slider → scroll.
   void _seekToPage(int idx) {
     final settings = ref.read(readerSettingsProvider);
     setState(() => _page = idx);
+    _scheduleProgressSave();
     if (settings.isWebtoon && _scrollController.hasClients) {
       _suppressScroll = true;
       _scrollController.jumpTo(44 + idx * _pageExtent(context, settings));
@@ -109,12 +142,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     });
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     AppToast.show(context, 'Chapter $next');
+    _scheduleProgressSave();
   }
 
-  void _nextPage() =>
-      setState(() => _page = (_page + 1).clamp(0, _totalPages - 1));
-  void _prevPage() =>
-      setState(() => _page = (_page - 1).clamp(0, _totalPages - 1));
+  void _nextPage() {
+    setState(() => _page = (_page + 1).clamp(0, _totalPages - 1));
+    _scheduleProgressSave();
+  }
+
+  void _prevPage() {
+    setState(() => _page = (_page - 1).clamp(0, _totalPages - 1));
+    _scheduleProgressSave();
+  }
 
   /// Gradient halaman placeholder (formula prototipe).
   Gradient _pageGradient(int i) {

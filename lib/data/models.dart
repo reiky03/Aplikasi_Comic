@@ -53,6 +53,28 @@ class Comic {
       col: clearCol ? null : (col ?? this.col),
     );
   }
+
+  /// Mapping ke `users/{uid}/library/{comicId}` — lihat docs/DATABASE.md.
+  Map<String, dynamic> toMap() => {
+        'title': title,
+        'sourceName': src,
+        'hue': hue,
+        'totalChapters': ch,
+        'unread': unread,
+        'read': read,
+        'collectionId': col,
+      };
+
+  factory Comic.fromMap(String id, Map<String, dynamic> map) => Comic(
+        id: id,
+        title: map['title'] as String? ?? '',
+        src: map['sourceName'] as String? ?? '',
+        hue: (map['hue'] as num?)?.toInt() ?? 0,
+        ch: (map['totalChapters'] as num?)?.toInt() ?? 0,
+        unread: (map['unread'] as num?)?.toInt() ?? 0,
+        read: (map['read'] as num?)?.toInt() ?? 0,
+        col: map['collectionId'] as String?,
+      );
 }
 
 /// Koleksi (kategori) buatan user di Library.
@@ -61,6 +83,11 @@ class ComicCollection {
 
   final String id;
   final String name;
+
+  Map<String, dynamic> toMap() => {'name': name};
+
+  factory ComicCollection.fromMap(String id, Map<String, dynamic> map) =>
+      ComicCollection(id: id, name: map['name'] as String? ?? '');
 }
 
 /// Gradient placeholder cover dari prototipe:

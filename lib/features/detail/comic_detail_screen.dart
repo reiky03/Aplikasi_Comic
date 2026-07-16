@@ -398,8 +398,8 @@ class ComicDetailScreen extends ConsumerWidget {
         final col = collections.firstWhere((c) => c.name == name);
         assign(col.id, col.name);
       },
-      onCreateAndPick: (name) {
-        final id = ref.read(collectionsProvider.notifier).create(name);
+      onCreateAndPick: (name) async {
+        final id = await ref.read(collectionsProvider.notifier).create(name);
         assign(id, name);
       },
     );

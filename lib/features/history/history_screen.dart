@@ -67,17 +67,21 @@ class HistoryScreen extends ConsumerWidget {
     );
   }
 
-  void _openDetail(BuildContext context, WidgetRef ref, HistoryEntry entry) {
+  Comic _resolveComic(WidgetRef ref, HistoryEntry entry) {
     final library = ref.read(libraryProvider);
-    final comic = library.where((c) => c.title == entry.title).firstOrNull ??
+    return library.where((c) => c.id == entry.comicId).firstOrNull ??
         Comic(
-          id: 'x',
+          id: entry.comicId,
           title: entry.title,
           src: entry.src,
           hue: entry.hue,
           ch: entry.chNum,
           read: entry.chNum,
         );
+  }
+
+  void _openDetail(BuildContext context, WidgetRef ref, HistoryEntry entry) {
+    final comic = _resolveComic(ref, entry);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
@@ -88,16 +92,7 @@ class HistoryScreen extends ConsumerWidget {
 
   void _resumeReading(
       BuildContext context, WidgetRef ref, HistoryEntry entry) {
-    final library = ref.read(libraryProvider);
-    final comic = library.where((c) => c.title == entry.title).firstOrNull ??
-        Comic(
-          id: 'x',
-          title: entry.title,
-          src: entry.src,
-          hue: entry.hue,
-          ch: entry.chNum,
-          read: entry.chNum,
-        );
+    final comic = _resolveComic(ref, entry);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ReaderScreen(comic: comic, chapter: entry.chNum),
