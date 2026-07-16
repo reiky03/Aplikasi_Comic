@@ -37,9 +37,13 @@ class AppSheetShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final padding = menuStyle
+    final basePadding = menuStyle
         ? const EdgeInsets.fromLTRB(14, 14, 14, 34)
         : AppDimens.sheetPadding;
+    // Dorong sheet ke atas kalau keyboard muncul — tanpa ini, sheet yang
+    // punya text field (mis. buat/edit koleksi) tertutup keyboard karena
+    // posisinya tidak menyesuaikan `viewInsets` sama sekali.
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -51,7 +55,7 @@ class AppSheetShell extends StatelessWidget {
           top: BorderSide(color: AppColors.sheetTopBorder),
         ),
       ),
-      padding: padding,
+      padding: basePadding + EdgeInsets.only(bottom: keyboardInset),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -72,6 +76,88 @@ class AppSheetShell extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Sheet konfirmasi destruktif (hapus koleksi/sumber/repository/dll) —
+/// judul + pesan + tombol Batal/konfirmasi. Kembalikan `true` kalau user
+/// menekan tombol konfirmasi, `false` (bukan `null`) untuk batal/dismiss.
+Future<bool> showConfirmSheet(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String confirmLabel = 'Hapus',
+  String cancelLabel = 'Batal',
+}) async {
+  final result = await showAppSheet<bool>(
+    context,
+    builder: (sheetContext) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppSheetTitle(title, bottomGap: 8),
+        Text(
+          message,
+          style: AppTypography.jakarta(
+            size: 13,
+            weight: FontWeight.w400,
+            height: 1.5,
+            color: AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => Navigator.pop(sheetContext, false),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.borderStrong),
+                  ),
+                  child: Text(
+                    cancelLabel,
+                    style: AppTypography.jakarta(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: InkWell(
+                onTap: () => Navigator.pop(sheetContext, true),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.danger,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    confirmLabel,
+                    style: AppTypography.jakarta(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
 }
 
 /// Judul sheet 17/800, margin bawah 16.

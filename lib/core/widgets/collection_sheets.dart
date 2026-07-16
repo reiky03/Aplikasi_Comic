@@ -206,7 +206,15 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
             collection: col,
             verticalPadding: 12,
             trailing: InkWell(
-              onTap: () {
+              onTap: () async {
+                final confirmed = await showConfirmSheet(
+                  context,
+                  title: 'Hapus koleksi?',
+                  message:
+                      '"${col.name}" akan dihapus. Komik di dalamnya tidak '
+                      'ikut terhapus, cuma lepas dari koleksi ini.',
+                );
+                if (!confirmed || !context.mounted) return;
                 setState(() => _items.remove(col));
                 widget.onDelete(col.name);
               },

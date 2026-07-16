@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/bookmarks_state.dart';
 import '../../data/downloads_state.dart';
 import '../../data/history_state.dart';
 import '../../data/library_state.dart';
@@ -545,8 +546,13 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   /// tapi "baru sampai halaman berapa" untuk chapter yang sedang dibaca.
   List<_Chapter> _chaptersToShow(Comic comic) {
     final progress = _inProgressEntry(comic);
+    final bookmarked = ref
+        .watch(bookmarksProvider)
+        .where((b) => b.comicId == comic.id)
+        .map((b) => b.chNum)
+        .toSet();
     final real = _realChapters;
-    if (real == null) return _makeDemoChapters(comic, progress);
+    if (real == null) return _makeDemoChapters(comic, progress, bookmarked);
     final total = real.length;
     return [
       for (var i = 0; i < real.length; i++)
@@ -556,6 +562,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
           date: _relativeDate(real[i].dateUpload),
           comic: comic,
           progress: progress,
+          bookmarked: bookmarked,
         ),
     ];
   }
@@ -574,6 +581,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     required String date,
     required Comic comic,
     required HistoryEntry? progress,
+    required Set<int> bookmarked,
   }) {
     final isCurrent = progress != null && progress.chNum == num;
     // Bukan `num < comic.read` (chapter terjauh yang pernah dibuka) — itu
@@ -590,6 +598,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
       read: fullyRead,
       progressLabel:
           (isCurrent && !fullyRead) ? 'Hal ${progress.page}/${progress.pages}' : null,
+      hasBookmark: bookmarked.contains(num),
     );
   }
 
@@ -603,7 +612,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     return '${(diff.inDays / 30).floor()} bulan lalu';
   }
 
-  List<_Chapter> _makeDemoChapters(Comic comic, HistoryEntry? progress) {
+  List<_Chapter> _makeDemoChapters(
+    Comic comic,
+    HistoryEntry? progress,
+    Set<int> bookmarked,
+  ) {
     final total = comic.ch;
     return [
       for (var i = total; i >= 1; i--)
@@ -617,6 +630,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
               : '${total - i} minggu lalu',
           comic: comic,
           progress: progress,
+          bookmarked: bookmarked,
         ),
     ];
   }
@@ -712,6 +726,7 @@ class _Chapter {
     required this.title,
     required this.date,
     required this.read,
+    required this.hasBookmark,
     this.progressLabel,
   });
 
@@ -723,6 +738,10 @@ class _Chapter {
   /// Progres baca yang belum tuntas, mis. "Hal 10/40" — null kalau sudah
   /// tuntas dibaca ([read] true) atau belum pernah disentuh.
   final String? progressLabel;
+
+  /// true kalau ada bookmark ("momen epic") di chapter ini — lihat
+  /// lib/data/bookmarks_state.dart.
+  final bool hasBookmark;
 }
 
 class _ChapterRow extends ConsumerWidget {
@@ -753,17 +772,28 @@ class _ChapterRow extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    chapter.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.jakarta(
-                      size: 14,
-                      weight: FontWeight.w600,
-                      color: chapter.read
-                          ? AppColors.textFaint
-                          : AppColors.textPrimary,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          chapter.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.jakarta(
+                            size: 14,
+                            weight: FontWeight.w600,
+                            color: chapter.read
+                                ? AppColors.textFaint
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      if (chapter.hasBookmark) ...[
+                        const SizedBox(width: 6),
+                        const Icon(Icons.bookmark_rounded,
+                            size: 13, color: AppColors.accentText),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 3),
                   Text(

@@ -681,3 +681,50 @@ terus tiap baca).
   smoke-test web — toggle bookmark → ikon terisi + toast "Bookmark
   disimpan", buka "Lihat bookmark" dari menu more → sheet menampilkan
   "Chapter 41 · Hal 1/8" dengan benar.
+
+### 2026-07-16 — Ikon bookmark di daftar chapter, sheet keyboard fix, konfirmasi hapus, ikon app & splash asli
+Lima item dari screenshot + laporan user:
+1. Sheet "Kelola koleksi" — input nama koleksi baru ketutup keyboard
+   pas diketik, sama sekali tidak kelihatan.
+2. Hapus koleksi/sumber/repository langsung eksekusi tanpa konfirmasi.
+3. Ikon & splash screen native masih default Flutter, bukan logo Kizen
+   ("gelombang air" yang sudah dibuat sendiri di splash Flutter-nya).
+4. Bookmark sudah jalan, tapi tidak kelihatan di daftar chapter Comic
+   Detail — harus buka satu-satu buat tau chapter mana yang ada
+   bookmark-nya.
+
+- **`lib/core/widgets/app_sheet.dart`** — `AppSheetShell` sekarang
+  nambah `MediaQuery.viewInsetsOf(context).bottom` ke padding bawah,
+  jadi sheet otomatis naik ngikutin tinggi keyboard (sebelumnya sheet
+  diam di posisi tetap, keyboard nutupin input di bawahnya). Juga
+  ditambah `showConfirmSheet()` baru — sheet konfirmasi generik
+  (judul+pesan+tombol Batal/Hapus) dipakai di 3 tempat:
+  - `collection_sheets.dart` — hapus koleksi (di dalam sheet "Kelola
+    koleksi" yang masih terbuka, konfirmasi numpuk di atasnya).
+  - `browse_screen.dart` — hapus sumber.
+  - `repository_screens.dart` — hapus repository.
+- **Ikon bookmark di chapter row** (`comic_detail_screen.dart`) —
+  `_Chapter` dapat field `hasBookmark`, dihitung dari
+  `bookmarksProvider` sekali per render daftar chapter (bukan per-baris)
+  lalu di-cocokkan ke tiap nomor chapter; `_ChapterRow` nampilin ikon
+  bookmark kecil di sebelah judul chapter kalau `hasBookmark` true.
+- **Ikon app & splash native** — logo `assets/branding/kizen_mark.png`
+  dipakai lewat package `flutter_launcher_icons` (ikon launcher
+  Android+iOS, adaptive icon Android pakai versi yang di-padding lebih
+  banyak — `kizen_mark_adaptive.png`, logo aslinya full-bleed sampai
+  tepi kanvas jadi kalau dipakai langsung bakal kepotong sama mask
+  bulat/rounded adaptive icon) dan `flutter_native_splash` (splash
+  native sebelum Flutter engine siap, background `#05070A` — sama
+  persis dengan `AppColors.bg` yang dipakai splash Flutter sendiri,
+  biar transisinya mulus bukan lompat warna). Kedua tool di-run sekali
+  buat generate semua asset (mipmap, drawable, Info.plist iOS, dst) —
+  hasilnya di-commit, tidak di-generate ulang saat build.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — sheet konfirmasi hapus koleksi muncul & numpuk
+  dengan benar di atas sheet "Kelola koleksi". Fix keyboard TIDAK bisa
+  divalidasi dari sandbox (browser desktop tidak mensimulasikan
+  keyboard virtual/viewInsets seperti HP asli) — perlu dicoba langsung.
+  Ikon app & splash juga cuma bisa dicek visual dari file PNG yang
+  di-generate (bukan build native) — perlu dikonfirmasi tampilannya
+  di HP asli setelah install ulang (uninstall dulu / clear cache
+  launcher kalau ikon lama masih ke-cache).

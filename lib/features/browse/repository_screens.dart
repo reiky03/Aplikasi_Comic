@@ -98,11 +98,21 @@ class RepositoryListScreen extends ConsumerWidget {
                           _RepoRow(
                             repo: repo,
                             onEdit: () => _openAdd(context, repo: repo),
-                            onDelete: () {
+                            onDelete: () async {
+                              final confirmed = await showConfirmSheet(
+                                context,
+                                title: 'Hapus repository?',
+                                message:
+                                    '"${repo.name}" akan dihapus dari daftar '
+                                    'repository kamu.',
+                              );
+                              if (!confirmed || !context.mounted) return;
                               ref
                                   .read(repositoriesProvider.notifier)
                                   .remove(repo.id);
-                              AppToast.show(context, 'Repository dihapus');
+                              if (context.mounted) {
+                                AppToast.show(context, 'Repository dihapus');
+                              }
                             },
                           ),
                       ],

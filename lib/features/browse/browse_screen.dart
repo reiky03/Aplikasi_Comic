@@ -312,9 +312,17 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
           source.active ? 'Sumber dinonaktifkan' : 'Sumber diaktifkan',
         );
       },
-      onRemoveSource: () {
+      onRemoveSource: () async {
+        final confirmed = await showConfirmSheet(
+          context,
+          title: 'Hapus sumber?',
+          message:
+              '"${source.name}" akan dihapus dari daftar sumber kamu. '
+              'Komik yang sudah tersimpan di Library tidak ikut terhapus.',
+        );
+        if (!confirmed || !mounted) return;
         ref.read(sourcesProvider.notifier).remove(source.id);
-        AppToast.show(context, 'Sumber dihapus');
+        if (mounted) AppToast.show(context, 'Sumber dihapus');
       },
     );
   }
