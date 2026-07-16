@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
-/// Text styles "My Comic".
+/// Text styles "Kizen".
 /// UI: Plus Jakarta Sans (400/500/600/700/800).
 /// Mono: JetBrains Mono (400/500) — hanya untuk URL/domain.
 /// Sumber kebenaran: design_handoff_my_comic/01_design_system.md

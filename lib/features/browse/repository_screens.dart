@@ -142,7 +142,7 @@ class _RepoRow extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0x247C5CFF),
+              color: const Color(0x241E88C8),
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
@@ -471,9 +471,9 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
                       child: Container(
                         height: 52,
                         decoration: BoxDecoration(
-                          color: const Color(0x1A7C5CFF),
+                          color: const Color(0x1A1E88C8),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0x667C5CFF)),
+                          border: Border.all(color: const Color(0x661E88C8)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,

@@ -1,11 +1,11 @@
 {
-    "name": "aplikasi_komik",
-    "short_name": "aplikasi_komik",
+    "name": "Kizen",
+    "short_name": "Kizen",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#05070A",
+    "theme_color": "#05070A",
+    "description": "Kizen — personal comic/manga reader. Read. Save. Continue.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -50,12 +50,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          // CSS: radial-gradient(120% 70% at 50% 0%, #191428 0%, #0E0E13 55%)
+          // CSS: radial-gradient(120% 70% at 50% 0%, #0E2138 0%, #0E0E13 55%)
           gradient: RadialGradient(
             center: Alignment.topCenter,
             radius: 1.0,
             stops: [0, 0.55],
-            colors: [Color(0xFF191428), AppColors.bg],
+            colors: [Color(0xFF0E2138), AppColors.bg],
           ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -69,7 +69,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     size: 76,
                     radius: 22,
                     shadow: BoxShadow(
-                      color: Color(0xA67C5CFF), // rgba(124,92,255,.65)
+                      color: Color(0xA61E88C8), // rgba(30,136,200,.65)
                       offset: Offset(0, 18),
                       blurRadius: 44,
                       spreadRadius: -12,
@@ -77,7 +77,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 26),
                   Text(
-                    'My Comic',
+                    'Kizen',
                     style: AppTypography.jakarta(
                       size: 29,
                       weight: FontWeight.w800,

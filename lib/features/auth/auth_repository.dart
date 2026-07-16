@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -104,6 +105,85 @@ class GoogleAuthRepository implements AuthRepository {
   }
 }
 
+/// Google Sign-In + Firebase Authentication (untuk sinkronisasi akun —
+/// lihat docs/DATABASE.md, semua data digantung di `users/{uid}` dari
+/// Firebase Auth).
+///
+/// BELUM aktif sebagai default — lihat `authRepositoryProvider` di bawah.
+/// Baru bisa dipakai setelah:
+/// 1. `flutterfire configure` dijalankan (menghasilkan `lib/firebase_options.dart`).
+/// 2. `Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)`
+///    dipanggil di `main()` sebelum `runApp`.
+/// Setelah dua syarat itu terpenuhi, ganti `GoogleAuthRepository()` menjadi
+/// `FirebaseAuthRepository()` di `authRepositoryProvider`.
+class FirebaseAuthRepository implements AuthRepository {
+  GoogleSignIn get _signIn => GoogleSignIn.instance;
+  Future<void>? _init;
+
+  Future<void> _ensureInitialized() => _init ??= _signIn.initialize();
+
+  AuthUser _toUser(fb.User user) => AuthUser(
+        name: user.displayName ?? user.email ?? 'Pengguna',
+        email: user.email ?? '',
+        photoUrl: user.photoURL,
+      );
+
+  @override
+  Future<AuthUser?> restoreSession() async {
+    // Firebase Auth sudah persist sesi sendiri (tanpa perlu Google
+    // Sign-In silent auth) — cek user yang sedang login saat ini.
+    final user = fb.FirebaseAuth.instance.currentUser;
+    return user == null ? null : _toUser(user);
+  }
+
+  @override
+  Future<AuthUser> signIn() async {
+    try {
+      await _ensureInitialized();
+    } catch (e) {
+      throw AuthException('Google Sign-In belum terkonfigurasi: $e');
+    }
+    if (!_signIn.supportsAuthenticate()) {
+      throw const AuthException(
+        'Platform ini belum mendukung alur sign-in tombol kustom.',
+      );
+    }
+    final GoogleSignInAccount account;
+    try {
+      account = await _signIn.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled ||
+          e.code == GoogleSignInExceptionCode.interrupted) {
+        throw const AuthCancelledException();
+      }
+      throw AuthException(e.description ?? 'Login Google gagal.');
+    }
+    final idToken = account.authentication.idToken;
+    if (idToken == null) {
+      throw const AuthException('Google tidak mengembalikan ID token.');
+    }
+    try {
+      final credential = fb.GoogleAuthProvider.credential(idToken: idToken);
+      final result =
+          await fb.FirebaseAuth.instance.signInWithCredential(credential);
+      final user = result.user;
+      if (user == null) {
+        throw const AuthException('Login Firebase gagal — user null.');
+      }
+      return _toUser(user);
+    } on fb.FirebaseAuthException catch (e) {
+      throw AuthException(e.message ?? 'Login Firebase gagal.');
+    }
+  }
+
+  @override
+  Future<void> signOut() async {
+    await fb.FirebaseAuth.instance.signOut();
+    await _ensureInitialized();
+    await _signIn.signOut();
+  }
+}
+
 /// Auth palsu untuk dev/preview: sukses setelah jeda singkat,
 /// sesi disimpan di SharedPreferences agar Splash bisa skip login.
 class FakeAuthRepository implements AuthRepository {
@@ -135,6 +215,9 @@ class FakeAuthRepository implements AuthRepository {
   }
 }
 
+// TODO(firebase): ganti GoogleAuthRepository() -> FirebaseAuthRepository()
+// setelah lib/firebase_options.dart ada & Firebase.initializeApp() dipanggil
+// di main() (lihat catatan di FirebaseAuthRepository di atas).
 final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => kUseFakeAuth ? FakeAuthRepository() : GoogleAuthRepository(),
 );

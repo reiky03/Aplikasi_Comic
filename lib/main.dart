@@ -8,16 +8,16 @@ import 'features/onboarding/splash_screen.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(AppTheme.systemOverlayStyle);
-  runApp(const ProviderScope(child: MyComicApp()));
+  runApp(const ProviderScope(child: KizenApp()));
 }
 
-class MyComicApp extends StatelessWidget {
-  const MyComicApp({super.key});
+class KizenApp extends StatelessWidget {
+  const KizenApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'My Comic',
+      title: 'Kizen',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       darkTheme: AppTheme.dark,

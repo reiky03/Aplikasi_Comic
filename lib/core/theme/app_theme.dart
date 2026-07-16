@@ -13,7 +13,7 @@ export 'app_icons.dart';
 export 'app_motion.dart';
 export 'app_typography.dart';
 
-/// Tema "My Comic" — dark-first, satu-satunya tema.
+/// Tema "Kizen" — dark-first, satu-satunya tema.
 /// Toggle tema terang di Settings masih dekoratif (TODO), sesuai handoff.
 abstract final class AppTheme {
   /// Status bar: ikon terang di atas background gelap.

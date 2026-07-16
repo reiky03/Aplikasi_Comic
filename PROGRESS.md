@@ -27,6 +27,36 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-07-16 — Rebrand ke Kizen + palet navy-biru + persiapan Firebase
+- **Rebrand nama**: "My Comic" → "Kizen" di semua teks UI (splash, login, footer versi,
+  copy no-bypass WebView/Source Detail), judul app, class `MyComicApp` → `KizenApp`,
+  Android `android:label`, iOS `CFBundleDisplayName`/`CFBundleName`, web manifest
+  `name`/`short_name`/`theme_color`, `<title>` web. Package Dart (`aplikasi_komik`)
+  & applicationId/bundle ID Android/iOS **sengaja tidak diubah** (internal identifier,
+  rename akan memaksa ubah import di ~30 file tanpa nilai tambah user-visible).
+- **Palet warna baru** (`lib/core/theme/app_colors.dart`) sesuai brand Kizen:
+  `bg #05070A`, `surface #101B2D`, `accent #1E88C8` (tombol utama), `accentText #7EC8E3`
+  (highlight aktif), `danger`/`badge #D6422B` (destruktif & badge new/update — dipisah
+  jadi 2 token karena beda konteks meski nilainya sama), `textPrimary #F8F6F0`.
+  Semua turunan alpha (segment aktif, border faint, shadow FAB, dll) dihitung ulang
+  dari accent/danger baru. `accentGradient` jadi biru-ke-navy ("ombak"). Badge unread
+  di grid Library diubah dari accent→badge (merah) sesuai spek pemisahan "tombol
+  utama" vs "badge/new/update". Palet light-mode dicatat sebagai konstanta
+  (`lightBg`, dll) untuk referensi nanti — belum diaktifkan (spek awal: dark-first,
+  toggle Tema masih dekoratif).
+- **Logo**: BELUM terpasang — file gambar yang di-paste di chat tidak tersimpan
+  sebagai file yang bisa diakses (beda dari upload file biasa). Menunggu user
+  mengirim file logo via upload supaya bisa ditaruh di `assets/branding/` dan
+  dipasang di Splash/Login menggantikan `AppMark` (glyph vektor buatan sendiri).
+- **Firebase**: `firebase_core`, `firebase_auth`, `cloud_firestore` ditambahkan ke
+  pubspec. `lib/features/auth/auth_repository.dart` — kelas baru
+  `FirebaseAuthRepository` (Google Sign-In → `signInWithCredential`) sudah ditulis
+  lengkap tapi **belum jadi default** (butuh `lib/firebase_options.dart` dari
+  `flutterfire configure`, yang perlu login interaktif di mesin user — tidak bisa
+  dijalankan dari sandbox ini). `main.dart` belum memanggil `Firebase.initializeApp()`
+  supaya app tetap bisa dibuild tanpa config. Skema data siap dipakai:
+  `docs/DATABASE.md`.
+
 ### 2026-07-16 — 06 s/d 14 + 02 (final pass)
 - **06 History** — row lanjut baca (thumbnail 48×64, progress bar 4px, waktu + tombol play bulat → Reader langsung), tombol Bersihkan + toast, empty state jam.
 - **07 Sumber Saya** — header Jelajahi (globe berbadge + glyph repo custom), 2 sub-tab, daftar sumber dengan 6 status berwarna + pill bahasa, search live, context menu ter-wire, FAB hanya di sub-tab ini.

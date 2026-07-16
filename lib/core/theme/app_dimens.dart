@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// Spacing, radii, dan ukuran komponen "My Comic".
+/// Spacing, radii, dan ukuran komponen "Kizen".
 /// Sumber kebenaran: design_handoff_my_comic/01_design_system.md
 abstract final class AppDimens {
   /// Padding horizontal layar (18–20px).

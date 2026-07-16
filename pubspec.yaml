@@ -1,5 +1,5 @@
 name: aplikasi_komik
-description: "A new Flutter project."
+description: "Kizen — personal comic/manga reader. Read. Save. Continue."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -41,6 +41,9 @@ dependencies:
   shared_preferences: ^2.5.5
   flutter_svg: ^2.3.0
   wakelock_plus: ^1.6.1
+  firebase_core: ^4.12.1
+  firebase_auth: ^6.5.6
+  cloud_firestore: ^6.7.1
 
 dev_dependencies:
   flutter_test:

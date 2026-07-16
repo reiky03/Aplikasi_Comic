@@ -62,7 +62,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                     child: AppSpinner(
                       size: 64,
                       strokeWidth: 3,
-                      trackColor: const Color(0x2E7C5CFF), // .18
+                      trackColor: const Color(0x2E1E88C8), // .18
                       animating: !_failed,
                     ),
                   ),
@@ -138,7 +138,7 @@ class _SyncArrowsPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final s = size.width / 24;
     final paint = Paint()
-      ..color = const Color(0xFF8A6BFF)
+      ..color = const Color(0xFF1E88C8)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2 * s
       ..strokeCap = StrokeCap.round

@@ -74,11 +74,11 @@ class ComicDetailScreen extends ConsumerWidget {
                     width: 52,
                     height: 52,
                     decoration: BoxDecoration(
-                      color: inLibrary ? const Color(0x297C5CFF) : null,
+                      color: inLibrary ? const Color(0x291E88C8) : null,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: inLibrary
-                            ? const Color(0x807C5CFF)
+                            ? const Color(0x801E88C8)
                             : AppColors.borderStrong,
                       ),
                     ),
@@ -493,7 +493,7 @@ class _ChapterRow extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: downloaded
-                        ? const Color(0x807C5CFF)
+                        ? const Color(0x801E88C8)
                         : AppColors.borderStrong,
                   ),
                 ),

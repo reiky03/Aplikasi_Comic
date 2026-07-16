@@ -11,7 +11,7 @@ class AppSpinner extends StatefulWidget {
     super.key,
     this.size = 26,
     this.strokeWidth = 2.5,
-    this.color = const Color(0xFF8A6BFF),
+    this.color = const Color(0xFF1E88C8),
     this.trackColor,
     this.animating = true,
   });

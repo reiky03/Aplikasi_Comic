@@ -465,9 +465,9 @@ class _AccentIconButton extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0x1A7C5CFF), // rgba(124,92,255,.1)
+              color: const Color(0x1A1E88C8), // rgba(30,136,200,.1)
               borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: const Color(0x597C5CFF)), // .35
+              border: Border.all(color: const Color(0x591E88C8)), // .35
             ),
             alignment: Alignment.center,
             child: child,

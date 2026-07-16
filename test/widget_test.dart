@@ -10,8 +10,8 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('Alur onboarding: Splash → Login', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: MyComicApp()));
-    expect(find.text('My Comic'), findsOneWidget);
+    await tester.pumpWidget(const ProviderScope(child: KizenApp()));
+    expect(find.text('Kizen'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 1800));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Continue with Google'), findsOneWidget);
@@ -24,7 +24,7 @@ void main() {
         overrides: [
           authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
         ],
-        child: const MyComicApp(),
+        child: const KizenApp(),
       ),
     );
     await tester.pump(const Duration(milliseconds: 1800)); // splash
