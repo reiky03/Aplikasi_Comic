@@ -598,3 +598,51 @@ saja tanpa nunggu source ditandai gagal dulu.
   layar ("PAGE 4"), tidak mentok/salah. Paginasi & tombol WebView
   tidak bisa dites live dari sandbox (jaringan ke situs sumber
   diblok) — perlu konfirmasi dari user di HP asli.
+
+### 2026-07-16 — WebView asli, throttle scroll Reader, sort chapter, bersihin Add Source
+Empat item dari user setelah tes round sebelumnya:
+1. Sidebar Reader & progres masih "kurang mulus".
+2. Grid discover sudah bagus (positif, tidak ada aksi).
+3. Minta ikon sort (kecil↔besar) di sebelah label "X dibaca" pada
+   daftar chapter Comic Detail.
+4. WebView Source Detail "masih template belum actual" — dan karena
+   sumber sudah terisi, hapus "Pilih Cepat" di Tambah Sumber.
+
+- **`reader_screen.dart`** — `_onScroll` (geometri render nyata dari
+  fix sebelumnya) bisa terpicu lebih dari sekali per frame selama
+  fling, dan perhitungannya (walk RenderBox + `localToGlobal` per
+  halaman) dilakukan inline di listener scroll. Sekarang dikumpulkan
+  jadi maksimal SEKALI per frame lewat `addPostFrameCallback`
+  (`_scrollComputeScheduled` guard), plus `_pageKeys` di-prune dari
+  entry yang sudah ter-unmount tiap hitung (jaga peta tetap kecil di
+  chapter yang panjang) — ini akar "kurang mulus"-nya.
+- **`comic_detail_screen.dart`** — tombol ikon urutan (panah naik/
+  turun) di sebelah "X dibaca"; state `_sortDescending` (default:
+  chapter terbaru di atas, seperti sebelumnya), daftar chapter
+  di-`reversed` saat toggle tanpa mengubah logika progres/tanda baca.
+- **`web_view_screen.dart`** — ditulis ulang total. Sebelumnya 100%
+  mock (halaman "KOMIK·STATION" palsu, simulasi CAPTCHA fake, tombol
+  simpan hardcode "Void Chronicles"). Sekarang pakai package
+  `webview_flutter` sungguhan: navigasi ke URL source asli, tombol
+  back/forward/reload asli via `WebViewController`, progress bar
+  loading asli. "Simpan ke Library" (yang fake & tidak masuk akal
+  tanpa parser per-situs) diganti "Tandai Session Aktif" — sesuai
+  spek awal (verifikasi manual, TANPA bypass/deteksi otomatis), user
+  sendiri yang menandai kalau sudah login/lolos verifikasi di situs
+  aslinya.
+  - Ditambah dependency `webview_flutter: ^4.13.0`.
+  - **Fix bonus**: `android/app/src/main/AndroidManifest.xml` ternyata
+    tidak punya `<uses-permission INTERNET>` — selama ini jalan karena
+    `flutter run` (debug) otomatis dapat izin itu dari manifest
+    debug-only, tapi build **release** nanti bakal gagal total akses
+    jaringan (http/Firestore/WebView) tanpa ini. Ditambahkan ke
+    manifest utama sebelum kejadian pas rilis.
+- **`add_source_screen.dart`** — bagian "Pilih Cepat" (chip 4 sumber
+  native) & `_QuickPickChip` dihapus, form langsung ke "Nama Sumber".
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — toggle sort chapter kebukti kebalik urutannya
+  (Chapter 42→1 jadi 1→42) & ikon berubah arah, "Pilih Cepat" sudah
+  tidak ada di Tambah Sumber. WebView pakai plugin native
+  Android/iOS (bukan web) jadi tidak bisa dites langsung dari sandbox
+  — perlu konfirmasi user di HP asli, termasuk cek build **release**
+  tidak kena masalah izin internet di masa depan.

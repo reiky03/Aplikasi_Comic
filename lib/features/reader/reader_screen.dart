@@ -66,6 +66,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// estimasi), lihat catatan di sana.
   final GlobalKey _viewportKey = GlobalKey();
   final Map<int, GlobalKey> _pageKeys = {};
+  bool _scrollComputeScheduled = false;
 
   int? _sourceChapterIndex;
   List<SourcePage>? _realPages;
@@ -219,8 +220,24 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// strip webtoon yang biasanya jauh lebih tinggi dari lebar layar,
   /// jadi slider "mentok" duluan padahal chapter belum tamat — akibatnya
   /// juga bikin progres per-chapter salah kebaca "sudah tamat".
+  ///
+  /// `ScrollController` bisa memicu listener ini lebih dari sekali per
+  /// frame selagi fling — dikumpulkan dulu (`_scrollComputeScheduled`)
+  /// jadi perhitungan geometrinya cuma jalan SEKALI per frame lewat
+  /// `addPostFrameCallback`, bukan tiap notifikasi scroll mentah. Tanpa
+  /// ini kerasa "kurang mulus"/patah-patah pas scroll cepat.
   void _onScroll() {
     if (_suppressScroll || !_scrollController.hasClients) return;
+    if (_scrollComputeScheduled) return;
+    _scrollComputeScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollComputeScheduled = false;
+      _computeCurrentPage();
+    });
+  }
+
+  void _computeCurrentPage() {
+    if (!mounted || !_scrollController.hasClients) return;
     final settings = ref.read(readerSettingsProvider);
     if (!settings.isWebtoon) return;
     final viewportBox =
@@ -228,6 +245,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     if (viewportBox == null || !viewportBox.attached) return;
     final targetY = viewportBox.localToGlobal(Offset.zero).dy +
         viewportBox.size.height * 0.4;
+    // Buang key halaman yang sudah tidak ter-mount (di luar cache
+    // extent) — biar peta tidak terus membesar sepanjang chapter panjang.
+    _pageKeys.removeWhere((_, key) => key.currentContext == null);
     int? best;
     for (final entry in _pageKeys.entries) {
       final box = entry.value.currentContext?.findRenderObject() as RenderBox?;

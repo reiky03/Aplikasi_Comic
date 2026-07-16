@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Perlu eksplisit di manifest utama (bukan cuma debug/profile) supaya
+         build release juga bisa akses jaringan -- dipakai http/Firestore
+         dan sekarang WebView (buka situs sumber langsung). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Kizen"
         android:name="${applicationName}"

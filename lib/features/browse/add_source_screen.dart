@@ -139,24 +139,6 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _label('Pilih Cepat'),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final source in SourceCatalog.sources)
-                        _QuickPickChip(
-                          label: source.name,
-                          onTap: () {
-                            _nameController.text = source.name;
-                            _urlController.text = source.baseUrl;
-                            setState(() => _testState = _TestState.idle);
-                          },
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
                   _label('Nama Sumber'),
                   const SizedBox(height: 8),
                   _input(
@@ -421,41 +403,6 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
             size: 13.5,
             weight: FontWeight.w700,
             color: active ? AppColors.accentText : AppColors.textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Chip "pilih cepat" — isi otomatis Nama+URL dari sumber yang punya
-/// parser native (lihat lib/sources/), supaya user tidak perlu ketik URL.
-class _QuickPickChip extends StatelessWidget {
-  const _QuickPickChip({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 13),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.sheetTopBorder),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: AppTypography.jakarta(
-            size: 12.5,
-            weight: FontWeight.w700,
-            color: AppColors.textSecondary,
           ),
         ),
       ),

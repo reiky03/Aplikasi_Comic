@@ -40,6 +40,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   bool _loading = false;
   String? _error;
 
+  /// true = chapter terbaru (nomor besar) di atas, seperti sebelumnya.
+  bool _sortDescending = true;
+
   MangaSource? get _matchedSource => SourceCatalog.sources
       .where((s) => s.name == widget.comic.src)
       .firstOrNull;
@@ -95,6 +98,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     final chapters = _chaptersToShow(current);
     final readCount = chapters.where((c) => c.read).length;
     final totalChapters = _realChapters?.length ?? current.ch;
+    final orderedChapters =
+        _sortDescending ? chapters : chapters.reversed.toList();
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -121,11 +126,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, i) => _ChapterRow(
                         comic: current,
-                        chapter: chapters[i],
-                        onTap: () =>
-                            _openReader(context, current, chapters[i].num),
+                        chapter: orderedChapters[i],
+                        onTap: () => _openReader(
+                            context, current, orderedChapters[i].num),
                       ),
-                      childCount: chapters.length,
+                      childCount: orderedChapters.length,
                     ),
                   ),
                 ),
@@ -295,6 +300,29 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                   size: 12,
                   weight: FontWeight.w400,
                   color: AppColors.textMuted,
+                ),
+              ),
+              const SizedBox(width: 10),
+              InkWell(
+                onTap: () =>
+                    setState(() => _sortDescending = !_sortDescending),
+                borderRadius: BorderRadius.circular(9),
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: AppColors.sheetTopBorder),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    _sortDescending
+                        ? Icons.arrow_downward_rounded
+                        : Icons.arrow_upward_rounded,
+                    size: 15,
+                    color: AppColors.menuIcon,
+                  ),
                 ),
               ),
             ],
