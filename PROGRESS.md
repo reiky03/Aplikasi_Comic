@@ -760,3 +760,23 @@ produktif buat mulai sinkron data dari akun (bukan cuma animasi kosong).
   `#05070A` — konsisten dua platform. Efek "provider dibaca lebih awal
   bikin data lebih siap" tidak bisa diukur/dites dari sandbox (perlu
   koneksi Firestore asli + device asli buat rasain bedanya).
+
+### 2026-07-16 — Keyboard gak nutup sehabis buat koleksi + animasi sheet kurang mulus
+Dua hal dari fix keyboard-avoidance sebelumnya: (1) sehabis tekan
+"Buat" di sheet "Kelola koleksi", keyboard tetap terbuka (fokus masih
+di text field walau isinya sudah di-clear); (2) padding sheet yang
+menyesuaikan tinggi keyboard lompat langsung ke nilai akhir tiap
+frame (bukan di-easing), kerasa jitter/patah pas keyboard buka-tutup.
+
+- `collection_sheets.dart` — `FocusScope.of(context).unfocus()`
+  dipanggil di `onCreate` sebelum nge-clear controller, keyboard
+  otomatis nutup begitu koleksi baru dibuat.
+- `app_sheet.dart` — `AppSheetShell` sekarang bungkus padding bawah
+  (mengikuti `MediaQuery.viewInsetsOf(context).bottom`) pakai
+  `AnimatedPadding` (180ms, `Curves.easeOut`) alih-alih nilai statis
+  langsung — transisinya di-interpolasi mulus, bukan lompat sekali
+  jadi.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos.
+  Baik unfocus maupun kemulusan animasi tidak bisa divalidasi visual
+  dari sandbox (perlu keyboard virtual sungguhan di HP) — perlu
+  dicoba langsung.

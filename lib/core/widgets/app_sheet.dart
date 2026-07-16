@@ -42,37 +42,44 @@ class AppSheetShell extends StatelessWidget {
         : AppDimens.sheetPadding;
     // Dorong sheet ke atas kalau keyboard muncul — tanpa ini, sheet yang
     // punya text field (mis. buat/edit koleksi) tertutup keyboard karena
-    // posisinya tidak menyesuaikan `viewInsets` sama sekali.
+    // posisinya tidak menyesuaikan `viewInsets` sama sekali. `AnimatedPadding`
+    // (bukan padding statis langsung dari `viewInsets`) supaya transisinya
+    // di-easing mulus, bukan lompat sekali jadi (kerasa jitter/patah).
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppDimens.radiusSheet),
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppDimens.radiusSheet),
+          ),
+          border: Border(
+            top: BorderSide(color: AppColors.sheetTopBorder),
+          ),
         ),
-        border: Border(
-          top: BorderSide(color: AppColors.sheetTopBorder),
-        ),
-      ),
-      padding: basePadding + EdgeInsets.only(bottom: keyboardInset),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              width: AppDimens.sheetDragHandleSize.width,
-              height: AppDimens.sheetDragHandleSize.height,
-              margin: const EdgeInsets.only(bottom: AppDimens.sheetDragHandleGap),
-              decoration: BoxDecoration(
-                color: AppColors.sheetDragHandle,
-                borderRadius: BorderRadius.circular(2),
+        padding: basePadding,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: AppDimens.sheetDragHandleSize.width,
+                height: AppDimens.sheetDragHandleSize.height,
+                margin: const EdgeInsets.only(bottom: AppDimens.sheetDragHandleGap),
+                decoration: BoxDecoration(
+                  color: AppColors.sheetDragHandle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
-          child,
-        ],
+            child,
+          ],
+        ),
       ),
     );
   }

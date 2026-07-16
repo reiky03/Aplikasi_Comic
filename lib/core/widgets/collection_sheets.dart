@@ -252,6 +252,7 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                 height: 48,
                 horizontalPadding: 18,
                 onCreate: (name) {
+                  FocusScope.of(context).unfocus();
                   setState(() {
                     _items.add(SheetCollection(name: name, count: 0));
                     _controller.clear();
