@@ -151,9 +151,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
   }
 
-  // Tinggi satu blok halaman webtoon (2:3 dari lebar penuh) + gap.
-  double _pageExtent(BuildContext context, ReaderSettings settings) =>
-      MediaQuery.sizeOf(context).width * 1.5 + settings.gap;
+  /// Perkiraan tinggi satu blok halaman webtoon + gap — dipakai untuk
+  /// estimasi posisi scroll→halaman (slider). Placeholder demo pakai
+  /// rasio tetap 2:3; gambar asli tingginya sebenarnya bervariasi
+  /// (menyesuaikan rasio aslinya masing-masing, lihat [_webtoonPage]),
+  /// jadi ini cuma perkiraan rata-rata (rasio umum halaman webtoon),
+  /// bukan tinggi pasti — slider bisa sedikit meleset untuk komik asli.
+  double _pageExtent(BuildContext context, ReaderSettings settings) {
+    final width = MediaQuery.sizeOf(context).width;
+    final estimated = _isRealSource ? width / 0.7 : width * 1.5;
+    return estimated + settings.gap;
+  }
 
   /// Scroll → slider: halaman = blok terakhir yang offset-atasnya berada
   /// di atas garis ~40% viewport (logika prototipe, dua arah wajib jalan).
@@ -345,87 +353,128 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
-  Widget _pageContent(int i, {bool large = false}) {
+  /// Blok placeholder demo (gradient + "PAGE N") — dipakai komik lokal,
+  /// dan sebagai fallback loading/error untuk gambar asli.
+  Widget _mockPageBlock(int i, {bool large = false}) => DecoratedBox(
+        decoration: BoxDecoration(gradient: _pageGradient(i)),
+        child: _PageMock(number: i + 1, large: large),
+      );
+
+  /// Halaman webtoon: lebar penuh, tinggi menyesuaikan rasio ASLI gambar
+  /// (bukan dipaksa 2:3+cover — itu yang bikin gambar kepotong).
+  /// `cacheWidth` menyuruh Flutter decode gambar sesuai lebar layar saja
+  /// (bukan resolusi asli yang bisa jauh lebih besar), jauh lebih ringan.
+  Widget _webtoonPage(int i, double width, double dpr) {
     final pages = _realPages;
-    if (pages != null && i < pages.length) {
-      return Image.network(
-        pages[i].imageUrl,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) => progress == null
-            ? child
-            : DecoratedBox(
+    if (pages == null || i >= pages.length) {
+      return SizedBox(width: width, height: width * 1.5, child: _mockPageBlock(i));
+    }
+    return Image.network(
+      pages[i].imageUrl,
+      width: width,
+      fit: BoxFit.fitWidth,
+      cacheWidth: (width * dpr).round(),
+      loadingBuilder: (context, child, progress) => progress == null
+          ? child
+          : AspectRatio(
+              aspectRatio: 0.7,
+              child: DecoratedBox(
                 decoration: BoxDecoration(gradient: _pageGradient(i)),
                 child: const Center(
                   child: AppSpinner(size: 22, strokeWidth: 2, color: Colors.white),
                 ),
               ),
-        errorBuilder: (_, _, _) => DecoratedBox(
-          decoration: BoxDecoration(gradient: _pageGradient(i)),
-          child: _PageMock(number: i + 1, large: large),
-        ),
-      );
-    }
-    return DecoratedBox(
-      decoration: BoxDecoration(gradient: _pageGradient(i)),
-      child: _PageMock(number: i + 1, large: large),
+            ),
+      errorBuilder: (_, _, _) =>
+          AspectRatio(aspectRatio: 0.7, child: _mockPageBlock(i)),
     );
   }
 
   Widget _buildWebtoon(ReaderSettings settings) {
     final width = MediaQuery.sizeOf(context).width;
-    return ListView(
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    // +2: spacer atas (index 0) & footer "Akhir chapter" (index terakhir).
+    return ListView.builder(
       controller: _scrollController,
       padding: EdgeInsets.zero,
-      children: [
-        const SizedBox(height: 44),
-        for (var i = 0; i < _totalPages; i++)
-          Container(
-            width: width,
-            height: width * 1.5,
-            margin: EdgeInsets.only(bottom: settings.gap.toDouble()),
-            child: _pageContent(i),
-          ),
-        GestureDetector(
-          onTap: () => _changeChapter(1),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 40, 20, 60),
-            child: Text.rich(
-              TextSpan(
-                text: 'Akhir chapter · ',
-                style: AppTypography.jakarta(
-                  size: 13,
-                  weight: FontWeight.w400,
-                  color: Colors.white.withValues(alpha: 0.5),
-                ),
-                children: [
-                  TextSpan(
-                    text: 'Chapter berikutnya →',
-                    style: AppTypography.jakarta(
-                      size: 13,
-                      weight: FontWeight.w700,
-                      color: AppColors.accentText,
-                    ),
+      itemCount: _totalPages + 2,
+      itemBuilder: (context, index) {
+        if (index == 0) return const SizedBox(height: 44);
+        if (index == _totalPages + 1) {
+          return GestureDetector(
+            onTap: () => _changeChapter(1),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 40, 20, 60),
+              child: Text.rich(
+                TextSpan(
+                  text: 'Akhir chapter · ',
+                  style: AppTypography.jakarta(
+                    size: 13,
+                    weight: FontWeight.w400,
+                    color: Colors.white.withValues(alpha: 0.5),
                   ),
-                ],
+                  children: [
+                    TextSpan(
+                      text: 'Chapter berikutnya →',
+                      style: AppTypography.jakarta(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: AppColors.accentText,
+                      ),
+                    ),
+                  ],
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
             ),
-          ),
-        ),
-      ],
+          );
+        }
+        final i = index - 1;
+        return Padding(
+          padding: EdgeInsets.only(bottom: settings.gap.toDouble()),
+          child: _webtoonPage(i, width, dpr),
+        );
+      },
     );
   }
 
   Widget _buildManga(ReaderSettings settings) {
     final rtl = settings.direction == ReadingDirection.rtl;
+    final pages = _realPages;
+    final isReal = pages != null && _page < pages.length;
     return Stack(
       fit: StackFit.expand,
       children: [
         Center(
-          child: AspectRatio(
-            aspectRatio: AppDimens.coverAspectRatio,
-            child: _pageContent(_page, large: true),
-          ),
+          child: isReal
+              ? Image.network(
+                  pages[_page].imageUrl,
+                  fit: BoxFit.contain,
+                  cacheWidth: (MediaQuery.sizeOf(context).width *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .round(),
+                  loadingBuilder: (context, child, progress) => progress == null
+                      ? child
+                      : AspectRatio(
+                          aspectRatio: AppDimens.coverAspectRatio,
+                          child: DecoratedBox(
+                            decoration:
+                                BoxDecoration(gradient: _pageGradient(_page)),
+                            child: const Center(
+                              child: AppSpinner(
+                                  size: 26, strokeWidth: 2.5, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                  errorBuilder: (_, _, _) => AspectRatio(
+                    aspectRatio: AppDimens.coverAspectRatio,
+                    child: _mockPageBlock(_page, large: true),
+                  ),
+                )
+              : AspectRatio(
+                  aspectRatio: AppDimens.coverAspectRatio,
+                  child: _mockPageBlock(_page, large: true),
+                ),
         ),
         // Tap zone kiri/kanan 32% — prev/next halaman (terbalik saat RTL).
         Positioned(

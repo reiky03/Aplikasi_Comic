@@ -356,3 +356,33 @@ walau akun Google-nya masih ada di device.
   selalu minta pilih akun tiap login (bukan auto-login diam-diam via akun
   tersimpan), jadi tidak ada perubahan UX — cuma menghindari bug
   Credential Manager di atas.
+
+### 2026-07-16 — Fix Reader: gambar kepotong + patah-patah
+User tes Shinigami beneran di HP: scroll patah-patah + gambar chapter
+kepotong. Dua akar masalah di `reader_screen.dart`:
+1. Gambar asli dipaksa masuk kotak rasio 2:3 tetap + `BoxFit.cover`
+   (logika itu buat placeholder demo, bukan gambar asli yang rasionya
+   macam-macam) → kepotong.
+2. `ListView` (bukan `.builder`) bikin SEMUA halaman ke-build & mulai
+   fetch/decode sekaligus di awal, bukan lazy sesuai viewport → berat,
+   patah-patah, apalagi gambar manga scan biasanya beresolusi besar dan
+   didekode di resolusi asli (tidak di-downsize).
+
+Perbaikan:
+- Webtoon: `ListView` → `ListView.builder` (lazy, cuma bangun item
+  dekat viewport). Halaman lebar penuh, tinggi menyesuaikan rasio ASLI
+  gambar (`BoxFit.fitWidth`, tanpa tinggi dipaksa) — gambar utuh, tidak
+  kepotong lagi, mirip Tachiyomi.
+- Manga (paged): full-screen `BoxFit.contain` (letterbox kalau rasio
+  beda) untuk gambar asli, bukan `AspectRatio` tetap+cover.
+- `cacheWidth` di tiap `Image.network` (gambar asli) — Flutter decode
+  sesuai lebar layar device, bukan resolusi asli file (bisa jauh lebih
+  besar) — jauh lebih ringan untuk CPU/memori, mengurangi jank.
+- `_pageExtent()` (estimasi scroll→halaman untuk slider) disesuaikan:
+  placeholder demo tetap rasio 2:3, komik asli pakai perkiraan rasio umum
+  webtoon (0.7) — karena tinggi asli per halaman kini bervariasi, slider
+  untuk komik asli jadi perkiraan (bukan presisi piksel sempurna, sama
+  seperti reader app lain pada umumnya untuk mode scroll kontinu).
+- Diverifikasi: `flutter analyze` bersih, semua test lolos (18/18),
+  smoke-test jalur demo (build web + Playwright) — render identik
+  seperti sebelum perubahan, tidak ada regresi.
