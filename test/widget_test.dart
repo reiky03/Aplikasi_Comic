@@ -10,7 +10,16 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('Alur onboarding: Splash → Login', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: KizenApp()));
+    // FirebaseAuthRepository butuh Firebase.initializeApp() (dipanggil di
+    // main(), bukan di widget test) — pakai FakeAuthRepository di sini.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+        child: const KizenApp(),
+      ),
+    );
     expect(find.text('Kizen'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 1800));
     await tester.pump(const Duration(milliseconds: 400));
