@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1029784256621",
+    "project_id": "kizen-da39f",
+    "storage_bucket": "kizen-da39f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1029784256621:android:dbdb8f1e8d9dfad1cebf64",
+        "android_client_info": {
+          "package_name": "com.reikypratama.aplikasi_komik"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBOpTsRPHgFEMvZaj4NzXENAQoMh5UbGss"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
