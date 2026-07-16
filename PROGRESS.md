@@ -144,4 +144,5 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 - `flutterfire configure --project=kizen-da39f` dijalankan ulang untuk refresh config (android/ios/web), lalu di-push.
 - `lib/features/auth/auth_repository.dart` — `FirebaseAuthRepository._webClientId` diisi dengan Web Client ID hasil auto-create tsb, dipakai sebagai `serverClientId` pada `GoogleSignIn.instance.initialize(...)` — ini yang bikin Android/iOS dapat `idToken` valid untuk ditukar ke `GoogleAuthProvider.credential` → `signInWithCredential`.
 - `flutter analyze` bersih, `flutter test` lolos (2/2).
-- Sisa: setup URL scheme (REVERSED_CLIENT_ID) di iOS Info.plist untuk Google Sign-In iOS; belum dicoba build/run asli Android/iOS (masih tahap kode+konfigurasi, belum diverifikasi end-to-end dengan device/emulator sungguhan).
+- `ios/Runner/Info.plist` — tambah `CFBundleURLTypes` dengan `REVERSED_CLIENT_ID` (dari `GoogleService-Info.plist`) sebagai URL scheme, wajib untuk redirect Google Sign-In di iOS.
+- Sisa: belum dicoba build/run asli Android/iOS (masih tahap kode+konfigurasi, belum diverifikasi end-to-end dengan device/emulator sungguhan).
