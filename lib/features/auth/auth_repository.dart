@@ -50,10 +50,17 @@ abstract interface class AuthRepository {
 /// - Web: `authenticate()` tidak didukung; perlu tombol GIS (renderButton) —
 ///   pakai FAKE_AUTH untuk preview web sementara.
 class FirebaseAuthRepository implements AuthRepository {
+  // Web Client ID (client_type: 3) dari Firebase project kizen-da39f —
+  // wajib diisi supaya Android/iOS dapat idToken yang valid (bukan cuma
+  // accessToken) untuk ditukar ke Firebase via GoogleAuthProvider.
+  static const _webClientId =
+      '1029784256621-nkq5dro519rtnlsrvsqs65287o11ucu2.apps.googleusercontent.com';
+
   GoogleSignIn get _signIn => GoogleSignIn.instance;
   Future<void>? _init;
 
-  Future<void> _ensureInitialized() => _init ??= _signIn.initialize();
+  Future<void> _ensureInitialized() =>
+      _init ??= _signIn.initialize(serverClientId: _webClientId);
 
   AuthUser _toUser(fb.User user) => AuthUser(
         name: user.displayName ?? user.email ?? 'Pengguna',

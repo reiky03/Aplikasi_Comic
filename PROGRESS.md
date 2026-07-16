@@ -138,3 +138,10 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 - `lib/core/theme/app_icons.dart` — mapping ikon Lucide sesuai daftar Iconography.
 - `lib/core/theme/app_theme.dart` — `ThemeData` dark (satu-satunya tema; toggle tema terang di Settings = TODO dekoratif sesuai handoff).
 - `lib/main.dart` — `ProviderScope` + `MaterialApp` pakai tema; home placeholder sementara.
+
+### 2026-07-16 — Google Sign-In: Web Client ID (serverClientId) terpasang
+- Provider Google diaktifkan di Firebase Authentication → Sign-in method → memicu Firebase auto-create Web OAuth Client (`client_type: 3`) di `google-services.json`/`GoogleService-Info.plist`.
+- `flutterfire configure --project=kizen-da39f` dijalankan ulang untuk refresh config (android/ios/web), lalu di-push.
+- `lib/features/auth/auth_repository.dart` — `FirebaseAuthRepository._webClientId` diisi dengan Web Client ID hasil auto-create tsb, dipakai sebagai `serverClientId` pada `GoogleSignIn.instance.initialize(...)` — ini yang bikin Android/iOS dapat `idToken` valid untuk ditukar ke `GoogleAuthProvider.credential` → `signInWithCredential`.
+- `flutter analyze` bersih, `flutter test` lolos (2/2).
+- Sisa: setup URL scheme (REVERSED_CLIENT_ID) di iOS Info.plist untuk Google Sign-In iOS; belum dicoba build/run asli Android/iOS (masih tahap kode+konfigurasi, belum diverifikasi end-to-end dengan device/emulator sungguhan).
