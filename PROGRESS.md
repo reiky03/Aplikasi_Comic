@@ -27,6 +27,30 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-07-16 — Firebase tersambung (Android/iOS/Web)
+- User berhasil `flutterfire configure --project=kizen-da39f` (Android, iOS, Web) —
+  `lib/firebase_options.dart`, `android/app/google-services.json`,
+  `ios/Runner/GoogleService-Info.plist`, `firebase.json`, plugin Gradle
+  `com.google.gms.google-services` di `android/settings.gradle.kts` &
+  `android/app/build.gradle.kts` semua sudah ada & di-merge.
+- `main.dart`: `Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)`
+  dipanggil sebelum `runApp()` — dilewati saat `--dart-define=FAKE_AUTH=true` (mode
+  dev/preview tetap tidak butuh Firebase asli).
+- `authRepositoryProvider` sekarang default ke `FirebaseAuthRepository` (Google
+  Sign-In → `signInWithCredential`) — `GoogleAuthRepository` (versi device-only
+  tanpa Firebase) dihapus karena sudah tidak dipakai/tidak relevan.
+- Test widget diperbaiki: test pertama sekarang juga override
+  `authRepositoryProvider` dengan `FakeAuthRepository` (widget test pump `KizenApp`
+  langsung tanpa lewat `main()`, jadi Firebase memang belum ter-init di situ —
+  itu bukan bug, dan test seharusnya tidak bergantung pada Firebase App nyata).
+- **Belum jalan** (butuh langkah manual di device/Android Studio, akan dipandu
+  saat user siap test login Google beneran di HP): tambah SHA-1/SHA-256
+  fingerprint debug ke Firebase Console (syarat wajib `google_sign_in` v7 di
+  Android), dan `serverClientId` (Web Client ID) untuk `idToken` yang valid.
+- Data layer Firestore (`docs/DATABASE.md`) belum diimplementasi — masih pakai
+  data demo lokal di semua Notifier `lib/data/`. Langkah berikutnya setelah
+  login Google beneran diverifikasi jalan.
+
 ### 2026-07-16 — Rebrand ke Kizen + palet navy-biru + persiapan Firebase
 - **Rebrand nama**: "My Comic" → "Kizen" di semua teks UI (splash, login, footer versi,
   copy no-bypass WebView/Source Detail), judul app, class `MyComicApp` → `KizenApp`,
