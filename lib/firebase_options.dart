@@ -68,6 +68,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1029784256621',
     projectId: 'kizen-da39f',
     storageBucket: 'kizen-da39f.firebasestorage.app',
+    androidClientId: '1029784256621-9uf4buborrldbb3cds670rtim8qo1mog.apps.googleusercontent.com',
+    iosClientId: '1029784256621-ba7uua2jh5oou7vj3jtm5ebrfrjef2du.apps.googleusercontent.com',
     iosBundleId: 'com.reikypratama.aplikasiKomik',
   );
 }

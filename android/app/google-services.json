@@ -12,7 +12,20 @@
           "package_name": "com.reikypratama.aplikasi_komik"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1029784256621-9uf4buborrldbb3cds670rtim8qo1mog.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.reikypratama.aplikasi_komik",
+            "certificate_hash": "fdc67be8e4ddc878dae7a1ff03f9877b9a88e40c"
+          }
+        },
+        {
+          "client_id": "1029784256621-nkq5dro519rtnlsrvsqs65287o11ucu2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBOpTsRPHgFEMvZaj4NzXENAQoMh5UbGss"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1029784256621-nkq5dro519rtnlsrvsqs65287o11ucu2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1029784256621-ba7uua2jh5oou7vj3jtm5ebrfrjef2du.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.reikypratama.aplikasiKomik"
+              }
+            }
+          ]
         }
       }
     }
