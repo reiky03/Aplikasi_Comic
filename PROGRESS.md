@@ -340,3 +340,19 @@ kode parser doang), sesuai keluhan user "berasa kurang isian list grid".
   otomatis ke-cache identitasnya kalau title sama dari sumber beda (id
   sintetis `src_{sourceId}_{urlEncoded}` per sumber, jadi aman); search
   global lintas-sumber (Browse) masih belum menyentuh parser ini.
+
+### 2026-07-16 — Fix: login gagal "No credential available" setelah Sign Out
+User laporan: sign out lalu coba login Google lagi → gagal, pesan
+"no credential available". Ketemu akar masalahnya di source Kotlin
+plugin `google_sign_in_android` — `signOut()` kita memanggil
+`GoogleSignIn.instance.signOut()`, yang di Android meng-clear
+Credential Manager (`clearCredentialState()`). Di sejumlah versi
+Android, ini bikin `authenticate()` berikutnya gagal dengan
+`GetCredentialFailureType.noCredential` ("No credential available: ...")
+walau akun Google-nya masih ada di device.
+- `lib/features/auth/auth_repository.dart` — `FirebaseAuthRepository.
+  signOut()` sekarang hanya `FirebaseAuth.instance.signOut()`, tidak lagi
+  memanggil `GoogleSignIn.signOut()`. Tombol "Continue with Google" tetap
+  selalu minta pilih akun tiap login (bukan auto-login diam-diam via akun
+  tersimpan), jadi tidak ada perubahan UX — cuma menghindari bug
+  Credential Manager di atas.

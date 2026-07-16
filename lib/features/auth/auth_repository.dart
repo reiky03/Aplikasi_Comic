@@ -118,9 +118,14 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
+    // Sengaja TIDAK memanggil GoogleSignIn.signOut() di sini — itu
+    // meng-clear Credential Manager Android (clearCredentialState()),
+    // yang di sejumlah versi Android bikin authenticate() berikutnya
+    // gagal dengan "No credential available" walau akunnya masih ada di
+    // device. Sign out dari Firebase saja cukup untuk keluar dari sesi
+    // app; tombol "Continue with Google" tetap selalu minta pilih akun
+    // lagi (bukan auto-login diam-diam), jadi UX-nya tidak berubah.
     await fb.FirebaseAuth.instance.signOut();
-    await _ensureInitialized();
-    await _signIn.signOut();
   }
 }
 
