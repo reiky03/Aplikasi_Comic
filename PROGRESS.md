@@ -165,3 +165,7 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 - `lib/core/widgets/logo_reveal.dart` (baru) — animasi sekali-main (~1.1s) di ikon Splash: 2 cincin riak bertepi bergelombang (motif ombak, bukan lingkaran polos) mengecil & memudar dari luar, bertumpang-tindih dengan logo asli yang fade+scale-in di tengahnya → efek "ombak menjadi ikon Kizen", bukan logo yang muncul instan.
 - `splash_screen.dart` — `AppMark` langsung diganti `LogoReveal` (bungkus `AppMark` di dalamnya, shadow tetap sama).
 - Diverifikasi visual dengan durasi animasi diperpanjang sementara (18s) khusus untuk screenshot bertahap (build web + Playwright headless), lalu dikembalikan ke nilai produksi (1100ms reveal / 1700ms total brand moment) sebelum commit.
+
+### 2026-07-16 — Perpanjang animasi reveal logo (kurang kelihatan)
+- User merasa animasi ombak→logo kurang lama/kurang kelihatan. `LogoReveal.duration` default 1100ms → 1900ms; total brand moment Splash 1700ms → 2600ms (reveal selesai + jeda tahan ~700ms sebelum pindah layar).
+- `test/widget_test.dart` — pump durasi splash disesuaikan (1800→2700ms) di kedua test; sempat ada bug replace yang cuma kena test pertama (baris test kedua ada komentar inline `// splash` jadi tidak match), diperbaiki manual — `flutter test` sekarang lolos lagi (2/2).
