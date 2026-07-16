@@ -169,3 +169,7 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 ### 2026-07-16 — Perpanjang animasi reveal logo (kurang kelihatan)
 - User merasa animasi ombak→logo kurang lama/kurang kelihatan. `LogoReveal.duration` default 1100ms → 1900ms; total brand moment Splash 1700ms → 2600ms (reveal selesai + jeda tahan ~700ms sebelum pindah layar).
 - `test/widget_test.dart` — pump durasi splash disesuaikan (1800→2700ms) di kedua test; sempat ada bug replace yang cuma kena test pertama (baris test kedua ada komentar inline `// splash` jadi tidak match), diperbaiki manual — `flutter test` sekarang lolos lagi (2/2).
+
+### 2026-07-16 — Splash jadi 3.5 detik
+- Reveal logo 1.9s → 2.4s, total brand moment 2.6s → 3.5s (permintaan user).
+- `test/widget_test.dart` pump durasi splash disesuaikan (2700→3600ms).

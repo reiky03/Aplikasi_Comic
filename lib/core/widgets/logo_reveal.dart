@@ -12,7 +12,7 @@ class LogoReveal extends StatefulWidget {
     super.key,
     required this.size,
     this.shadow,
-    this.duration = const Duration(milliseconds: 1900),
+    this.duration = const Duration(milliseconds: 2400),
   });
 
   final double size;

@@ -26,11 +26,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _start() async {
-    // Cek sesi berjalan paralel dengan brand moment (reveal logo ~1.9s +
+    // Cek sesi berjalan paralel dengan brand moment (reveal logo ~2.4s +
     // jeda tahan sebentar sebelum pindah layar).
     final results = await Future.wait<Object?>([
       ref.read(authControllerProvider.notifier).restoreSession(),
-      Future<void>.delayed(const Duration(milliseconds: 2600)),
+      Future<void>.delayed(const Duration(milliseconds: 3500)),
     ]);
     if (!mounted) return;
 
