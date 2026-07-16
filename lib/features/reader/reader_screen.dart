@@ -185,12 +185,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
   }
 
-  // TODO: sementara ditampilkan sebagai toast (bukan cuma log) buat
-  // bantu diagnosa laporan "progres tidak ke-track" — kalau sudah
-  // dipastikan beres, ganti balik ke debugPrint saja.
+  /// Toast diagnostik sebelumnya (buat lacak bug "progres tidak ke-track")
+  /// sudah dicabut — root cause-nya (orderBy + serverTimestamp di
+  /// history_state.dart, lihat PROGRESS.md) sudah ketemu & dibenerin, dan
+  /// beberapa fitur belakangan (bookmark, tanda "Dibaca", Updates) sudah
+  /// terverifikasi jalan tanpa masalah simpan. Kembali silent-log saja —
+  /// menampilkan pesan error Firestore mentah ke user bukan UX yang bagus.
   void _reportSaveError(String what, Object error) {
     debugPrint('Gagal menyimpan $what: $error');
-    if (mounted) AppToast.show(context, 'Gagal simpan $what: $error');
   }
 
   void _applyWakelock() {

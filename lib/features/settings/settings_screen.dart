@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/demo_state.dart';
+import '../../data/updates_state.dart';
 import '../sync/sync_service.dart';
 import '../auth/auth_repository.dart';
 import '../onboarding/login_screen.dart';
@@ -138,7 +139,7 @@ class SettingsScreen extends ConsumerWidget {
                     label: 'Sinkronisasi & Cadangan',
                     trailing: const Icon(AppIcons.forward,
                         size: 16, color: AppColors.textFaint),
-                    onTap: () => _runSync(context),
+                    onTap: () => _runSync(context, ref),
                     showDivider: false,
                   ),
                 ]),
@@ -350,13 +351,27 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  /// Sync manual — pola toast prototipe (1.4s).
-  /// TODO(backend): panggil sync sungguhan.
-  Future<void> _runSync(BuildContext context) async {
+  /// Sync manual. Firestore sendiri sudah live-sync terus-menerus (lihat
+  /// docs/DATABASE.md) — "sync" sungguhan yang bisa dikerjakan tombol ini
+  /// cuma dua hal: (1) sentuh dokumen profil (`lastSyncAt`, lewat
+  /// [SyncService] yang sama dipakai saat login), (2) cek chapter baru
+  /// sungguhan untuk semua komik Library dari sumber asli (sama seperti
+  /// tombol refresh di tab Updates) — itu satu-satunya "tarik data baru
+  /// dari luar" yang relevan di arsitektur ini.
+  Future<void> _runSync(BuildContext context, WidgetRef ref) async {
     AppToast.show(context, 'Menyinkronkan data…');
-    await Future<void>.delayed(const Duration(milliseconds: 1400));
+    final results = await Future.wait([
+      ref.read(updatesProvider.notifier).refresh(),
+      ref.read(syncServiceProvider).syncAll(),
+    ]);
     if (!context.mounted) return;
-    AppToast.show(context, 'Sinkronisasi selesai');
+    final result = results[0] as UpdateCheckResult;
+    AppToast.show(
+      context,
+      result.checked == 0
+          ? 'Sinkronisasi selesai'
+          : 'Sinkronisasi selesai · ${result.updated} komik ada chapter baru',
+    );
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {

@@ -889,3 +889,37 @@ baru. Sekarang benar-benar mengecek lewat parser sumber asli.
   chapter baru sungguhan lewat parser tidak bisa dites live dari
   sandbox (jaringan ke situs sumber diblok) — perlu dicoba di HP asli
   dengan komik dari salah satu 4 sumber native.
+
+### 2026-07-16 — Beres-beres TODO(backend) yang tersisa: Sync Now nyata, cabut toast diagnostik
+User bilang "gas" (lanjut) tanpa target spesifik — disisir TODO(backend)
+yang masih nyantol di kode, dua yang masuk akal buat diberesin sekarang:
+
+- **`settings_screen.dart`** — tombol "Sinkronisasi & Cadangan" tadinya
+  cuma toast palsu (delay 1.4 detik doang). Firestore sendiri sudah
+  live-sync terus-menerus (docs/DATABASE.md), jadi satu-satunya "sync"
+  sungguhan yang relevan buat tombol manual ini: (1) sentuh dokumen
+  profil (`lastSyncAt`, lewat `SyncService` yang sama dipakai saat
+  login), (2) cek chapter baru sungguhan untuk semua komik Library dari
+  sumber asli (persis kerja `updatesProvider.refresh()` yang baru
+  dibikin) — itu satu-satunya "tarik data baru dari luar" yang
+  bermakna di arsitektur ini. Toast-nya sekarang kasih tau kalau ada
+  chapter baru ketemu, bukan generik "selesai" doang.
+- **`reader_screen.dart`** — toast diagnostik "Gagal simpan $what:
+  $error" (ditambah sementara buat lacak bug "progres tidak
+  ke-track") dicabut, balik ke silent-log. Root cause bug itu (orderBy
+  + serverTimestamp) sudah ketemu & dibenerin beberapa putaran lalu,
+  dan fitur-fitur belakangan (bookmark, tanda "Dibaca", Updates) semua
+  udah terverifikasi jalan tanpa masalah simpan — nampilin pesan error
+  Firestore mentah ke user bukan UX yang bagus buat kondisi normal.
+- Sisa `TODO(backend)` yang SENGAJA tidak diutak-atik: retry parse di
+  Source Detail (untuk sumber TANPA parser native — "retry" di situ
+  memang selalu gagal karena betul-betul tidak ada logic buat
+  nge-parse-nya, bukan bug), fetch index repository sungguhan (nilai
+  gunanya terbatas — sebagian besar entri di index Tachiyomi/Mihon
+  tetap gak bisa dipakai baca beneran tanpa parser native), unduhan
+  chapter offline (fitur besar tersendiri, sengaja lokal-per-device
+  per desain di docs/DATABASE.md).
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — tombol "Sinkronisasi & Cadangan" jalan tanpa error,
+  toast "Sinkronisasi selesai" muncul benar (demo library tanpa
+  `sourceMangaUrl` → 0 komik dicek, sesuai perilaku Updates refresh).
