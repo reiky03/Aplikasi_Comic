@@ -252,7 +252,14 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                 height: 48,
                 horizontalPadding: 18,
                 onCreate: (name) {
-                  FocusScope.of(context).unfocus();
+                  // Bukan `FocusScope.of(context).unfocus()` — di dalam
+                  // bottom sheet itu bisa "bubble up" ke scope route-nya dan
+                  // kebaca sebagai sinyal "sheet kehilangan fokus, tutup",
+                  // jadi sheet-nya ikut ketutup padahal cuma mau nutup
+                  // keyboard. `primaryFocus?.unfocus()` cuma lepas fokus
+                  // dari node yang aktif sekarang (TextField-nya), tanpa
+                  // bubbling ke scope.
+                  FocusManager.instance.primaryFocus?.unfocus();
                   setState(() {
                     _items.add(SheetCollection(name: name, count: 0));
                     _controller.clear();

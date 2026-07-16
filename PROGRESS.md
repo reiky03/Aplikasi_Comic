@@ -780,3 +780,41 @@ frame (bukan di-easing), kerasa jitter/patah pas keyboard buka-tutup.
   Baik unfocus maupun kemulusan animasi tidak bisa divalidasi visual
   dari sandbox (perlu keyboard virtual sungguhan di HP) — perlu
   dicoba langsung.
+
+### 2026-07-16 — Fix regresi sheet ketutup, lazy-load Updates, catatan soal refresh rate
+User lapor fix keyboard kemarin bikin efek samping: sheet "Kelola
+koleksi" ikut ketutup total sehabis "Buat" ditekan (bukan cuma
+keyboard-nya). Juga minta smoothness dilanjut ke Updates & History,
+dan nanya soal ngikutin refresh rate HP (60/120Hz).
+
+- **Root cause regresi**: `FocusScope.of(context).unfocus()` di dalam
+  bottom sheet adalah gotcha Flutter yang cukup dikenal — panggilan
+  itu bisa "bubble up" ke `FocusScopeNode` punya route/sheet-nya
+  sendiri, dan itu bisa kebaca sebagai "sheet-nya kehilangan fokus,
+  tutup aja", padahal niatnya cuma mau nutup keyboard.
+  `collection_sheets.dart` diganti pakai
+  `FocusManager.instance.primaryFocus?.unfocus()` — cuma lepas fokus
+  dari TextField yang aktif sekarang, tanpa efek bubbling ke scope.
+- **Updates feed** (`updates_screen.dart`) — `_buildFeed` sebelumnya
+  pakai `ListView(children: [...])` (bangun SEMUA baris sekaligus,
+  termasuk header grup tanggal) — pola sama persis yang bikin daftar
+  chapter Comic Detail lag dulu. Diganti `ListView.builder` (lazy),
+  header grup tanggal diselipkan sebagai baris tersendiri di daftar
+  campuran header+entri.
+- **History** — sudah pakai `ListView.builder` dari awal, tidak ada
+  yang perlu diubah.
+- **Soal refresh rate 60/120Hz**: dicek `MainActivity.kt` — masih
+  stock/default (`class MainActivity : FlutterActivity()`, tanpa kode
+  custom apa pun) dan manifest sudah `hardwareAccelerated="true"`.
+  Flutter modern di Android SUDAH otomatis mengikuti refresh rate
+  aktif dari pengaturan sistem HP (termasuk 120Hz Pixel 7 Pro kamu)
+  tanpa perlu kode tambahan — tidak ada "saklar 60 vs 120Hz" yang
+  perlu (atau aman) untuk di-hardcode; App tidak pernah membatasi ke
+  60Hz secara eksplisit. Kalau masih kerasa kurang mulus, penyebabnya
+  faktor lain (kerja per-frame yang berat — persis jenis masalah yang
+  sudah dan terus dibenahi), bukan soal refresh rate.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — Updates feed tampil benar (header tanggal + baris
+  update), alur buat koleksi (isi nama → tekan Buat) sheet tetap
+  terbuka & toast konfirmasi muncul. Regresi fokus/keyboard spesifik
+  ke perilaku keyboard virtual Android — perlu dicoba langsung di HP.

@@ -75,17 +75,31 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     );
   }
 
+  /// Lazy (`ListView.builder`) — daftar biasa (bukan `ListView` +
+  /// `children` eager) supaya feed dengan banyak entri (chapter baru dari
+  /// banyak komik, numpuk seiring waktu) tidak nge-lag, sama seperti fix
+  /// daftar chapter di Comic Detail sebelumnya. Header grup tanggal
+  /// diselipkan sebagai baris tersendiri di antara baris entri.
   Widget _buildFeed(List<UpdateEntry> entries) {
-    final children = <Widget>[];
+    final rows = <Object>[];
     String? currentGroup;
     for (final entry in entries) {
       if (entry.dateGroup != currentGroup) {
         currentGroup = entry.dateGroup;
-        children.add(
-          Padding(
+        rows.add(currentGroup);
+      }
+      rows.add(entry);
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
+      itemCount: rows.length,
+      itemBuilder: (context, i) {
+        final row = rows[i];
+        if (row is String) {
+          return Padding(
             padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
             child: Text(
-              entry.dateGroup.toUpperCase(),
+              row.toUpperCase(),
               style: AppTypography.jakarta(
                 size: 12,
                 weight: FontWeight.w800,
@@ -93,14 +107,11 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                 color: AppColors.textMuted,
               ),
             ),
-          ),
-        );
-      }
-      children.add(_UpdateRow(entry: entry, onTap: () => _openDetail(entry)));
-    }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
-      children: children,
+          );
+        }
+        final entry = row as UpdateEntry;
+        return _UpdateRow(entry: entry, onTap: () => _openDetail(entry));
+      },
     );
   }
 
