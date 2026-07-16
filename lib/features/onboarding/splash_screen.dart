@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/app_mark.dart';
 import '../../core/widgets/app_spinner.dart';
+import '../../core/widgets/logo_reveal.dart';
 import '../../core/widgets/wave_background.dart';
 import '../home/home_shell.dart';
 import '../auth/auth_repository.dart';
@@ -64,15 +64,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           children: [
             const Align(
               alignment: Alignment.bottomCenter,
-              child: WaveBackground(),
+              child: WaveBackground(height: 120),
             ),
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const AppMark(
+                  const LogoReveal(
                     size: 88,
-                    radius: 24,
                     shadow: BoxShadow(
                       color: AppColors.fabShadow,
                       offset: Offset(0, 20),
@@ -104,7 +103,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             const Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
-                padding: EdgeInsets.only(bottom: 60),
+                padding: EdgeInsets.only(bottom: 88),
                 child: AppSpinner(size: 26, strokeWidth: 2.5),
               ),
             ),

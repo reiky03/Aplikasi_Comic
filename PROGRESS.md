@@ -159,3 +159,9 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 - `lib/core/widgets/wave_background.dart` (baru) — 3 lapis gelombang sinus tipis (opacity 8–13%, warna `accent`/`accentText`) di-loop 8s pakai `AnimationController` + `CustomPainter`, tiap lapis beda fase/amplitudo/kecepatan biar terasa organik (bukan looping obviously berulang).
 - Dipasang di `splash_screen.dart`, `Align(bottomCenter)` di belakang logo & spinner — motif ombak yang senada sama logo Kizen (ombak navy).
 - Diverifikasi visual (build web + screenshot 2 frame beda waktu) — gerakannya halus, tidak mengganggu keterbacaan teks/logo.
+
+### 2026-07-16 — Fix overlap spinner + animasi "ombak jadi logo"
+- Fix: `WaveBackground` di Splash diperkecil (240→120px) + posisi `AppSpinner` dinaikkan (bottom 60→88), supaya puncak gelombang tidak lagi ketimpa/menabrak spinner loading (laporan user).
+- `lib/core/widgets/logo_reveal.dart` (baru) — animasi sekali-main (~1.1s) di ikon Splash: 2 cincin riak bertepi bergelombang (motif ombak, bukan lingkaran polos) mengecil & memudar dari luar, bertumpang-tindih dengan logo asli yang fade+scale-in di tengahnya → efek "ombak menjadi ikon Kizen", bukan logo yang muncul instan.
+- `splash_screen.dart` — `AppMark` langsung diganti `LogoReveal` (bungkus `AppMark` di dalamnya, shadow tetap sama).
+- Diverifikasi visual dengan durasi animasi diperpanjang sementara (18s) khusus untuk screenshot bertahap (build web + Playwright headless), lalu dikembalikan ke nilai produksi (1100ms reveal / 1700ms total brand moment) sebelum commit.
