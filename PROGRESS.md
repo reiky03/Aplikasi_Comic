@@ -923,3 +923,46 @@ yang masih nyantol di kode, dua yang masuk akal buat diberesin sekarang:
   smoke-test web — tombol "Sinkronisasi & Cadangan" jalan tanpa error,
   toast "Sinkronisasi selesai" muncul benar (demo library tanpa
   `sourceMangaUrl` → 0 komik dicek, sesuai perilaku Updates refresh).
+
+### 2026-07-16 — Fix akar: tombol "play" History jatuh ke mode demo/placeholder
+User lapor tombol "play"/lanjut baca di History masih "template"
+(halaman "PAGE N" placeholder), padahal seharusnya langsung buka
+chapter asli komik yang bersangkutan.
+
+Root cause: `history_screen.dart`'s `_resumeReading` push
+`ReaderScreen(comic: comic, chapter: entry.chNum)` TANPA
+`sourceChapters`/`initialChapterUrl` — dan `_isRealSource` di Reader
+sebelumnya ditentukan murni dari "apakah `sourceChapters` diisi",
+BUKAN dari komiknya sendiri (`comic.sourceMangaUrl`). Akibatnya, komik
+yang jelas-jelas dari sumber asli tetap dianggap "bukan sumber asli"
+kalau pemanggilnya (History, lewat play button) lupa fetch dulu daftar
+chapternya — diam-diam jatuh ke mode demo/placeholder tanpa error
+apa pun. Comic Detail tidak kena bug ini karena dia SELALU fetch
+`_realChapters` duluan (initState-nya sendiri), tapi History tidak
+pernah melakukan itu.
+
+Daripada nambal cuma di `history_screen.dart` (rawan kejadian lagi di
+pemanggil lain di masa depan), fix-nya di akar arsitekturnya:
+- `reader_screen.dart` — `_isRealSource` sekarang berdasar
+  `comic.sourceMangaUrl != null`, bukan `sourceChapters != null`.
+  Ditambah `_chapters` (state internal, beda dari `widget.sourceChapters`
+  yang cuma optional-optimization) + method baru `_loadChapterList()`:
+  kalau komiknya dari sumber asli tapi `sourceChapters` tidak
+  disediakan pemanggil, Reader fetch sendiri lewat
+  `MangaSource.fetchChapterList`, lalu petakan `widget.chapter` (nomor
+  chapter) balik ke index chapter yang tepat. Loading/error state buat
+  proses ini digambar sama seperti loading/error halaman yang sudah
+  ada (`_buildLoadError` — di-generalize dari `_buildPagesError`).
+  Semua pemakaian `widget.sourceChapters!` lama diganti `_chapters`
+  (dengan guard null di `_changeSourceChapter`/`_jumpToBookmark` biar
+  tidak crash kalau di-tap pas daftar chapter belum selesai di-fetch).
+- `history_screen.dart` — **tidak perlu diubah sama sekali**, karena
+  fix-nya di level Reader: begitu Reader tahu `comic.sourceMangaUrl`
+  ada isinya, dia otomatis fetch sendiri.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — komik demo (tanpa `sourceMangaUrl`) tetap benar
+  pakai mode placeholder seperti sebelumnya (tidak regresi). Jalur
+  komik sumber-asli-tanpa-sourceChapters tidak bisa dites live dari
+  sandbox (jaringan ke situs sumber diblok, tapi logic-nya sudah benar
+  secara struktural) — perlu dicoba langsung di HP dengan komik dari
+  salah satu 4 sumber native yang dibuka lewat tombol play History.

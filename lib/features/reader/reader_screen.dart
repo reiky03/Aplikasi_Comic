@@ -23,10 +23,14 @@ const _mockTotalPages = 8;
 /// Reader — spek 13: mode webtoon (scroll vertikal) & manga (per halaman,
 /// opsi R→L), chrome toggle, slider dua arah, navigasi chapter.
 ///
-/// Bila [sourceChapters] terisi (komik dari sumber asli — lihat
-/// lib/sources/), halaman & navigasi chapter memakai data sungguhan
-/// (`MangaSource.fetchPageList`); kalau null, tetap pakai placeholder
-/// gradient prototipe seperti sebelumnya.
+/// "Sumber asli" ditentukan dari `comic.sourceMangaUrl` (bukan dari
+/// [sourceChapters] terisi/tidak) — kalau komiknya dari sumber asli tapi
+/// [sourceChapters] belum di-fetch oleh pemanggil (mis. tombol "play" di
+/// History, yang cuma tahu nomor chapter terakhir), Reader fetch sendiri
+/// daftar chapternya (lihat `_loadChapterList`). Ini penting: pemanggil
+/// yang lupa/tidak sempat fetch dulu tidak akan diam-diam jatuh ke mode
+/// demo/placeholder — satu-satunya komik yang benar-benar pakai placeholder
+/// gradient adalah yang `sourceMangaUrl`-nya null (demo/lokal).
 class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({
     super.key,
@@ -43,11 +47,14 @@ class ReaderScreen extends ConsumerStatefulWidget {
   /// true bila di-push dari Comic Detail — "Lihat detail komik" cukup pop.
   final bool fromDetail;
 
-  /// Daftar chapter asli (urutan terbaru→terlama, sama seperti hasil
-  /// `MangaSource.fetchChapterList`) — null untuk komik demo/lokal.
+  /// Daftar chapter asli kalau pemanggil sudah pernah fetch (mis. Comic
+  /// Detail) — opsional murni buat optimisasi (hindari fetch dua kali);
+  /// kalau null tapi komiknya dari sumber asli, Reader fetch sendiri.
   final List<SourceChapter>? sourceChapters;
 
-  /// Chapter yang dibuka pertama kali (harus ada di [sourceChapters]).
+  /// Chapter yang dibuka pertama kali (harus ada di [sourceChapters] kalau
+  /// itu disediakan — kalau null, [chapter] dipetakan balik ke index
+  /// setelah Reader selesai fetch sendiri).
   final String? initialChapterUrl;
 
   @override
@@ -75,7 +82,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   String? _pagesError;
   int _pagesRequestId = 0;
 
-  bool get _isRealSource => widget.sourceChapters != null;
+  /// Daftar chapter asli — dari [widget.sourceChapters] kalau pemanggil
+  /// sudah pernah fetch (mis. Comic Detail), atau di-fetch sendiri di sini
+  /// kalau belum (mis. tombol "play" di History yang cuma tahu nomor
+  /// chapter terakhir, bukan daftar lengkapnya) — lihat [_loadChapterList].
+  /// Tanpa ini, Reader diam-diam jatuh ke mode demo/placeholder walau
+  /// komiknya sungguhan dari sumber asli.
+  List<SourceChapter>? _chapters;
+  bool _chaptersLoading = false;
+  String? _chaptersError;
+
+  bool get _isRealSource => widget.comic.sourceMangaUrl != null;
   int get _totalPages => _realPages?.length ?? _mockTotalPages;
 
   /// false selama halaman chapter asli masih dimuat/loading — sebelum ini,
@@ -94,10 +111,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _scrollController.addListener(_onScroll);
     _applyWakelock();
     if (_isRealSource) {
-      final chapters = widget.sourceChapters!;
-      final idx = chapters.indexWhere((c) => c.url == widget.initialChapterUrl);
-      _sourceChapterIndex = idx == -1 ? 0 : idx;
-      _loadRealPages();
+      final chapters = widget.sourceChapters;
+      if (chapters != null) {
+        _chapters = chapters;
+        final idx =
+            chapters.indexWhere((c) => c.url == widget.initialChapterUrl);
+        _sourceChapterIndex = idx == -1 ? 0 : idx;
+        _loadRealPages();
+      } else {
+        _loadChapterList();
+      }
     }
     // Jadwalkan simpan progres begitu chapter dibuka — sebelumnya cuma
     // ke-trigger kalau scroll melewati batas halaman, jadi kalau baca
@@ -115,6 +138,39 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     super.dispose();
   }
 
+  /// Fetch daftar chapter sendiri kalau pemanggil (mis. tombol "play" di
+  /// History) cuma tahu nomor chapter terakhir, bukan daftar lengkapnya —
+  /// tanpa ini, Reader diam-diam jatuh ke mode demo/placeholder walau
+  /// komiknya sungguhan dari sumber asli. [widget.chapter] dipetakan balik
+  /// ke index (numbering sama seperti Comic Detail: terbaru = total).
+  Future<void> _loadChapterList() async {
+    final source = _matchedSource;
+    final mangaUrl = widget.comic.sourceMangaUrl;
+    if (source == null || mangaUrl == null) return;
+    setState(() {
+      _chaptersLoading = true;
+      _chaptersError = null;
+    });
+    try {
+      final chapters = await source.fetchChapterList(mangaUrl);
+      if (!mounted) return;
+      final index = chapters.length - widget.chapter;
+      setState(() {
+        _chapters = chapters;
+        _sourceChapterIndex =
+            (index >= 0 && index < chapters.length) ? index : 0;
+        _chaptersLoading = false;
+      });
+      _loadRealPages();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _chaptersError = '$e';
+        _chaptersLoading = false;
+      });
+    }
+  }
+
   /// [_pagesRequestId] menjaga dari race condition: kalau pindah chapter
   /// lagi sebelum fetch chapter sebelumnya selesai, dan fetch yang lama
   /// itu (karena jaringan lambat) baru resolve BELAKANGAN, hasilnya tidak
@@ -124,7 +180,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   Future<void> _loadRealPages() async {
     final source = _matchedSource;
     final index = _sourceChapterIndex;
-    if (source == null || index == null) return;
+    final chapters = _chapters;
+    if (source == null || index == null || chapters == null) return;
     final requestId = ++_pagesRequestId;
     setState(() {
       _pagesLoading = true;
@@ -132,8 +189,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _realPages = null;
     });
     try {
-      final pages =
-          await source.fetchPageList(widget.sourceChapters![index].url);
+      final pages = await source.fetchPageList(chapters[index].url);
       if (!mounted || requestId != _pagesRequestId) return;
       setState(() {
         _realPages = pages;
@@ -325,7 +381,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// Daftar chapter urut terbaru→terlama — "Next" (delta +1, ch lebih
   /// baru) berarti maju ke index lebih kecil; "Prev" sebaliknya.
   void _changeSourceChapter(int delta) {
-    final chapters = widget.sourceChapters!;
+    final chapters = _chapters;
+    if (chapters == null) return; // daftar chapter belum selesai di-fetch
     final current = _sourceChapterIndex ?? 0;
     final newIndex = current - delta;
     if (newIndex < 0 || newIndex >= chapters.length) {
@@ -374,8 +431,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   String get _chapterLabel {
     final index = _sourceChapterIndex;
-    if (_isRealSource && index != null) {
-      return widget.sourceChapters![index].name;
+    final chapters = _chapters;
+    if (_isRealSource && index != null && chapters != null) {
+      return chapters[index].name;
     }
     return 'Chapter $_chapter';
   }
@@ -393,12 +451,19 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (_isRealSource && _pagesLoading)
+            if (_isRealSource && _chaptersLoading)
+              const Center(
+                child: AppSpinner(size: 30, strokeWidth: 2.5, color: Colors.white),
+              )
+            else if (_isRealSource && _chaptersError != null)
+              _buildLoadError(
+                  'Gagal memuat daftar chapter.\n$_chaptersError', _loadChapterList)
+            else if (_isRealSource && _pagesLoading)
               const Center(
                 child: AppSpinner(size: 30, strokeWidth: 2.5, color: Colors.white),
               )
             else if (_isRealSource && _pagesError != null)
-              _buildPagesError()
+              _buildLoadError('Gagal memuat halaman.\n$_pagesError', _loadRealPages)
             else if (settings.isWebtoon)
               _buildWebtoon(settings)
             else
@@ -420,7 +485,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
-  Widget _buildPagesError() {
+  Widget _buildLoadError(String message, VoidCallback onRetry) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -428,7 +493,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Gagal memuat halaman.\n${_pagesError ?? ''}',
+              message,
               textAlign: TextAlign.center,
               style: AppTypography.jakarta(
                 size: 13.5,
@@ -438,7 +503,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             ),
             const SizedBox(height: 16),
             InkWell(
-              onTap: _loadRealPages,
+              onTap: onRetry,
               borderRadius: BorderRadius.circular(11),
               child: Container(
                 height: 42,
@@ -938,7 +1003,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// [_computeCurrentPage] jalan.
   void _jumpToBookmark(BookmarkListItem item) {
     if (_isRealSource) {
-      final chapters = widget.sourceChapters!;
+      final chapters = _chapters;
+      if (chapters == null) return; // daftar chapter belum selesai di-fetch
       final targetIndex = chapters.length - item.chNum;
       if (targetIndex < 0 || targetIndex >= chapters.length) return;
       setState(() {
