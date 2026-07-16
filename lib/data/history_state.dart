@@ -18,6 +18,7 @@ class HistoryEntry {
     required this.page,
     required this.pages,
     required this.readAt,
+    this.chapterUrl,
   });
 
   final String comicId;
@@ -31,6 +32,14 @@ class HistoryEntry {
   final int pages;
 
   final DateTime readAt;
+
+  /// URL chapter asli — identifier STABIL, beda dari [chNum] yang cuma
+  /// posisi relatif ("chapter ke-N dari total saat itu di-fetch"). Kalau
+  /// daftar chapter situsnya berubah panjang (chapter baru terbit) antara
+  /// saat disimpan dan saat "Lanjut Baca" ditekan lagi, [chNum] saja bisa
+  /// nunjuk ke chapter yang SALAH — Reader pakai ini dulu (fallback ke
+  /// [chNum] kalau null, mis. entri lama sebelum field ini ada).
+  final String? chapterUrl;
 
   String get initial => title.isEmpty ? '?' : title[0];
   String get pageLabel => 'Ch. $chNum · Hal $page/$pages';
@@ -47,6 +56,7 @@ class HistoryEntry {
         'chapter': chNum,
         'page': page,
         'pages': pages,
+        'chapterUrl': ?chapterUrl,
       };
 
   factory HistoryEntry.fromMap(String comicId, Map<String, dynamic> map) {
@@ -60,6 +70,7 @@ class HistoryEntry {
       page: (map['page'] as num?)?.toInt() ?? 0,
       pages: (map['pages'] as num?)?.toInt() ?? 0,
       readAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      chapterUrl: map['chapterUrl'] as String?,
     );
   }
 }
@@ -140,6 +151,7 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
     required int chNum,
     required int page,
     required int pages,
+    String? chapterUrl,
   }) async {
     final entry = HistoryEntry(
       comicId: comicId,
@@ -150,6 +162,7 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
       page: page,
       pages: pages,
       readAt: DateTime.now(),
+      chapterUrl: chapterUrl,
     );
     final col = _col;
     if (col == null) {

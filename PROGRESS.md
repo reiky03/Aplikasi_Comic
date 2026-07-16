@@ -966,3 +966,54 @@ pemanggil lain di masa depan), fix-nya di akar arsitekturnya:
   sandbox (jaringan ke situs sumber diblok, tapi logic-nya sudah benar
   secara struktural) — perlu dicoba langsung di HP dengan komik dari
   salah satu 4 sumber native yang dibuka lewat tombol play History.
+
+### 2026-07-16 — Fix akar #2: nomor chapter History "loncat" (43/45/40 dst, tidak tetap)
+Lanjutan langsung dari fix sebelumnya — user lapor History nunjukin
+"Chapter 44", tapi tombol play kadang buka chapter 43/45/40, ganti-ganti
+tiap dicoba.
+
+Root cause: nomor chapter (`chNum`) di seluruh app itu **POSISI
+relatif**, bukan identifier stabil — dihitung sebagai `total_chapter -
+index` SAAT list itu di-fetch (lihat `comic_detail_screen.dart`'s
+`_chaptersToShow`). Fix sebelumnya (`_loadChapterList`) motong nomor
+itu balik ke index pakai rumus `chapters.length - widget.chapter` —
+tapi rumus ini cuma valid kalau `chapters.length` SAMA PERSIS dengan
+`total_chapter` yang dipakai waktu nomor itu pertama kali di-assign
+(saat History pertama nyimpen `chNum`). Begitu situs sumbernya nambah
+chapter baru di antara waktu History nyimpen posisi terakhir dan waktu
+tombol play ditekan lagi (fetch baru, `chapters.length` beda dari yang
+lama), rumus itu nunjuk ke chapter yang SALAH — geser sebanyak selisih
+jumlah chapter baru yang terbit. Itu sebabnya angkanya "loncat-loncat"
+tergantung berapa chapter baru yang kebetulan udah terbit tiap kali
+dicoba.
+
+- `history_state.dart` — `HistoryEntry` dapat field baru `chapterUrl`
+  (nullable) — identifier STABIL (URL asli chapter), disimpan
+  berdampingan dengan `chNum` (tetap disimpan buat label tampilan
+  "Ch. N", tapi bukan lagi dipakai buat lompat balik).
+  `upsert()` terima param `chapterUrl` baru.
+- `bookmarks_state.dart` — `BookmarkEntry` + `toggle()` dapat field/
+  param `chapterUrl` yang sama, alasan identik (bookmark juga simpan
+  `chNum` posisional, kena bug yang sama kalau dipakai lintas sesi
+  Reader yang beda fetch).
+- `reader_screen.dart` — getter baru `_currentChapterUrl` (URL chapter
+  yang lagi aktif), dikirim ke `historyProvider.upsert()` dan
+  `bookmarksProvider.toggle()`. `_loadChapterList()` DAN
+  `_jumpToBookmark()` sekarang cari chapter target via URL DULU (exact
+  match, stabil terlepas dari panjang list berubah atau tidak) —
+  rumus posisi lama cuma dipakai sebagai fallback buat entri
+  lama yang belum punya `chapterUrl` tersimpan (dari sebelum fix ini).
+- `history_screen.dart` — `_resumeReading` kirim
+  `initialChapterUrl: entry.chapterUrl` ke `ReaderScreen`.
+- `app_context_menu.dart` — `BookmarkListItem` dapat field `chapterUrl`
+  buat diteruskan ke `_jumpToBookmark`.
+- `docs/DATABASE.md` — dokumentasi field `chapterUrl` baru di
+  `history` & `bookmarks`, sekalian catatan kenapa `chapter` (number)
+  tidak stabil dipakai sendirian.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — komik demo (History play, toggle+lompat bookmark)
+  tetap jalan normal tanpa regresi (fallback ke posisi lama karena
+  `chapterUrl` null di data demo, sesuai desain). Skenario yang
+  bener-bener nge-fix (chapter list situs berubah panjang antar sesi)
+  butuh data real + waktu berlalu, gak bisa direproduksi dari sandbox
+  — tapi root cause & fix-nya sudah jelas secara matematis/struktural.

@@ -24,6 +24,7 @@ class BookmarkEntry {
     required this.page,
     required this.pages,
     required this.createdAt,
+    this.chapterUrl,
   });
 
   final String id;
@@ -40,6 +41,11 @@ class BookmarkEntry {
   final int pages;
   final DateTime createdAt;
 
+  /// URL chapter asli — identifier STABIL dipakai buat lompat balik,
+  /// beda dari [chNum] yang cuma posisi relatif saat chapter list
+  /// di-fetch. Lihat catatan sama di `HistoryEntry.chapterUrl`.
+  final String? chapterUrl;
+
   Map<String, dynamic> toMap() => {
         'comicId': comicId,
         'title': title,
@@ -49,6 +55,7 @@ class BookmarkEntry {
         'chapterLabel': chapterLabel,
         'page': page,
         'pages': pages,
+        'chapterUrl': ?chapterUrl,
       };
 
   factory BookmarkEntry.fromMap(String id, Map<String, dynamic> map) {
@@ -64,6 +71,7 @@ class BookmarkEntry {
       page: (map['page'] as num?)?.toInt() ?? 0,
       pages: (map['pages'] as num?)?.toInt() ?? 0,
       createdAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      chapterUrl: map['chapterUrl'] as String?,
     );
   }
 }
@@ -115,6 +123,7 @@ class BookmarksNotifier extends Notifier<List<BookmarkEntry>> {
     required String chapterLabel,
     required int page,
     required int pages,
+    String? chapterUrl,
   }) async {
     final id = idFor(comicId, chNum, page);
     final exists = state.any((b) => b.id == id);
@@ -134,6 +143,7 @@ class BookmarksNotifier extends Notifier<List<BookmarkEntry>> {
                 page: page,
                 pages: pages,
                 createdAt: DateTime.now(),
+                chapterUrl: chapterUrl,
               ),
               ...state,
             ];
@@ -151,6 +161,7 @@ class BookmarksNotifier extends Notifier<List<BookmarkEntry>> {
         'chapterLabel': chapterLabel,
         'page': page,
         'pages': pages,
+        'chapterUrl': ?chapterUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
     }

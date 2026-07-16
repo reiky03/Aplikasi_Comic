@@ -355,6 +355,7 @@ class BookmarkListItem {
     required this.chapterLabel,
     required this.page,
     required this.pages,
+    this.chapterUrl,
   });
 
   final String id;
@@ -362,4 +363,8 @@ class BookmarkListItem {
   final String chapterLabel;
   final int page;
   final int pages;
+
+  /// URL chapter asli (identifier stabil) — lihat catatan di
+  /// `BookmarkEntry.chapterUrl`.
+  final String? chapterUrl;
 }

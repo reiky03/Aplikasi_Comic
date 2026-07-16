@@ -95,7 +95,11 @@ class HistoryScreen extends ConsumerWidget {
     final comic = _resolveComic(ref, entry);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ReaderScreen(comic: comic, chapter: entry.chNum),
+        builder: (_) => ReaderScreen(
+          comic: comic,
+          chapter: entry.chNum,
+          initialChapterUrl: entry.chapterUrl,
+        ),
       ),
     );
   }

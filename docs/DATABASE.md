@@ -88,7 +88,8 @@ Satu dokumen **per komik** (posisi terakhir), bukan per event — karena UI-nya
 | Field | Tipe | Catatan |
 |---|---|---|
 | `title`, `sourceName`, `hue` | | denormalized untuk render row tanpa join |
-| `chapter` | number | `chNum` |
+| `chapter` | number | `chNum` — POSISI relatif ke total chapter saat di-fetch, BUKAN identifier stabil, lihat `chapterUrl` |
+| `chapterUrl` | string? | URL chapter asli — identifier stabil dipakai Reader buat lompat balik lewat "Lanjut Baca". `chapter` doang bisa salah kalau daftar chapter situsnya sudah berubah panjang sejak disimpan (chapter baru terbit) — null untuk komik demo atau entri lama sebelum field ini ada |
 | `page`, `pages` | number | progress bar `page/pages` |
 | `readAt` | timestamp | label relatif ("2 jam lalu") dihitung saat render |
 
@@ -109,7 +110,8 @@ set/delete dokumen yang sama, tidak ada duplikat untuk halaman yang sama.
 |---|---|---|
 | `comicId` | string | buat query/filter per komik di client |
 | `title`, `sourceName`, `hue` | | denormalized untuk render row tanpa join |
-| `chapter` | number | `chNum` |
+| `chapter` | number | `chNum` — posisi relatif, sama catatan seperti `history.chapter` |
+| `chapterUrl` | string? | identifier stabil, sama catatan seperti `history.chapterUrl` |
 | `chapterLabel` | string | nama chapter asli, atau "Chapter N" untuk komik demo |
 | `page`, `pages` | number | posisi halaman yang ditandai |
 | `createdAt` | timestamp | urutan tampil (terbaru dulu), diurutkan di client (alasan sama seperti `history`) |

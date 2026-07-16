@@ -141,8 +141,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// Fetch daftar chapter sendiri kalau pemanggil (mis. tombol "play" di
   /// History) cuma tahu nomor chapter terakhir, bukan daftar lengkapnya —
   /// tanpa ini, Reader diam-diam jatuh ke mode demo/placeholder walau
-  /// komiknya sungguhan dari sumber asli. [widget.chapter] dipetakan balik
-  /// ke index (numbering sama seperti Comic Detail: terbaru = total).
+  /// komiknya sungguhan dari sumber asli.
+  ///
+  /// Cari chapter targetnya via [widget.initialChapterUrl] DULU kalau ada
+  /// — itu identifier stabil. [widget.chapter] (nomor chapter) cuma
+  /// posisi relatif ke total chapter SAAT nomor itu di-assign; kalau
+  /// daftar chapter situsnya sudah berubah panjang sejak itu (chapter
+  /// baru terbit), memetakan `chapters.length - widget.chapter` di fetch
+  /// yang BEDA dari fetch aslinya bisa nunjuk ke chapter yang salah —
+  /// itu sebabnya "Lanjut Baca" kadang lompat ke nomor yang meleset.
+  /// Fallback ke posisi cuma untuk data lama yang belum punya URL
+  /// tersimpan (dari sebelum fix ini).
   Future<void> _loadChapterList() async {
     final source = _matchedSource;
     final mangaUrl = widget.comic.sourceMangaUrl;
@@ -154,7 +163,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     try {
       final chapters = await source.fetchChapterList(mangaUrl);
       if (!mounted) return;
-      final index = chapters.length - widget.chapter;
+      final byUrl = widget.initialChapterUrl == null
+          ? -1
+          : chapters.indexWhere((c) => c.url == widget.initialChapterUrl);
+      final index = byUrl != -1 ? byUrl : chapters.length - widget.chapter;
       setState(() {
         _chapters = chapters;
         _sourceChapterIndex =
@@ -211,6 +223,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _progressDebounce = Timer(const Duration(seconds: 2), _saveProgress);
   }
 
+  /// URL chapter yang lagi dibuka sekarang — identifier stabil dipakai
+  /// buat simpan history/bookmark, lihat catatan di
+  /// `HistoryEntry.chapterUrl`/`_loadChapterList`.
+  String? get _currentChapterUrl {
+    final chapters = _chapters;
+    final index = _sourceChapterIndex;
+    if (!_isRealSource || chapters == null || index == null) return null;
+    return chapters[index].url;
+  }
+
   void _saveProgress() {
     final comic = widget.comic;
     ref
@@ -223,6 +245,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           chNum: _chapter,
           page: _page + 1,
           pages: _totalPages,
+          chapterUrl: _currentChapterUrl,
         )
         .catchError((Object e) => _reportSaveError('history', e));
     ref
@@ -964,6 +987,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           chapterLabel: _chapterLabel,
           page: _page + 1,
           pages: _totalPages,
+          chapterUrl: _currentChapterUrl,
         )
         .catchError((Object e) => _reportSaveError('bookmark', e));
     AppToast.show(
@@ -983,6 +1007,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               chapterLabel: b.chapterLabel,
               page: b.page,
               pages: b.pages,
+              chapterUrl: b.chapterUrl,
             ))
         .toList();
     showBookmarkListSheet(
@@ -997,15 +1022,22 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   /// Lompat ke chapter+halaman tempat bookmark ditandai. Untuk sumber asli,
-  /// nomor chapter dipetakan balik ke index (lihat [_changeSourceChapter]);
-  /// posisi scroll hasil [_seekToPage] tetap perkiraan (baca catatan di
-  /// sana) sampai halaman targetnya kelihatan dan koreksi otomatis lewat
+  /// dicari via [BookmarkListItem.chapterUrl] dulu (identifier stabil) —
+  /// fallback ke posisi (`chapters.length - chNum`) cuma untuk bookmark
+  /// lama yang belum punya URL tersimpan (lihat catatan di
+  /// `_loadChapterList`, kenapa posisi doang bisa meleset). Posisi scroll
+  /// hasil [_seekToPage] tetap perkiraan (baca catatan di sana) sampai
+  /// halaman targetnya kelihatan dan koreksi otomatis lewat
   /// [_computeCurrentPage] jalan.
   void _jumpToBookmark(BookmarkListItem item) {
     if (_isRealSource) {
       final chapters = _chapters;
       if (chapters == null) return; // daftar chapter belum selesai di-fetch
-      final targetIndex = chapters.length - item.chNum;
+      final byUrl = item.chapterUrl == null
+          ? -1
+          : chapters.indexWhere((c) => c.url == item.chapterUrl);
+      final targetIndex =
+          byUrl != -1 ? byUrl : chapters.length - item.chNum;
       if (targetIndex < 0 || targetIndex >= chapters.length) return;
       setState(() {
         _sourceChapterIndex = targetIndex;
