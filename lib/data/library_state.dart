@@ -126,7 +126,14 @@ class LibraryNotifier extends Notifier<List<Comic>> {
   }
 
   /// Update progres baca (dipanggil dari Reader, debounced di caller).
+  /// Diam-diam tidak melakukan apa pun kalau [comicId] belum tersimpan
+  /// di Library (baca tanpa simpan dulu) — progres bacanya tetap
+  /// tercatat lewat `history`, cuma tidak ada dokumen `library` untuk
+  /// di-update. Cek keberadaan di [state] dulu (bukan langsung `.update()`
+  /// Firestore) supaya tidak melempar error "not-found" yang gagal diam-diam.
   Future<void> updateProgress(String comicId, {required int read}) async {
+    final current = state.where((c) => c.id == comicId).firstOrNull;
+    if (current == null) return;
     final col = _col;
     if (col == null) {
       state = [
@@ -138,10 +145,9 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       ];
       return;
     }
-    final current = state.where((c) => c.id == comicId).firstOrNull;
     await col.doc(comicId).update({
       'read': read,
-      if (current != null && read >= current.ch) 'unread': 0,
+      if (read >= current.ch) 'unread': 0,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

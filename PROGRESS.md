@@ -430,3 +430,30 @@ layar (untuk komik ratusan chapter, ini ratusan widget + ratusan
   smoke-test visual (build web + Playwright) — progres "Hal 8/38"
   muncul benar untuk chapter yang sedang dibaca (data demo), counter
   "X dibaca" ikut ter-update akurat.
+
+### 2026-07-16 — Fix: progres baca tidak ke-track
+User laporan: buka komik dari Library, baca, tapi nggak ada yang
+"ketrack" (riwayat/progres nggak update). Dua bug:
+1. `reader_screen.dart` — progres cuma dijadwalkan simpan kalau scroll
+   melewati batas halaman (`_onScroll`) atau ganti chapter/halaman
+   manual. Baca chapter pendek/cepat tanpa scroll jauh → sinyal simpan
+   nggak pernah kepicu sampai keluar layar. Fix: `initState()` sekarang
+   langsung jadwalkan simpan progres begitu chapter dibuka (tetap
+   debounce 2 detik), jadi minimal posisi awal selalu tersimpan.
+2. `library_state.dart` — `updateProgress()` (dipanggil tiap progres
+   baca) langsung `.update()` dokumen Firestore `library/{comicId}`
+   tanpa cek keberadaannya dulu. Kalau komik itu belum pernah disimpan
+   ke Library (baca langsung dari hasil pencarian tanpa nge-bookmark
+   dulu), dokumennya belum ada → Firestore lempar error "not-found",
+   dan karena panggilannya fire-and-forget tanpa try-catch, errornya
+   gagal diam-diam (tidak kelihatan sama sekali). Fix: cek dulu apakah
+   comicId ada di `state` (list Library yang lagi aktif) sebelum
+   nyoba update Firestore — kalau belum tersimpan, dilewati (riwayat
+   `history` tetap selalu tercatat terpisah, cuma field `library.read`
+   yang di-skip). `reader_screen.dart` juga sekarang `catchError` di
+   kedua panggilan (history & library) supaya kalau ada kegagalan lain
+   di masa depan, minimal muncul di log debug — tidak sepenuhnya bisu.
+- Diverifikasi: `flutter analyze` bersih, semua test lolos (18/18),
+  smoke-test (build web + Playwright) — buka chapter baru, TANPA
+  scroll sama sekali, tunggu >2 detik, balik ke Comic Detail →
+  progres "Hal 1/8" muncul otomatis di chapter yang baru dibuka.

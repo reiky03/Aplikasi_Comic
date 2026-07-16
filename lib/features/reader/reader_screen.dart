@@ -84,6 +84,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _sourceChapterIndex = idx == -1 ? 0 : idx;
       _loadRealPages();
     }
+    // Jadwalkan simpan progres begitu chapter dibuka — sebelumnya cuma
+    // ke-trigger kalau scroll melewati batas halaman, jadi kalau baca
+    // cepat/pendek tanpa scroll jauh, progres nggak pernah kesimpan.
+    _scheduleProgressSave();
   }
 
   @override
@@ -131,7 +135,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   void _saveProgress() {
     final comic = widget.comic;
-    ref.read(historyProvider.notifier).upsert(
+    ref
+        .read(historyProvider.notifier)
+        .upsert(
           comicId: comic.id,
           title: comic.title,
           src: comic.src,
@@ -139,8 +145,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           chNum: _chapter,
           page: _page + 1,
           pages: _totalPages,
-        );
-    ref.read(libraryProvider.notifier).updateProgress(comic.id, read: _chapter);
+        )
+        .catchError((Object e) => debugPrint('Gagal menyimpan history: $e'));
+    ref
+        .read(libraryProvider.notifier)
+        .updateProgress(comic.id, read: _chapter)
+        .catchError((Object e) => debugPrint('Gagal menyimpan progres library: $e'));
   }
 
   void _applyWakelock() {
