@@ -88,8 +88,9 @@ Satu dokumen **per komik** (posisi terakhir), bukan per event — karena UI-nya
 | Field | Tipe | Catatan |
 |---|---|---|
 | `title`, `sourceName`, `hue` | | denormalized untuk render row tanpa join |
-| `chapter` | number | `chNum` — POSISI relatif ke total chapter saat di-fetch, BUKAN identifier stabil, lihat `chapterUrl` |
+| `chapter` | number | `chNum` — POSISI relatif ke total chapter saat di-fetch, BUKAN identifier stabil, lihat `chapterUrl`/`chapterLabel` |
 | `chapterUrl` | string? | URL chapter asli — identifier stabil dipakai Reader buat lompat balik lewat "Lanjut Baca". `chapter` doang bisa salah kalau daftar chapter situsnya sudah berubah panjang sejak disimpan (chapter baru terbit) — null untuk komik demo atau entri lama sebelum field ini ada |
+| `chapterLabel` | string? | label chapter ASLI dari situs (mis. "Chapter 43.5 Extra"), sama seperti yang ditampilkan Reader — ditampilkan apa adanya di History (bukan "Ch. `chapter`") karena `chapter` cuma posisi hasil hitungan sendiri (`total - index`), bisa beda dari nomor asli situs kalau ada chapter spesial/bonus/non-sekuensial di daftarnya. Fallback ke "Ch. `chapter`" kalau null (entri lama) |
 | `page`, `pages` | number | progress bar `page/pages` |
 | `readAt` | timestamp | label relatif ("2 jam lalu") dihitung saat render |
 

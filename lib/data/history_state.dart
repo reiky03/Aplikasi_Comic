@@ -19,12 +19,17 @@ class HistoryEntry {
     required this.pages,
     required this.readAt,
     this.chapterUrl,
+    this.chapterLabel,
   });
 
   final String comicId;
   final String title;
   final String src;
   final int hue;
+
+  /// Posisi ("chapter ke-N dari total chapter SAAT di-fetch") — bukan
+  /// nomor asli dari situs, cuma dipakai buat fallback/badge lama. Lihat
+  /// [chapterLabel] untuk yang ditampilkan ke user.
   final int chNum;
 
   /// Posisi halaman terakhir dibaca.
@@ -41,8 +46,18 @@ class HistoryEntry {
   /// [chNum] kalau null, mis. entri lama sebelum field ini ada).
   final String? chapterUrl;
 
+  /// Label chapter ASLI dari situs (mis. "Chapter 43.5 Extra"), sama
+  /// seperti yang ditampilkan Reader — beda dari [chNum] yang cuma
+  /// POSISI hasil hitungan kita sendiri (`total - index`), bisa meleset
+  /// dari nomor asli situs kalau ada chapter spesial/bonus/non-sekuensial
+  /// di daftarnya. Tanpa ini, History bisa nunjukin "Ch. 4" sementara
+  /// Reader yang benar-benar dibuka (via [chapterUrl], sudah tepat)
+  /// nampilin "Chapter 3" — bukan salah buka chapter, cuma dua sistem
+  /// penomoran beda yang gak sinkron tampilannya. Null untuk entri lama.
+  final String? chapterLabel;
+
   String get initial => title.isEmpty ? '?' : title[0];
-  String get pageLabel => 'Ch. $chNum · Hal $page/$pages';
+  String get pageLabel => '${chapterLabel ?? 'Ch. $chNum'} · Hal $page/$pages';
   double get progress => pages == 0 ? 0 : page / pages;
 
   /// Label waktu relatif ("2 jam lalu", "Kemarin, 21:40") — dihitung saat
@@ -57,6 +72,7 @@ class HistoryEntry {
         'page': page,
         'pages': pages,
         'chapterUrl': ?chapterUrl,
+        'chapterLabel': ?chapterLabel,
       };
 
   factory HistoryEntry.fromMap(String comicId, Map<String, dynamic> map) {
@@ -70,6 +86,7 @@ class HistoryEntry {
       page: (map['page'] as num?)?.toInt() ?? 0,
       pages: (map['pages'] as num?)?.toInt() ?? 0,
       readAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      chapterLabel: map['chapterLabel'] as String?,
       chapterUrl: map['chapterUrl'] as String?,
     );
   }
@@ -152,6 +169,7 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
     required int page,
     required int pages,
     String? chapterUrl,
+    String? chapterLabel,
   }) async {
     final entry = HistoryEntry(
       comicId: comicId,
@@ -163,6 +181,7 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
       pages: pages,
       readAt: DateTime.now(),
       chapterUrl: chapterUrl,
+      chapterLabel: chapterLabel,
     );
     final col = _col;
     if (col == null) {

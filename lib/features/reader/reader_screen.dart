@@ -246,6 +246,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           page: _page + 1,
           pages: _totalPages,
           chapterUrl: _currentChapterUrl,
+          chapterLabel: _chapterLabel,
         )
         .catchError((Object e) => _reportSaveError('history', e));
     ref

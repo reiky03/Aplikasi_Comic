@@ -1017,3 +1017,42 @@ dicoba.
   bener-bener nge-fix (chapter list situs berubah panjang antar sesi)
   butuh data real + waktu berlalu, gak bisa direproduksi dari sandbox
   — tapi root cause & fix-nya sudah jelas secara matematis/struktural.
+
+### 2026-07-16 — Fix akar #3: History & Reader pakai DUA sistem penomoran chapter beda
+User konfirmasi fix #2 membantu (entri lama masih meleset, entri baru
+lumayan) tapi masih "kadang beda chapter" biar pun sudah baca ulang
+pakai versi baru. Digali lebih dalam — ketemu akar masalah yang beda
+dari dugaan awal, dan sudah ADA dari lama (bukan regresi baru).
+
+Root cause: `chNum` yang ditampilkan History ("Ch. 4") itu POSISI hasil
+hitungan APLIKASI SENDIRI (`total - index` saat fetch, lihat
+`comic_detail_screen.dart`), BUKAN nomor chapter asli dari situs.
+Sementara itu, tiap parser sumber (`shinigami_source.dart` dkk) SUDAH
+nyimpen nomor/label asli dari situs di `SourceChapter.name` (mis. dari
+`chapter_number` di API Shinigami, atau teks HTML asli di
+MangaThemesia/Komiku) — tapi field ini cuma dipakai buat judul row di
+Comic Detail, TIDAK PERNAH disimpan ke History. Begitu Reader dibuka
+lewat "Lanjut Baca" dan berhasil nemu chapter yang PAS lewat
+`chapterUrl` (fix #2, ini sudah benar — chapter yang kebuka memang
+yang benar), Reader nampilin label ASLI situsnya (mis. "Chapter 3")
+di toolbar atas — beda dari "Ch. 4" yang History tampilkan, karena
+kalau komiknya punya chapter spesial/bonus/non-sekuensial di tengah
+daftar (umum di situs-situs ini), hitungan posisi kita gampang geser
+dari nomor asli situs. User ngeliat dua angka beda dan ngira "salah
+buka chapter" — padahal kontennya sudah tepat, cuma LABEL yang
+ditampilkan gak sinkron antar dua tempat.
+
+- `history_state.dart` — `HistoryEntry` dapat field baru
+  `chapterLabel` (nullable) — label chapter ASLI dari situs, sama
+  seperti yang Reader tampilkan. `pageLabel` getter sekarang pakai ini
+  duluan (`chapterLabel ?? 'Ch. $chNum'`), jadi History & Reader akan
+  selalu nampilin label yang SAMA PERSIS. `upsert()` terima param baru.
+- `reader_screen.dart` — `_saveProgress()` kirim `chapterLabel:
+  _chapterLabel` (getter yang sama dipakai buat toolbar atas) ke
+  `historyProvider.upsert()`.
+- `docs/DATABASE.md` — dokumentasi field `chapterLabel` baru.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — entri History yang baru disimpan pakai versi baru
+  nampilin "Chapter 41" (label asli), entri lama (seed, belum punya
+  `chapterLabel`) tetap fallback ke format "Ch. N" seperti sebelumnya
+  — kompatibel mundur, tidak ada regresi.
