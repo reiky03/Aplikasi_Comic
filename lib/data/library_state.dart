@@ -151,6 +151,29 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
+
+  /// Tandai satu chapter [chapterNum] *selesai* dibaca (halaman terakhir
+  /// tercapai) — beda dari [updateProgress] yang cuma mencatat "sedang di
+  /// chapter berapa" (dipanggil tiap ganti halaman/chapter, walau belum
+  /// tentu tamat). Idempotent — aman dipanggil berkali-kali.
+  Future<void> markChapterRead(String comicId, int chapterNum) async {
+    final current = state.where((c) => c.id == comicId).firstOrNull;
+    if (current == null) return;
+    if (current.readChapters.contains(chapterNum)) return;
+    final updated = {...current.readChapters, chapterNum};
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final c in state)
+          if (c.id == comicId) c.copyWith(readChapters: updated) else c,
+      ];
+      return;
+    }
+    await col.doc(comicId).update({
+      'readChapters': (updated.toList()..sort()),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 }
 
 final libraryProvider =

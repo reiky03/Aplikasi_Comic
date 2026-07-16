@@ -508,3 +508,43 @@ pernah muncul), tapi baca selalu kosong.
   ke History → entri "Baru saja" muncul di posisi teratas dengan
   progres terbaru (mengonfirmasi jalur simpan→tampil bekerja begitu
   listenernya tidak lagi salah mengecualikan dokumen).
+
+### 2026-07-16 — Fix tambahan: race condition fetch halaman & tanda "sudah dibaca" yang salah
+User lapor dua hal lagi setelah fix di atas: (1) counter/slider halaman
+di Reader kadang tidak sesuai chapter yang lagi dibuka & tidak "reset"
+rapi tiap ganti chapter, (2) lebih parah — komik yang belum pernah
+dibaca sama sekali kadang chapter-chapter lamanya langsung kelihatan
+"sudah dibaca" (redup/dicoret) padahal belum pernah dibuka.
+- **Race condition di `_loadRealPages`** (`reader_screen.dart`):
+  kalau pindah chapter sebelum fetch chapter sebelumnya kelar, dan
+  fetch lama itu (jaringan lambat) baru resolve BELAKANGAN, hasilnya
+  bisa menimpa `_realPages` chapter yang SEDANG dibuka — jadi
+  counter/slider kelihatan tidak sesuai/tidak reset. Ditambah
+  `_pagesRequestId` (naik tiap panggilan baru); hasil fetch cuma
+  dipakai kalau id-nya masih yang terbaru saat request itu selesai.
+- **Tanda "Dibaca" per-chapter yang salah** (bug lebih serius):
+  `comic_detail_screen.dart` sebelumnya nandain chapter "sudah dibaca"
+  pakai `num < comic.read`, dengan `comic.read` = nomor chapter
+  TERJAUH yang pernah dibuka (di-set tiap kali chapter dibuka, lihat
+  `updateProgress`). Asumsinya user selalu baca urut dari chapter 1 —
+  begitu user buka SATU chapter dengan nomor besar (mis. chapter
+  terbaru, wajar krn daftar chapter selalu terbaru di atas), SEMUA
+  chapter dengan nomor lebih kecil otomatis ketandain "sudah dibaca"
+  walau belum pernah dibuka sama sekali.
+  - Tambah field baru `Comic.readChapters` (`Set<int>`, persisten ke
+    Firestore) — daftar chapter yang BENAR-BENAR sudah tercapai
+    halaman terakhirnya, per-chapter, bukan diturunkan dari
+    perbandingan angka.
+  - `library_state.dart` — method baru `markChapterRead(comicId,
+    chapterNum)`, idempotent, dipanggil dari `reader_screen.dart`
+    tiap `_saveProgress()` kalau posisi baca sudah di halaman
+    terakhir chapter itu (terpisah dari `updateProgress`, yang tetap
+    jalan seperti sebelumnya buat label "Ch. N" & badge unread).
+  - `comic_detail_screen.dart` — `_buildChapter` sekarang cek
+    `comic.readChapters.contains(num)`, bukan `num < comic.read`.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — baca chapter demo (baru sampai halaman 1 dari 8,
+  BELUM tamat) → chapter lain (termasuk yang nomornya lebih kecil)
+  tetap tidak ketandain "Dibaca", header total "0 dibaca" (sebelumnya,
+  dengan bug lama, seed data yang sudah under partial "read" akan
+  memicu tanda salah begitu progres tersimpan).

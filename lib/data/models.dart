@@ -13,6 +13,7 @@ class Comic {
     this.col,
     this.coverUrl,
     this.sourceMangaUrl,
+    this.readChapters = const {},
   });
 
   final String id;
@@ -42,6 +43,13 @@ class Comic {
   /// dkk) — null berarti komik demo/lokal, bukan dari sumber asli.
   final String? sourceMangaUrl;
 
+  /// Nomor chapter yang sudah ditandai *selesai* dibaca (halaman terakhir
+  /// tercapai). Dipakai buat tanda per-chapter di Comic Detail — sengaja
+  /// bukan diturunkan dari `num < read` (chapter terjauh yang pernah
+  /// dibuka), karena user bisa mulai baca dari chapter mana saja (mis.
+  /// chapter terbaru duluan), bukan cuma urut dari chapter 1.
+  final Set<int> readChapters;
+
   String get initial => title.isEmpty ? '?' : title[0];
 
   /// Caption "Ch. N" di bawah judul (logika prototipe: read || ch).
@@ -52,6 +60,7 @@ class Comic {
     int? read,
     String? col,
     bool clearCol = false,
+    Set<int>? readChapters,
   }) {
     return Comic(
       id: id,
@@ -64,6 +73,7 @@ class Comic {
       col: clearCol ? null : (col ?? this.col),
       coverUrl: coverUrl,
       sourceMangaUrl: sourceMangaUrl,
+      readChapters: readChapters ?? this.readChapters,
     );
   }
 
@@ -78,6 +88,7 @@ class Comic {
         'collectionId': col,
         'coverUrl': coverUrl,
         'sourceMangaUrl': sourceMangaUrl,
+        'readChapters': readChapters.toList()..sort(),
       };
 
   factory Comic.fromMap(String id, Map<String, dynamic> map) => Comic(
@@ -91,6 +102,10 @@ class Comic {
         col: map['collectionId'] as String?,
         coverUrl: map['coverUrl'] as String?,
         sourceMangaUrl: map['sourceMangaUrl'] as String?,
+        readChapters: (map['readChapters'] as List?)
+                ?.map((e) => (e as num).toInt())
+                .toSet() ??
+            const {},
       );
 }
 

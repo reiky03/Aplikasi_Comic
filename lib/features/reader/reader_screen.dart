@@ -65,6 +65,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   List<SourcePage>? _realPages;
   bool _pagesLoading = false;
   String? _pagesError;
+  int _pagesRequestId = 0;
 
   bool get _isRealSource => widget.sourceChapters != null;
   int get _totalPages => _realPages?.length ?? _mockTotalPages;
@@ -106,10 +107,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     super.dispose();
   }
 
+  /// [_pagesRequestId] menjaga dari race condition: kalau pindah chapter
+  /// lagi sebelum fetch chapter sebelumnya selesai, dan fetch yang lama
+  /// itu (karena jaringan lambat) baru resolve BELAKANGAN, hasilnya tidak
+  /// boleh menimpa `_realPages` chapter yang sedang dibuka sekarang —
+  /// itu sebabnya counter/slider halaman kadang kelihatan salah/tidak
+  /// sesuai chapter yang aktif.
   Future<void> _loadRealPages() async {
     final source = _matchedSource;
     final index = _sourceChapterIndex;
     if (source == null || index == null) return;
+    final requestId = ++_pagesRequestId;
     setState(() {
       _pagesLoading = true;
       _pagesError = null;
@@ -118,13 +126,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     try {
       final pages =
           await source.fetchPageList(widget.sourceChapters![index].url);
-      if (!mounted) return;
+      if (!mounted || requestId != _pagesRequestId) return;
       setState(() {
         _realPages = pages;
         _pagesLoading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _pagesRequestId) return;
       setState(() {
         _pagesError = '$e';
         _pagesLoading = false;
@@ -157,6 +165,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         .read(libraryProvider.notifier)
         .updateProgress(comic.id, read: _chapter)
         .catchError((Object e) => _reportSaveError('library', e));
+    // Tandai chapter ini selesai kalau sudah di halaman terakhir — terpisah
+    // dari updateProgress di atas (itu cuma "sedang buka chapter berapa",
+    // bukan penanda per-chapter yang dipakai buat tampilan "Dibaca" di
+    // Comic Detail).
+    if (_pageCountKnown && _page + 1 >= _totalPages) {
+      ref
+          .read(libraryProvider.notifier)
+          .markChapterRead(comic.id, _chapter)
+          .catchError((Object e) => _reportSaveError('tandai selesai', e));
+    }
   }
 
   // TODO: sementara ditampilkan sebagai toast (bukan cuma log) buat

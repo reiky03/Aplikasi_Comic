@@ -548,8 +548,13 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     required HistoryEntry? progress,
   }) {
     final isCurrent = progress != null && progress.chNum == num;
-    final fullyRead =
-        num < comic.read || (isCurrent && progress.page >= progress.pages);
+    // Bukan `num < comic.read` (chapter terjauh yang pernah dibuka) — itu
+    // salah nandain chapter LAMA sebagai "sudah dibaca" kalau user baru
+    // baca satu chapter TERBARU (nomor besar) duluan, padahal belum pernah
+    // buka yang lama sama sekali. Pakai [Comic.readChapters] (per-chapter,
+    // ditandai saat halaman terakhirnya benar-benar tercapai).
+    final fullyRead = comic.readChapters.contains(num) ||
+        (isCurrent && progress.page >= progress.pages);
     return _Chapter(
       num: num,
       title: title,
