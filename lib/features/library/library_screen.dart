@@ -285,6 +285,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   void _pickSort(BuildContext sheetContext, LibrarySort sort) {
     Navigator.pop(sheetContext);
     setState(() => _sort = sort);
+    AppToast.show(
+      context,
+      'Diurutkan: ${switch (sort) {
+        LibrarySort.recent => 'Terakhir dibaca',
+        LibrarySort.az => 'Judul A–Z',
+        LibrarySort.unread => 'Belum dibaca',
+      }}',
+    );
   }
 
   void _openComicMenu(Comic comic) {

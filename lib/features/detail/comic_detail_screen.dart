@@ -357,7 +357,8 @@ class ComicDetailScreen extends ConsumerWidget {
   void _openReader(BuildContext context, Comic comic, int chapter) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ReaderScreen(comic: comic, chapter: chapter),
+        builder: (_) =>
+            ReaderScreen(comic: comic, chapter: chapter, fromDetail: true),
       ),
     );
   }

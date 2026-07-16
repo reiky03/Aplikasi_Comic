@@ -19,10 +19,14 @@ class ReaderScreen extends ConsumerStatefulWidget {
     super.key,
     required this.comic,
     required this.chapter,
+    this.fromDetail = false,
   });
 
   final Comic comic;
   final int chapter;
+
+  /// true bila di-push dari Comic Detail — "Lihat detail komik" cukup pop.
+  final bool fromDetail;
 
   @override
   ConsumerState<ReaderScreen> createState() => _ReaderScreenState();
@@ -454,11 +458,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     showReaderMoreMenu(
       context,
       onOpenComicDetail: () {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => ComicDetailScreen(comic: widget.comic),
-          ),
-        );
+        if (widget.fromDetail) {
+          Navigator.of(context).pop();
+        } else {
+          // Masuk dari History (play) — detail belum ada di stack.
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute<void>(
+              builder: (_) => ComicDetailScreen(comic: widget.comic),
+            ),
+          );
+        }
       },
       onMarkUnread: () => AppToast.show(context, 'Ditandai belum dibaca'),
       onShareChapter: () => AppToast.show(context, 'Bagikan chapter'),

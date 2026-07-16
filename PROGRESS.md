@@ -11,21 +11,34 @@ Urutan build mengikuti `00_START_HERE.md`. Tiap item selesai → review & approv
 | 2 | `15_shared_components.md` | Bottom nav, FAB, bottom sheet shell, toast, context menu, collection picker, empty state | ✅ Approved | `lib/core/widgets/` |
 | 3 | `03_onboarding.md` | Splash → Login (Google) → Sync | ✅ Approved | `lib/features/onboarding/`, `lib/features/auth/`, `lib/features/sync/` |
 | 4 | `04_library.md` | Tab Library (kategori, search, sort, grid, empty state) | ✅ Approved | `lib/features/library/`, `lib/features/home/`, `lib/data/` |
-| 5 | `05_updates.md` | Tab Updates (feed per tanggal + refresh) | 👀 Menunggu review | `lib/features/updates/`, `lib/data/updates_state.dart` |
-| 6 | `06_history.md` | Tab History (lanjut baca, hapus riwayat) | ⬜ Belum | |
-| 7 | `07_browse_sumber_saya.md` | Tab Jelajahi — sub-tab "Sumber Saya" | ⬜ Belum | |
-| 8 | `09_add_source.md` | Layar Add Source URL (form, test/validate, simpan) | ⬜ Belum | |
-| 9 | `10_source_detail_webview.md` | Source Detail + WebView Session Mode | ⬜ Belum | |
-| 10 | `08_browse_repository.md` | Tab Jelajahi — sub-tab "Repository" | ⬜ Belum | |
-| 11 | `11_repository_management.md` | Repository List, Add/Edit Repository, language picker | ⬜ Belum | |
-| 12 | `12_comic_detail.md` | Comic Detail (daftar chapter, download, koleksi) | ⬜ Belum | |
-| 13 | `13_reader.md` | Reader (webtoon + manga paged, settings sheet, nav chapter) | ⬜ Belum | |
-| 14 | `14_settings.md` | Settings (akun, tema, reader default, sync, sign out) | ⬜ Belum | |
-| 15 | `02_flow_overview.md` | Final pass: navigation graph lengkap + back-stack | ⬜ Belum | |
+| 5 | `05_updates.md` | Tab Updates (feed per tanggal + refresh) | ✅ Approved | `lib/features/updates/`, `lib/data/updates_state.dart` |
+| 6 | `06_history.md` | Tab History (lanjut baca, hapus riwayat) | 👀 Menunggu review | `lib/features/history/`, `lib/data/history_state.dart` |
+| 7 | `07_browse_sumber_saya.md` | Tab Jelajahi — sub-tab "Sumber Saya" | 👀 Menunggu review | `lib/features/browse/browse_screen.dart`, `lib/data/sources_state.dart` |
+| 8 | `09_add_source.md` | Layar Add Source URL (form, test/validate, simpan) | 👀 Menunggu review | `lib/features/browse/add_source_screen.dart` |
+| 9 | `10_source_detail_webview.md` | Source Detail + WebView Session Mode | 👀 Menunggu review | `lib/features/browse/source_detail_screen.dart`, `web_view_screen.dart` |
+| 10 | `08_browse_repository.md` | Tab Jelajahi — sub-tab "Repository" | 👀 Menunggu review | `lib/features/browse/repo_browse_tab.dart`, `lib/data/repository_state.dart` |
+| 11 | `11_repository_management.md` | Repository List, Add/Edit Repository, language picker | 👀 Menunggu review | `lib/features/browse/repository_screens.dart` |
+| 12 | `12_comic_detail.md` | Comic Detail (daftar chapter, download, koleksi) | 👀 Menunggu review | `lib/features/detail/`, `lib/data/downloads_state.dart` |
+| 13 | `13_reader.md` | Reader (webtoon + manga paged, settings sheet, nav chapter) | 👀 Menunggu review | `lib/features/reader/`, `lib/data/reader_settings.dart` |
+| 14 | `14_settings.md` | Settings (akun, tema, reader default, sync, sign out) | 👀 Menunggu review | `lib/features/settings/`, `lib/data/demo_state.dart` |
+| 15 | `02_flow_overview.md` | Final pass: navigation graph lengkap + back-stack | 👀 Menunggu review | test alur end-to-end di `test/widget_test.dart` |
 
 Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
+
+### 2026-07-16 — 06 s/d 14 + 02 (final pass)
+- **06 History** — row lanjut baca (thumbnail 48×64, progress bar 4px, waktu + tombol play bulat → Reader langsung), tombol Bersihkan + toast, empty state jam.
+- **07 Sumber Saya** — header Jelajahi (globe berbadge + glyph repo custom), 2 sub-tab, daftar sumber dengan 6 status berwarna + pill bahasa, search live, context menu ter-wire, FAB hanya di sub-tab ini.
+- **09 Add Source** — form lengkap, Test Sumber 1.3s (gagal bila URL mengandung error/fail/xxx), pesan inline sukses/gagal, simpan dedup URL, status normal/webview sesuai hasil test.
+- **10 Source Detail + WebView** — state parsable (banner session + Reset, search, tab underline, grid discover 9 judul) & state error per status; WebView dengan challenge "Saya bukan robot" 1.4s → session tersimpan, banner hijau, Simpan ke Library; tanpa bypass otomatis (hard requirement). Body webview masih mock demo — TODO webview_flutter saat sumber asli dipakai.
+- **08 Repository sub-tab** — grup per bahasa aktif, bookmark independen + section DITANDAI, sheet Bahasa aktif (5 bahasa, live), 3 state konten; row membuka Source Detail via sumber sintetis.
+- **11 Repository management** — Repository Saya (edit/hapus per row, + di header), Add/Edit satu layar dua mode, Periksa Repository + pratinjau isi, bahasa round-robin placeholder.
+- **12 Comic Detail** — hero 230px + cover overlap, genre pills, sinopsis, bookmark → collection picker kontekstual, Mulai/Lanjut Baca, chapter list + toggle unduh (downloadsProvider).
+- **13 Reader** — webtoon (slider ↔ scroll dua arah — bug prototipe diperbaiki, footer chapter berikutnya) & manga paged (tap zone 32%, RTL flip), chrome toggle, nav chapter + toast batas, Pengaturan Reader (arah, 4 swatch latar, jarak, kecerahan dengan overlay dim nyata, wakelock via wakelock_plus) persisten via SharedPreferences.
+- **14 Setelan** — account card dari user login asli, Tema (dekoratif dark-first), Pengaturan Reader, Sinkronisasi manual, 5 toggle demo/QA yang benar-benar memaksa empty state, Keluar (sign out asli → Login), footer versi.
+- **02 Final pass** — back-stack diverifikasi (detail kembali ke pemanggil; reader "Lihat detail" pop bila dari detail / replace bila dari History-play; add/edit repo → Repository List; webview → Source Detail), toast sort Library ditambahkan (perilaku prototipe), test widget end-to-end login→sync→Library.
+- Catatan produksi: section Demo/QA disarankan di-gate flag debug sebelum rilis; OAuth Google & backend sync/parse masih TODO yang disengaja.
 
 ### 2026-07-15 — 05_updates.md
 - `lib/data/updates_state.dart` — model `UpdateEntry` (grup tanggal, chapter, waktu relatif) + `UpdatesNotifier` seeded data prototipe; `refresh()` stub 1.2s (TODO backend).
