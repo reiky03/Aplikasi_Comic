@@ -386,3 +386,21 @@ Perbaikan:
 - Diverifikasi: `flutter analyze` bersih, semua test lolos (18/18),
   smoke-test jalur demo (build web + Playwright) — render identik
   seperti sebelum perubahan, tidak ada regresi.
+
+### 2026-07-16 — Fix: pilih chapter lag untuk komik dengan banyak chapter
+User laporan: baca chapter udah mulus, tapi buka daftar chapter di
+Comic Detail lag banget kalau chapternya banyak. Penyebabnya:
+`comic_detail_screen.dart` render seluruh daftar chapter pakai `Column`
+biasa di dalam `ListView` — artinya SEMUA `_ChapterRow` langsung
+di-build sekaligus begitu layar dibuka, bukan cuma yang kelihatan di
+layar (untuk komik ratusan chapter, ini ratusan widget + ratusan
+`ref.watch` sekaligus).
+
+- `comic_detail_screen.dart` — diubah dari `ListView` ke
+  `CustomScrollView` + sliver: bagian atas (cover, judul, sinopsis,
+  tombol) di `SliverToBoxAdapter`, daftar chapter di `SliverList` dengan
+  `SliverChildBuilderDelegate` (lazy, cuma bangun chapter dekat
+  viewport) — persis prinsip yang sama dengan fix Reader sebelumnya.
+- Diverifikasi: `flutter analyze` bersih, semua test lolos (18/18),
+  smoke-test visual (build web + Playwright) — tampilan identik seperti
+  sebelumnya, tidak ada regresi.

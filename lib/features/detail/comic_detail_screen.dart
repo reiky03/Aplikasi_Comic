@@ -99,175 +99,207 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
       backgroundColor: AppColors.bg,
       body: _loading
           ? _buildLoading(context)
-          : ListView(
-              padding: const EdgeInsets.only(bottom: 96),
-              children: [
-                _buildHero(context, current),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                  child: Text(
-                    _realDetails?.description ??
-                        (widget.comic.sourceMangaUrl != null
-                            ? (_error != null
-                                ? 'Gagal memuat deskripsi.'
-                                : '')
-                            : 'Ketika langit di atas kota retak dan '
-                                'menumpahkan cahaya asing, seorang kurir '
-                                'muda menemukan bahwa ingatannya adalah '
-                                'kunci untuk menutup celah antar-dunia. '
-                                'Perjalanan melintasi reruntuhan yang indah '
-                                'dan berbahaya pun dimulai.'),
-                    style: AppTypography.jakarta(
-                      size: 13.5,
-                      weight: FontWeight.w400,
-                      height: 1.6,
-                      color: const Color(0xFFB9B9C6),
-                    ),
+          : CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _buildHeaderSection(
+                    context,
+                    ref,
+                    current,
+                    inLibrary,
+                    chapters,
+                    readCount,
+                    totalChapters,
                   ),
                 ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                    child: InkWell(
-                      onTap: _loadReal,
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        height: 38,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.borderStrong),
-                        ),
-                        child: Text(
-                          'Gagal memuat chapter — Coba Lagi',
-                          style: AppTypography.jakarta(
-                            size: 12.5,
-                            weight: FontWeight.w700,
-                            color: AppColors.danger,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // Action row
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () => _openCollectionPicker(context, ref, current),
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: inLibrary ? const Color(0x291E88C8) : null,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: inLibrary
-                                  ? const Color(0x801E88C8)
-                                  : AppColors.borderStrong,
-                            ),
-                          ),
-                          child: Icon(
-                            inLibrary ? Icons.bookmark : AppIcons.bookmark,
-                            size: 22,
-                            color: inLibrary
-                                ? AppColors.accentText
-                                : AppColors.menuIcon,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 11),
-                      Expanded(
-                        child: InkWell(
-                          onTap: chapters.isEmpty
-                              ? null
-                              : () => _openReader(
-                                    context,
-                                    current,
-                                    current.read > 0 ? current.read + 1 : 1,
-                                  ),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: AppColors.accent,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.play_arrow_rounded,
-                                    size: 22, color: Colors.white),
-                                const SizedBox(width: 6),
-                                Text(
-                                  current.read > 0 ? 'Lanjut Baca' : 'Mulai Baca',
-                                  style: AppTypography.jakarta(
-                                    size: 15,
-                                    weight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Chapter list header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            text: 'Chapter ',
-                            style: AppTypography.jakarta(
-                                size: 15, weight: FontWeight.w800),
-                            children: [
-                              TextSpan(
-                                text: '($totalChapters)',
-                                style: AppTypography.jakarta(
-                                  size: 15,
-                                  weight: FontWeight.w600,
-                                  color: AppColors.textFaint,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '$readCount dibaca',
-                        style: AppTypography.jakarta(
-                          size: 12,
-                          weight: FontWeight.w400,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
+                SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Column(
-                    children: [
-                      for (final chapter in chapters)
-                        _ChapterRow(
-                          comic: current,
-                          chapter: chapter,
-                          onTap: () => _openReader(context, current, chapter.num),
-                        ),
-                    ],
+                  sliver: SliverList(
+                    // Lazy: cuma chapter dekat viewport yang di-build —
+                    // penting untuk komik dengan ratusan chapter.
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => _ChapterRow(
+                        comic: current,
+                        chapter: chapters[i],
+                        onTap: () =>
+                            _openReader(context, current, chapters[i].num),
+                      ),
+                      childCount: chapters.length,
+                    ),
                   ),
                 ),
+                const SliverToBoxAdapter(child: SizedBox(height: 96)),
               ],
             ),
+    );
+  }
+
+  Widget _buildHeaderSection(
+    BuildContext context,
+    WidgetRef ref,
+    Comic current,
+    bool inLibrary,
+    List<_Chapter> chapters,
+    int readCount,
+    int totalChapters,
+  ) {
+    return Column(
+      children: [
+        _buildHero(context, current),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+          child: Text(
+            _realDetails?.description ??
+                (widget.comic.sourceMangaUrl != null
+                    ? (_error != null ? 'Gagal memuat deskripsi.' : '')
+                    : 'Ketika langit di atas kota retak dan '
+                          'menumpahkan cahaya asing, seorang kurir '
+                          'muda menemukan bahwa ingatannya adalah '
+                          'kunci untuk menutup celah antar-dunia. '
+                          'Perjalanan melintasi reruntuhan yang indah '
+                          'dan berbahaya pun dimulai.'),
+            style: AppTypography.jakarta(
+              size: 13.5,
+              weight: FontWeight.w400,
+              height: 1.6,
+              color: const Color(0xFFB9B9C6),
+            ),
+          ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            child: InkWell(
+              onTap: _loadReal,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.borderStrong),
+                ),
+                child: Text(
+                  'Gagal memuat chapter — Coba Lagi',
+                  style: AppTypography.jakarta(
+                    size: 12.5,
+                    weight: FontWeight.w700,
+                    color: AppColors.danger,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        // Action row
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
+          child: Row(
+            children: [
+              InkWell(
+                onTap: () => _openCollectionPicker(context, ref, current),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: inLibrary ? const Color(0x291E88C8) : null,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: inLibrary
+                          ? const Color(0x801E88C8)
+                          : AppColors.borderStrong,
+                    ),
+                  ),
+                  child: Icon(
+                    inLibrary ? Icons.bookmark : AppIcons.bookmark,
+                    size: 22,
+                    color: inLibrary
+                        ? AppColors.accentText
+                        : AppColors.menuIcon,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: InkWell(
+                  onTap: chapters.isEmpty
+                      ? null
+                      : () => _openReader(
+                          context,
+                          current,
+                          current.read > 0 ? current.read + 1 : 1,
+                        ),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 22,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          current.read > 0 ? 'Lanjut Baca' : 'Mulai Baca',
+                          style: AppTypography.jakarta(
+                            size: 15,
+                            weight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Chapter list header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    text: 'Chapter ',
+                    style: AppTypography.jakarta(
+                      size: 15,
+                      weight: FontWeight.w800,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: '($totalChapters)',
+                        style: AppTypography.jakarta(
+                          size: 15,
+                          weight: FontWeight.w600,
+                          color: AppColors.textFaint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Text(
+                '$readCount dibaca',
+                style: AppTypography.jakarta(
+                  size: 12,
+                  weight: FontWeight.w400,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -304,8 +336,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                 ),
                 child: current.coverUrl == null
                     ? null
-                    : Image.network(current.coverUrl!, fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const SizedBox()),
+                    : Image.network(
+                        current.coverUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const SizedBox(),
+                      ),
               ),
               const Expanded(child: ColoredBox(color: AppColors.bg)),
             ],
@@ -318,7 +353,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
             children: [
               Padding(
                 padding: EdgeInsets.fromLTRB(
-                    16, MediaQuery.paddingOf(context).top + 4, 16, 0),
+                  16,
+                  MediaQuery.paddingOf(context).top + 4,
+                  16,
+                  0,
+                ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: BackdropFilter(
@@ -329,8 +368,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                         width: 40,
                         height: 40,
                         color: Colors.black.withValues(alpha: 0.4),
-                        child: const Icon(AppIcons.back,
-                            size: 20, color: Colors.white),
+                        child: const Icon(
+                          AppIcons.back,
+                          size: 20,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -406,7 +448,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                                 for (final genre in _genresToShow())
                                   Container(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 9, vertical: 4),
+                                      horizontal: 9,
+                                      vertical: 4,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: AppColors.surfaceSunken,
                                       borderRadius: BorderRadius.circular(8),
@@ -458,12 +502,12 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   }
 
   String _statusLabel(SourceMangaStatus status) => switch (status) {
-        SourceMangaStatus.ongoing => 'Berlangsung',
-        SourceMangaStatus.completed => 'Tamat',
-        SourceMangaStatus.hiatus => 'Hiatus',
-        SourceMangaStatus.cancelled => 'Dihentikan',
-        SourceMangaStatus.unknown => '',
-      };
+    SourceMangaStatus.ongoing => 'Berlangsung',
+    SourceMangaStatus.completed => 'Tamat',
+    SourceMangaStatus.hiatus => 'Hiatus',
+    SourceMangaStatus.cancelled => 'Dihentikan',
+    SourceMangaStatus.unknown => '',
+  };
 
   /// Chapter list top-down dari total ke 1. Pakai data asli kalau ada
   /// (lihat [_realChapters]), kalau tidak pakai demo prototipe.
@@ -503,8 +547,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
           date: i > total - 4
               ? '2 hari lalu'
               : i > total - 8
-                  ? '1 minggu lalu'
-                  : '${total - i} minggu lalu',
+              ? '1 minggu lalu'
+              : '${total - i} minggu lalu',
           read: i <= readUpTo,
         ),
     ];
@@ -534,7 +578,10 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   }
 
   void _openCollectionPicker(
-      BuildContext context, WidgetRef ref, Comic current) {
+    BuildContext context,
+    WidgetRef ref,
+    Comic current,
+  ) {
     final collections = ref.read(collectionsProvider);
     final library = ref.read(libraryProvider);
     final inLibrary = library.any((c) => c.id == current.id);
@@ -694,8 +741,7 @@ class _ChapterRow extends ConsumerWidget {
                 child: Icon(
                   downloaded ? AppIcons.downloaded : AppIcons.download,
                   size: 15,
-                  color:
-                      downloaded ? AppColors.accent : AppColors.textMuted,
+                  color: downloaded ? AppColors.accent : AppColors.textMuted,
                 ),
               ),
             ),
