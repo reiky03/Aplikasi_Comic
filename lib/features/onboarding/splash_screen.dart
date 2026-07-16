@@ -5,12 +5,17 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_spinner.dart';
 import '../../core/widgets/logo_reveal.dart';
 import '../../core/widgets/wave_background.dart';
+import '../../data/bookmarks_state.dart';
+import '../../data/history_state.dart';
+import '../../data/library_state.dart';
 import '../home/home_shell.dart';
 import '../auth/auth_repository.dart';
 import 'login_screen.dart';
 
-/// Splash — spek 03: brand moment ~1.7s sambil cek sesi auth.
-/// Sesi valid → langsung ke Library (skip Login & Sync); tidak → Login.
+/// Splash — spek 03: brand moment ~5 detik sambil cek sesi auth DAN
+/// (kalau sesi valid) mulai sinkron data dari cloud, bukan cuma nunggu
+/// diam. Sesi valid → langsung ke Library (skip Login & Sync); tidak →
+/// Login.
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -26,15 +31,27 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _start() async {
-    // Cek sesi berjalan paralel dengan brand moment (reveal logo ~2.4s +
-    // jeda tahan sebentar sebelum pindah layar).
-    final results = await Future.wait<Object?>([
-      ref.read(authControllerProvider.notifier).restoreSession(),
-      Future<void>.delayed(const Duration(milliseconds: 3500)),
-    ]);
+    // Delay brand moment mulai dihitung dari sekarang, paralel dengan cek
+    // sesi (`restoreSession` sendiri cepat/sinkron) supaya durasinya tidak
+    // ketambahan waktu cek sesi.
+    final delay = Future<void>.delayed(const Duration(milliseconds: 5000));
+    final user = await ref.read(authControllerProvider.notifier).restoreSession();
+
+    if (user != null) {
+      // Baca provider-provider ini sekarang (bukan nunggu splash kelar) —
+      // listener Firestore-nya nempel begitu provider pertama kali dibaca,
+      // jadi sisa waktu splash (~5 detik) beneran dipakai buat narik data
+      // dari cloud, bukan sekadar animasi kosong. Begitu user sampai di
+      // Library/History, datanya idealnya sudah (atau hampir) siap.
+      ref.read(libraryProvider);
+      ref.read(historyProvider);
+      ref.read(collectionsProvider);
+      ref.read(bookmarksProvider);
+    }
+
+    await delay;
     if (!mounted) return;
 
-    final user = results.first as AuthUser?;
     if (user != null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(

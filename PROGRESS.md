@@ -728,3 +728,35 @@ Lima item dari screenshot + laporan user:
   di-generate (bukan build native) — perlu dikonfirmasi tampilannya
   di HP asli setelah install ulang (uninstall dulu / clear cache
   launcher kalau ikon lama masih ke-cache).
+
+### 2026-07-16 — Splash native jadi warna solid saja, durasi splash Flutter 3,5s → 5 detik + mulai sinkron lebih awal
+Ikon app disetujui, tapi user minta splash native (logo statis di atas
+warna solid, dari fix sebelumnya) dibuang — dua momen splash berurutan
+(logo statis → logo animasi "gelombang air" muncul lagi) berasa
+redundan. Sebagai gantinya, durasi splash Flutter (`splash_screen.dart`,
+animasi gelombang air asli) diperpanjang jadi 5 detik, DAN dipakai
+produktif buat mulai sinkron data dari akun (bukan cuma animasi kosong).
+
+- `dart run flutter_native_splash:remove` lalu re-`create` dengan config
+  baru: **cuma warna** (`color: "#05070A"`, sama seperti `AppColors.bg`),
+  TANPA `image` sama sekali. Splash native jadi transisi warna solid
+  polos ke splash Flutter (bukan putih/logo Flutter default, tapi juga
+  bukan logo Kizen dobel) — satu-satunya momen "logo muncul" ya splash
+  Flutter animasi itu sendiri.
+- `splash_screen.dart` — delay `3500ms` → `5000ms`. `restoreSession()`
+  (murah/sinkron) dijalankan duluan sebelum delay diawait, dan kalau
+  user masih login, provider `libraryProvider`/`historyProvider`/
+  `collectionsProvider`/`bookmarksProvider` langsung dibaca saat itu
+  juga (bukan nunggu splash kelar) — listener Firestore-nya nempel
+  lebih awal, jadi sisa waktu splash (~5 detik) beneran kepakai buat
+  narik data dari cloud sebelum user sampai di Library/History,
+  bukan sekadar delay kosong.
+- `test/widget_test.dart` — durasi `pump()` splash disesuaikan ke
+  5100ms (dari 3600ms) biar konsisten dengan delay baru.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos
+  (termasuk timing baru), smoke-test web end-to-end tanpa error. Warna
+  background native Android (`drawable/background.png`) & iOS
+  (`LaunchBackground.imageset/background.png`) dicek manual sama-sama
+  `#05070A` — konsisten dua platform. Efek "provider dibaca lebih awal
+  bikin data lebih siap" tidak bisa diukur/dites dari sandbox (perlu
+  koneksi Firestore asli + device asli buat rasain bedanya).

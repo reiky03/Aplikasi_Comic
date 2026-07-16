@@ -21,7 +21,7 @@ void main() {
       ),
     );
     expect(find.text('Kizen'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 3600));
+    await tester.pump(const Duration(milliseconds: 5100));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Continue with Google'), findsOneWidget);
   });
@@ -36,7 +36,7 @@ void main() {
         child: const KizenApp(),
       ),
     );
-    await tester.pump(const Duration(milliseconds: 3600)); // splash
+    await tester.pump(const Duration(milliseconds: 5100)); // splash
     await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.text('Continue with Google'));
     await tester.pump(const Duration(milliseconds: 700)); // fake auth

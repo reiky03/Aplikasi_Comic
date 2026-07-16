@@ -72,17 +72,18 @@ flutter_launcher_icons:
   adaptive_icon_background: "#05070A"
   adaptive_icon_foreground: "assets/branding/kizen_mark_adaptive.png"
 
-# Splash screen native (sebelum Flutter engine siap) — dipadukan warna bg
-# yang sama dengan splash Flutter sendiri (lib/features/onboarding/
-# splash_screen.dart) biar transisinya mulus, bukan layar putih+logo
-# Flutter default. Jalankan `dart run flutter_native_splash:create`
-# kalau assets/branding/kizen_mark.png berubah.
+# Splash screen native (sebelum Flutter engine siap) — SENGAJA cuma warna
+# solid, TANPA logo/gambar: logo animasi "gelombang air" sudah ditangani
+# sendiri oleh lib/features/onboarding/splash_screen.dart begitu Flutter
+# render frame pertama. Kalau native splash ini juga pasang logo, hasilnya
+# dua momen splash berurutan (logo statis → logo animasi muncul lagi).
+# Warna sama dengan AppColors.bg biar transisinya mulus (tidak lompat ke
+# putih/default Flutter dulu). Jalankan `dart run
+# flutter_native_splash:create` kalau warnanya berubah.
 flutter_native_splash:
   color: "#05070A"
-  image: assets/branding/kizen_mark.png
   android_12:
     color: "#05070A"
-    image: assets/branding/kizen_mark.png
   android: true
   ios: true
   web: false
