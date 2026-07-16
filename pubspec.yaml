@@ -70,6 +70,7 @@ flutter:
   # Font offline untuk google_fonts (Plus Jakarta Sans + JetBrains Mono).
   assets:
     - assets/google_fonts/
+    - assets/branding/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -146,3 +146,11 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 - `flutter analyze` bersih, `flutter test` lolos (2/2).
 - `ios/Runner/Info.plist` — tambah `CFBundleURLTypes` dengan `REVERSED_CLIENT_ID` (dari `GoogleService-Info.plist`) sebagai URL scheme, wajib untuk redirect Google Sign-In di iOS.
 - Sisa: belum dicoba build/run asli Android/iOS (masih tahap kode+konfigurasi, belum diverifikasi end-to-end dengan device/emulator sungguhan).
+
+### 2026-07-16 — Logo Kizen asli terpasang
+- User kirim file logo asli (upload, bukan paste inline) — lingkaran ombak navy brush-stroke + kanji 善 + aksen matahari merah + katakana きぜん.
+- Di-crop jadi mark lingkaran (tanpa wordmark "KIZEN"/tagline di bawahnya, karena teks "Kizen" sudah dirender terpisah di Splash/Login) → `assets/branding/kizen_mark.png` (512×512, sudut luar lingkaran transparan).
+- `pubspec.yaml` — tambah `assets/branding/` ke daftar assets.
+- `lib/core/widgets/app_mark.dart` — disederhanakan total: `AppMark` sekarang `DecorationImage` bulat dari asset di atas (dengan shadow yang sama seperti sebelumnya), menggantikan gradient+`CustomPaint` 4-panel komik placeholder. Parameter `radius` dibiarkan ada di API (dipakai pemanggil) tapi diabaikan karena mark aslinya bundar.
+- Diverifikasi visual: build web (`--no-web-resources-cdn` supaya CanvasKit dari lokal, bukan CDN gstatic yang diblok sandbox) + screenshot headless Chromium — logo tampil bersih & kontras di Splash & Login (background gelap).
+- Tagline Splash dikonfirmasi user: tetap pakai yang sudah ada ("Baca komik dari sumber pilihanmu dan sinkronkan koleksi antar-device"), bukan opsi Inggris yang ditawarkan.
