@@ -61,6 +61,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final _scrollController = ScrollController();
   Timer? _progressDebounce;
 
+  /// Key viewport `ListView` webtoon + key tiap halaman yang sedang
+  /// ter-render — dipakai [_onScroll] buat baca posisi NYATA (bukan
+  /// estimasi), lihat catatan di sana.
+  final GlobalKey _viewportKey = GlobalKey();
+  final Map<int, GlobalKey> _pageKeys = {};
+
   int? _sourceChapterIndex;
   List<SourcePage>? _realPages;
   bool _pagesLoading = false;
@@ -207,18 +213,32 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   /// Scroll → slider: halaman = blok terakhir yang offset-atasnya berada
-  /// di atas garis ~40% viewport (logika prototipe, dua arah wajib jalan).
+  /// di atas garis ~40% viewport — dipakai posisi RENDER NYATA tiap
+  /// halaman (via [_pageKeys]), bukan estimasi tinggi rata-rata seperti
+  /// sebelumnya. Estimasi lama (rasio manga standar) jauh meleset untuk
+  /// strip webtoon yang biasanya jauh lebih tinggi dari lebar layar,
+  /// jadi slider "mentok" duluan padahal chapter belum tamat — akibatnya
+  /// juga bikin progres per-chapter salah kebaca "sudah tamat".
   void _onScroll() {
     if (_suppressScroll || !_scrollController.hasClients) return;
     final settings = ref.read(readerSettingsProvider);
     if (!settings.isWebtoon) return;
-    final mid = _scrollController.offset +
-        _scrollController.position.viewportDimension * 0.4;
-    final extent = _pageExtent(context, settings);
-    var idx = ((mid - 44) / extent).floor();
-    idx = idx.clamp(0, _totalPages - 1);
-    if (idx != _page) {
-      setState(() => _page = idx);
+    final viewportBox =
+        _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.attached) return;
+    final targetY = viewportBox.localToGlobal(Offset.zero).dy +
+        viewportBox.size.height * 0.4;
+    int? best;
+    for (final entry in _pageKeys.entries) {
+      final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached) continue;
+      final top = box.localToGlobal(Offset.zero).dy;
+      if (top <= targetY && (best == null || entry.key > best)) {
+        best = entry.key;
+      }
+    }
+    if (best != null && best != _page) {
+      setState(() => _page = best!);
       _scheduleProgressSave();
     }
   }
@@ -254,6 +274,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _chapter = next;
       _page = 0;
       _showChrome = true;
+      _pageKeys.clear();
     });
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     AppToast.show(context, 'Chapter $next');
@@ -278,6 +299,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _chapter = chapters.length - newIndex;
       _page = 0;
       _showChrome = true;
+      _pageKeys.clear();
     });
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     AppToast.show(context, chapters[newIndex].name);
@@ -447,6 +469,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     // cacheExtent lebih besar (2 layar) supaya halaman berikutnya mulai
     // di-load sebelum kelihatan, bukan pas mepet muncul di layar.
     return ListView.builder(
+      key: _viewportKey,
       controller: _scrollController,
       padding: EdgeInsets.zero,
       scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
@@ -484,6 +507,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         }
         final i = index - 1;
         return Padding(
+          key: _pageKeys.putIfAbsent(i, () => GlobalKey()),
           padding: EdgeInsets.only(bottom: settings.gap.toDouble()),
           child: _webtoonPage(i, width, dpr),
         );

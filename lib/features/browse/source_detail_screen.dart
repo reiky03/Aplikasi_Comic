@@ -48,9 +48,18 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   List<Comic> _discoverResults = const [];
   Timer? _searchDebounce;
 
+  // Paginasi grid discover — sebelumnya cuma pernah fetch halaman 1 dan
+  // tidak pernah nambah lagi biar pun di-refresh, jadi kelihatan "isinya
+  // segitu-segitu aja" walau sumbernya sebenarnya punya ratusan judul.
+  int _discoverPage = 1;
+  bool _hasNextPage = true;
+  bool _loadingMore = false;
+  final _gridScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
+    _gridScrollController.addListener(_onGridScroll);
     final source = ref.read(sourcesProvider).where((s) => s.id == widget.sourceId).firstOrNull ??
         widget.fallbackSource;
     if (source != null) {
@@ -63,7 +72,48 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   void dispose() {
     _searchController.dispose();
     _searchDebounce?.cancel();
+    _gridScrollController.dispose();
     super.dispose();
+  }
+
+  /// Dekat dasar grid (600px tersisa) → ambil halaman berikutnya otomatis.
+  void _onGridScroll() {
+    if (!_gridScrollController.hasClients) return;
+    final pos = _gridScrollController.position;
+    if (pos.maxScrollExtent - pos.pixels < 600) _loadMore();
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || _discoverLoading || !_hasNextPage) return;
+    final matched = _matchedSource;
+    final source = _source;
+    if (matched == null || source == null) return;
+    if (_tab == _DiscoverTab.search && _search.trim().isEmpty) return;
+    setState(() => _loadingMore = true);
+    final nextPage = _discoverPage + 1;
+    try {
+      final result = switch (_tab) {
+        _DiscoverTab.popular => await matched.fetchPopular(nextPage),
+        _DiscoverTab.latest => await matched.fetchLatest(nextPage),
+        _DiscoverTab.search =>
+          await matched.fetchSearch(_search.trim(), nextPage),
+      };
+      if (!mounted) return;
+      setState(() {
+        _discoverResults = [
+          ..._discoverResults,
+          ...result.mangas.map((m) => _toComic(source, m)),
+        ];
+        _discoverPage = nextPage;
+        _hasNextPage = result.hasNextPage;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      // Diam-diam gagal — yang sudah kemuat tetap ditampilkan, biarkan
+      // scroll ke bawah lagi jadi pemicu buat coba lagi.
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+    }
   }
 
   ComicSource? get _source {
@@ -95,6 +145,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
         _discoverResults = const [];
         _discoverLoading = false;
         _discoverError = null;
+        _hasNextPage = false;
       });
       return;
     }
@@ -111,6 +162,8 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       if (!mounted) return;
       setState(() {
         _discoverResults = result.mangas.map((m) => _toComic(source, m)).toList();
+        _discoverPage = page;
+        _hasNextPage = result.hasNextPage;
         _discoverLoading = false;
       });
     } catch (e) {
@@ -227,6 +280,13 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  // Buka situs asli lewat WebView — jalan pintas kalau
+                  // parser gagal/situs berubah struktur, tanpa harus
+                  // nunggu status source berubah jadi "gagal" dulu.
+                  AppHeaderIconButton(
+                      icon: LucideIcons.globe,
+                      onTap: () => _openWebView(source)),
                   const SizedBox(width: 10),
                   if (_refreshing)
                     Container(
@@ -412,21 +472,37 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                             ),
                           ),
                         )
-                      : GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 40),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: AppDimens.gridColumns,
-                            crossAxisSpacing: AppDimens.gridGap,
-                            mainAxisSpacing: AppDimens.gridGap,
-                            childAspectRatio: 0.52,
-                          ),
-                          itemCount: items.length,
-                          itemBuilder: (context, i) => _DiscoverCard(
-                            comic: items[i],
-                            inLibrary: libraryIds.contains(items[i].id),
-                            onTap: () => _openComic(items[i]),
-                          ),
+                      : Stack(
+                          children: [
+                            GridView.builder(
+                              controller: _gridScrollController,
+                              padding:
+                                  const EdgeInsets.fromLTRB(18, 14, 18, 40),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: AppDimens.gridColumns,
+                                crossAxisSpacing: AppDimens.gridGap,
+                                mainAxisSpacing: AppDimens.gridGap,
+                                childAspectRatio: 0.52,
+                              ),
+                              itemCount: items.length,
+                              itemBuilder: (context, i) => _DiscoverCard(
+                                comic: items[i],
+                                inLibrary: libraryIds.contains(items[i].id),
+                                onTap: () => _openComic(items[i]),
+                              ),
+                            ),
+                            if (_loadingMore)
+                              const Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 10,
+                                child: Center(
+                                  child: AppSpinner(
+                                      size: 22, strokeWidth: 2.5),
+                                ),
+                              ),
+                          ],
                         ),
         ),
       ],

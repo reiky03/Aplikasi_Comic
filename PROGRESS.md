@@ -548,3 +548,53 @@ dibaca sama sekali kadang chapter-chapter lamanya langsung kelihatan
   tetap tidak ketandain "Dibaca", header total "0 dibaca" (sebelumnya,
   dengan bug lama, seed data yang sudah under partial "read" akan
   memicu tanda salah begitu progres tersimpan).
+
+### 2026-07-16 — Slider webtoon pakai posisi render nyata, paginasi discover grid, tombol WebView di header
+Tiga laporan lagi dari user:
+1. Slider/counter halaman di Reader "mentok penuh" padahal chapter
+   belum tamat, dan progres "Hal X/Y" (belum tamat) di Comic Detail
+   masih belum pernah muncul.
+2. Grid discover di Source Detail isinya cuma segitu-segitu terus,
+   ditekan refresh juga sama saja — padahal situs sumbernya harusnya
+   punya banyak judul.
+3. Minta ikon browser/WebView di sebelah ikon refresh Source Detail,
+   biar gampang buka situs asli langsung kalau parser situsnya lagi
+   bermasalah.
+
+Root cause #1: `_onScroll` (reader_screen.dart) menghitung posisi
+baca dari **estimasi** tinggi tiap halaman (`_pageExtent` — rasio
+manga standar, lebar/0.7), bukan tinggi RENDER sungguhan. Untuk
+webtoon strip (umum di situs-situs ini) yang jauh lebih tinggi dari
+estimasi itu, sedikit scroll saja sudah dihitung sebagai "sudah lewat
+banyak halaman" — slider mentok duluan. Ini juga yang bikin progres
+"Hal X/Y" tidak pernah muncul: `_page` yang salah tinggi bikin
+`progress.page >= progress.pages` keburu true (dianggap "sudah
+tamat"), padahal belum.
+- Ganti jadi baca posisi RENDER NYATA tiap halaman lewat `GlobalKey`
+  per item (`_pageKeys`) + `RenderBox.localToGlobal`, bukan estimasi
+  tinggi rata-rata. Akurat untuk rasio gambar apa pun (manga standar
+  maupun webtoon strip panjang).
+
+Root cause #2: `_loadDiscover` di `source_detail_screen.dart`
+memang HANYA PERNAH memanggil halaman 1 (`fetchPopular/Latest/Search`
+selalu dengan `page` default) — tidak ada mekanisme infinite-scroll
+maupun tombol "muat lagi" sama sekali, walau tiap parser sumber
+(`shinigami_source.dart` dkk) sebenarnya SUDAH menghitung
+`hasNextPage` dengan benar, cuma nilainya tidak pernah dipakai UI-nya.
+- Tambah infinite-scroll: `ScrollController` di grid, deteksi dekat
+  dasar (<600px tersisa) → auto-fetch halaman berikutnya
+  (`_loadMore()`), append ke hasil yang sudah ada. Spinner kecil di
+  dasar grid selama memuat halaman tambahan.
+
+#3: `AppHeaderIconButton` baru (ikon `globe`) di sebelah ikon refresh
+header Source Detail, buka `WebViewScreen` langsung — sebelumnya opsi
+WebView cuma ada di state error total, sekarang bisa diakses kapan
+saja tanpa nunggu source ditandai gagal dulu.
+
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web (mode demo, karena situs sumber asli tidak bisa
+  diakses dari sandbox) — scroll manual sebagian chapter, counter
+  "3/8" & posisi slider sesuai konten yang benar-benar terlihat di
+  layar ("PAGE 4"), tidak mentok/salah. Paginasi & tombol WebView
+  tidak bisa dites live dari sandbox (jaringan ke situs sumber
+  diblok) — perlu konfirmasi dari user di HP asli.
