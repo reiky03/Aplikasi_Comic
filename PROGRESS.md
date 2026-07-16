@@ -233,3 +233,61 @@ layar sama sekali.
      belum punya Firestore aktif sama sekali.
   2. Deploy `firestore.rules` — via `firebase deploy --only firestore`
      dari terminal, atau paste manual ke tab Rules di Console.
+
+### 2026-07-16 — Fondasi "ambil komik asli" (4 parser native + katalog)
+User minta lanjut ke fitur ambil komik asli, kasih 4 situs (Shinigami,
+Ikiru, Komiku, Komikindo) + 2 link "repository" Tachiyomi/Mihon
+(`keiyoushi/extensions`, `yuzono/manga-repo`).
+
+- **Klarifikasi penting**: 2 link repository itu **bukan** config data
+  biasa — itu indeks APK Android untuk aplikasi Tachiyomi/Mihon (logika
+  scraping tiap situs ada di dalam APK Kotlin terkompilasi). Tidak bisa
+  dipakai langsung dari Flutter (beda bahasa/arsitektur total, dan
+  APK-loading cuma bisa di Android, tidak iOS). **Yang tetap dipakai**:
+  karena extension-nya open-source, source code Kotlin-nya (di
+  `keiyoushi/extensions-source`, bukan repo `extensions` yang isinya APK
+  terkompilasi) dibaca langsung untuk tahu persis endpoint/struktur HTML
+  tiap situs, lalu diporting jadi Dart native — bukan nebak dari nol.
+- `lib/sources/manga_source.dart` (baru) — kontrak `MangaSource`
+  (`fetchPopular/Latest/Search`, `fetchMangaDetails`, `fetchChapterList`,
+  `fetchPageList`) + model (`SourceManga`, `SourceMangaDetails`,
+  `SourceChapter`, `SourcePage`, `MangaSourceException`) — mirip konsep
+  "extension" Tachiyomi tapi native Dart, jalan di Android & iOS.
+- `lib/sources/shinigami_source.dart` — API JSON murni (`api.shngm.io`),
+  diporting 1:1 dari `Shinigami.kt`+`ShinigamiDto.kt`.
+- `lib/sources/komiku_source.dart` — HTML scraping (`api.komiku.org`),
+  diporting dari `Komiku.kt`. Selector jsoup yang pakai `:contains()`/
+  `:has()` (tidak didukung `package:html` Dart) ditulis ulang jadi
+  traversal manual (logika tetap sama).
+- `lib/sources/mangathemesia_source.dart` — parser generik utk tema
+  WordPress "MangaThemesia" (dipakai Komikindo & ratusan situs sejenis),
+  diporting dari `lib-multisrc/mangathemesia`. Reusable: tinggal beda
+  `baseUrl`/`name` utk situs MangaThemesia lain nanti.
+- `lib/sources/natsuid_source.dart` — parser tema WordPress "NatsuId"
+  (dipakai Ikiru), diporting dari `lib-multisrc/natsuid`. Detail
+  komik/daftar chapter/daftar halaman (bagian inti baca komik) 1:1 sesuai
+  referensi; listing populer/terbaru disederhanakan pakai WP REST API
+  standar (bukan endpoint AJAX+nonce situs asli yang nilai field
+  order/orderby persisnya tak bisa dipastikan tanpa akses situs langsung)
+  — urutan "populer" mungkin belum 100% akurat, item lanjutan kalau perlu.
+- `lib/sources/source_catalog.dart` — `SourceCatalog.matchByUrl()`
+  mencocokkan URL yang diketik user ke salah satu dari 4 parser di atas
+  (by host base URL); situs lain tetap bisa ditambahkan seperti biasa,
+  fallback ke WebView Session Mode (spek 10), bukan error.
+- `add_source_screen.dart` — "Test Sumber" sekarang benar-benar
+  memanggil `fetchPopular(1)` via parser yang cocok kalau URL dikenali;
+  situs di luar 4 itu tetap pakai simulasi prototipe (regex
+  error/fail/xxx) seperti sebelumnya.
+- **Testing**: sandbox ini tidak bisa akses situs manapun (network policy
+  blokir semua domain non-allowlist, termasuk API-nya) — jadi tiap parser
+  divalidasi pakai **unit test dengan fixture** (data JSON/HTML persis
+  bentuk asli, lihat `test/sources/*_test.dart`, total 16 test + 2 test
+  lama = 18, semua lolos) alih-alih tes langsung ke internet. User perlu
+  tes final di HP (koneksi asli) untuk verifikasi endpoint/selector masih
+  akurat saat ini (situs bisa berubah struktur sewaktu-waktu).
+- Dependencies baru: `http` (HTTP client), `html` (parser HTML/DOM).
+- **Belum dikerjakan** (langkah lanjutan): wiring ke Source Detail
+  (grid discover pakai data asli, bukan dummy) dan Reader (render
+  gambar chapter asli, ganti placeholder gradient "PAGE N"); comic
+  detail & search juga belum pakai parser ini. `flutter analyze` bersih,
+  seluruh test lolos.

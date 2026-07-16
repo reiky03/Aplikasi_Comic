@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/sources_state.dart';
+import '../../sources/source_catalog.dart';
 
 enum _TestState { idle, loading, ok, error }
 
@@ -45,17 +46,33 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       _nameController.text.trim().isNotEmpty &&
       _urlController.text.trim().isNotEmpty;
 
-  /// Uji reachability URL. Timing prototipe ~1.3s.
-  /// TODO(backend): ganti dengan cek jaringan asli (HEAD request + parse
-  /// deteksi); pertahankan UI loading & pesan hasil apa adanya.
+  /// Uji reachability URL. Kalau URL cocok salah satu sumber yang punya
+  /// parser native (lihat lib/sources/), benar-benar coba ambil daftar
+  /// komik populer. Situs lain (di luar daftar) pakai simulasi prototipe
+  /// ~1.3s — tetap bisa disimpan sebagai sumber manual (Web View).
   Future<void> _testSource() async {
     if (_testState == _TestState.loading) return;
-    if (_urlController.text.trim().isEmpty) return;
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return;
     setState(() => _testState = _TestState.loading);
+
+    final source = SourceCatalog.matchByUrl(url);
+    if (source != null) {
+      try {
+        await source.fetchPopular(1);
+        if (!mounted) return;
+        setState(() => _testState = _TestState.ok);
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _testState = _TestState.error);
+      }
+      return;
+    }
+
     await Future<void>.delayed(const Duration(milliseconds: 1300));
     if (!mounted) return;
     final bad =
-        RegExp('error|fail|xxx', caseSensitive: false).hasMatch(_urlController.text);
+        RegExp('error|fail|xxx', caseSensitive: false).hasMatch(url);
     setState(() => _testState = bad ? _TestState.error : _TestState.ok);
   }
 
