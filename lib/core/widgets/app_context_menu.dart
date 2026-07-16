@@ -184,6 +184,7 @@ Future<void> showReaderMoreMenu(
   required VoidCallback onOpenComicDetail,
   required VoidCallback onMarkUnread,
   required VoidCallback onShareChapter,
+  required VoidCallback onViewBookmarks,
 }) {
   return showAppSheet(
     context,
@@ -198,6 +199,14 @@ Future<void> showReaderMoreMenu(
           onTap: () {
             Navigator.pop(sheetContext);
             onOpenComicDetail();
+          },
+        ),
+        AppSheetMenuRow(
+          icon: LucideIcons.bookmark,
+          label: 'Lihat bookmark',
+          onTap: () {
+            Navigator.pop(sheetContext);
+            onViewBookmarks();
           },
         ),
         AppSheetMenuRow(
@@ -219,4 +228,138 @@ Future<void> showReaderMoreMenu(
       ],
     ),
   );
+}
+
+/// Sheet daftar bookmark satu komik (dipanggil dari Reader more-menu) —
+/// tiap baris: label chapter + halaman + waktu ditandai, tap = lompat ke
+/// situ, tombol hapus di kanan.
+Future<void> showBookmarkListSheet(
+  BuildContext context, {
+  required List<BookmarkListItem> items,
+  required ValueChanged<BookmarkListItem> onTapItem,
+  required ValueChanged<BookmarkListItem> onRemoveItem,
+}) {
+  return showAppSheet(
+    context,
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (sheetContext, setSheetState) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const AppSheetTitle('Bookmark'),
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'Belum ada bookmark di komik ini.\nTandai halaman lewat '
+                  'ikon bookmark saat baca.',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.jakarta(
+                    size: 13,
+                    weight: FontWeight.w400,
+                    height: 1.5,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: items.length,
+                  itemBuilder: (context, i) {
+                    final item = items[i];
+                    return InkWell(
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        onTapItem(item);
+                      },
+                      child: Container(
+                        decoration: i == 0
+                            ? null
+                            : const BoxDecoration(
+                                border: Border(
+                                  top: BorderSide(
+                                      color: AppColors.sheetRowDivider),
+                                ),
+                              ),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 12, horizontal: 4),
+                        child: Row(
+                          children: [
+                            const Icon(LucideIcons.bookmark,
+                                size: 17, color: AppColors.accentText),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.chapterLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.jakarta(
+                                        size: 13.5, weight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Hal ${item.page}/${item.pages}',
+                                    style: AppTypography.jakarta(
+                                      size: 12,
+                                      weight: FontWeight.w400,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () {
+                                setSheetState(() => items.remove(item));
+                                onRemoveItem(item);
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Icon(AppIcons.delete,
+                                    size: 16, color: AppColors.menuIcon),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+/// Data ringkas satu baris di [showBookmarkListSheet] — dipisah dari
+/// `BookmarkEntry` (lib/data/bookmarks_state.dart) supaya widget ini tidak
+/// perlu tahu skema data/Firestore-nya.
+class BookmarkListItem {
+  const BookmarkListItem({
+    required this.id,
+    required this.chNum,
+    required this.chapterLabel,
+    required this.page,
+    required this.pages,
+  });
+
+  final String id;
+  final int chNum;
+  final String chapterLabel;
+  final int page;
+  final int pages;
 }

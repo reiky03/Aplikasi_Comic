@@ -8,6 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/bookmarks_state.dart';
 import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
@@ -657,6 +658,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               const SizedBox(width: 10),
               _chromeButton(
                 size: 38,
+                icon: _isCurrentPageBookmarked()
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded,
+                active: _isCurrentPageBookmarked(),
+                onTap: _toggleBookmark,
+              ),
+              const SizedBox(width: 10),
+              _chromeButton(
+                size: 38,
                 icon: AppIcons.more,
                 onTap: _openMoreMenu,
               ),
@@ -800,6 +810,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     required double size,
     required IconData icon,
     required VoidCallback onTap,
+    bool active = false,
   }) {
     return InkWell(
       onTap: onTap,
@@ -808,10 +819,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: active
+              ? AppColors.accent.withValues(alpha: 0.28)
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(11),
         ),
-        child: Icon(icon, size: 19, color: Colors.white),
+        child: Icon(
+          icon,
+          size: 19,
+          color: active ? AppColors.accentText : Colors.white,
+        ),
       ),
     );
   }
@@ -833,7 +850,100 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       },
       onMarkUnread: () => AppToast.show(context, 'Ditandai belum dibaca'),
       onShareChapter: () => AppToast.show(context, 'Bagikan chapter'),
+      onViewBookmarks: _openBookmarks,
     );
+  }
+
+  bool _isCurrentPageBookmarked() {
+    final comic = widget.comic;
+    final id = BookmarksNotifier.idFor(comic.id, _chapter, _page + 1);
+    return ref.watch(bookmarksProvider).any((b) => b.id == id);
+  }
+
+  /// Tandai/lepas halaman yang lagi dibuka sebagai bookmark ("momen
+  /// epic") — beda dari progres baca biasa, tidak ketimpa/hilang saat
+  /// lanjut baca, dan bisa banyak per komik lewat [_openBookmarks].
+  void _toggleBookmark() {
+    final comic = widget.comic;
+    final wasBookmarked = ref
+        .read(bookmarksProvider)
+        .any((b) => b.id == BookmarksNotifier.idFor(comic.id, _chapter, _page + 1));
+    ref
+        .read(bookmarksProvider.notifier)
+        .toggle(
+          comicId: comic.id,
+          title: comic.title,
+          src: comic.src,
+          hue: comic.hue,
+          chNum: _chapter,
+          chapterLabel: _chapterLabel,
+          page: _page + 1,
+          pages: _totalPages,
+        )
+        .catchError((Object e) => _reportSaveError('bookmark', e));
+    AppToast.show(
+      context,
+      wasBookmarked ? 'Bookmark dihapus' : 'Bookmark disimpan',
+    );
+  }
+
+  void _openBookmarks() {
+    final comic = widget.comic;
+    final items = ref
+        .read(bookmarksProvider.notifier)
+        .forComic(comic.id)
+        .map((b) => BookmarkListItem(
+              id: b.id,
+              chNum: b.chNum,
+              chapterLabel: b.chapterLabel,
+              page: b.page,
+              pages: b.pages,
+            ))
+        .toList();
+    showBookmarkListSheet(
+      context,
+      items: items,
+      onTapItem: _jumpToBookmark,
+      onRemoveItem: (item) => ref
+          .read(bookmarksProvider.notifier)
+          .remove(item.id)
+          .catchError((Object e) => _reportSaveError('hapus bookmark', e)),
+    );
+  }
+
+  /// Lompat ke chapter+halaman tempat bookmark ditandai. Untuk sumber asli,
+  /// nomor chapter dipetakan balik ke index (lihat [_changeSourceChapter]);
+  /// posisi scroll hasil [_seekToPage] tetap perkiraan (baca catatan di
+  /// sana) sampai halaman targetnya kelihatan dan koreksi otomatis lewat
+  /// [_computeCurrentPage] jalan.
+  void _jumpToBookmark(BookmarkListItem item) {
+    if (_isRealSource) {
+      final chapters = widget.sourceChapters!;
+      final targetIndex = chapters.length - item.chNum;
+      if (targetIndex < 0 || targetIndex >= chapters.length) return;
+      setState(() {
+        _sourceChapterIndex = targetIndex;
+        _chapter = item.chNum;
+        _page = (item.page - 1).clamp(0, 999);
+        _showChrome = true;
+        _pageKeys.clear();
+      });
+      if (_scrollController.hasClients) _scrollController.jumpTo(0);
+      _loadRealPages().then((_) {
+        if (!mounted) return;
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _seekToPage(_page));
+      });
+    } else {
+      setState(() {
+        _chapter = item.chNum;
+        _page = (item.page - 1).clamp(0, _totalPages - 1);
+        _showChrome = true;
+      });
+      if (_scrollController.hasClients) _scrollController.jumpTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _seekToPage(_page));
+    }
+    _scheduleProgressSave();
   }
 
   void _openSettings() {

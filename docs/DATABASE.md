@@ -15,6 +15,7 @@ users/{uid}                          ← profil + meta sync
 ├── library/{comicId}                ← komik tersimpan + progress (spek 04/12)
 ├── collections/{collectionId}       ← koleksi/kategori library (spek 04/15)
 ├── history/{comicId}                ← posisi baca terakhir per komik (spek 06)
+├── bookmarks/{bookmarkId}           ← halaman ditandai manual saat baca (spek 13)
 └── settings/
     ├── reader                       ← preferensi reader (spek 13)
     └── app                          ← bahasa aktif, bookmark repo, tema (spek 08/14)
@@ -65,8 +66,9 @@ users/{uid}                          ← profil + meta sync
 | `sourceId` | string? | relasi ke `sources` bila ada |
 | `hue` | number | placeholder cover — nanti diganti `coverUrl` saat artwork asli ada |
 | `totalChapters` | number | `ch` |
-| `read` | number | chapter terakhir dibaca (drive label "Ch. N", "Lanjut Baca", tag "Dibaca") |
+| `read` | number | nomor chapter TERJAUH yang pernah dibuka (drive label "Ch. N", "Lanjut Baca") — bukan hitungan chapter selesai, lihat `readChapters` |
 | `unread` | number | badge grid |
+| `readChapters` | array<number> | nomor chapter yang halaman terakhirnya BENAR-BENAR tercapai (per-chapter, dipakai tanda "Dibaca" di Comic Detail) — sengaja terpisah dari `read` karena user bisa baca lompat-lompat, bukan urut dari chapter 1 |
 | `collectionId` | string? | null = hanya di "Semua" |
 | `addedAt`, `updatedAt` | timestamp | urutan "Terakhir dibaca" pakai `updatedAt` desc |
 
@@ -90,7 +92,26 @@ Satu dokumen **per komik** (posisi terakhir), bukan per event — karena UI-nya
 | `readAt` | timestamp | label relatif ("2 jam lalu") dihitung saat render |
 
 > "Bersihkan" = hapus semua dokumen di subcollection ini (batch delete).
-> Query default: `orderBy('readAt', descending: true)`.
+> Query: TANPA `orderBy` di Firestore — diurutkan manual di client setelah
+> snapshot masuk. `readAt` ditulis pakai `FieldValue.serverTimestamp()`,
+> yang nilainya `null` di cache lokal selama tulisan masih pending;
+> `orderBy` di query akan mengecualikan dokumen dengan field urut yang
+> belum ke-resolve, jadi entri baru bisa hilang total dari hasil listener.
+
+### `bookmarks/{bookmarkId}` — mapping dari `BookmarkEntry`
+Beda dari `history` (satu dokumen per komik, posisi TERAKHIR): bisa banyak
+dokumen per komik/chapter, tidak ketimpa progres baca biasa — murni
+penanda manual ("momen epic") lewat ikon bookmark di Reader.
+Doc id = `{comicId}_ch{chNum}_p{page}` (deterministik) ⇒ toggle on/off =
+set/delete dokumen yang sama, tidak ada duplikat untuk halaman yang sama.
+| Field | Tipe | Catatan |
+|---|---|---|
+| `comicId` | string | buat query/filter per komik di client |
+| `title`, `sourceName`, `hue` | | denormalized untuk render row tanpa join |
+| `chapter` | number | `chNum` |
+| `chapterLabel` | string | nama chapter asli, atau "Chapter N" untuk komik demo |
+| `page`, `pages` | number | posisi halaman yang ditandai |
+| `createdAt` | timestamp | urutan tampil (terbaru dulu), diurutkan di client (alasan sama seperti `history`) |
 
 ### `settings/reader` — mapping dari `ReaderSettings`
 | Field | Tipe |

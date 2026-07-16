@@ -646,3 +646,38 @@ Empat item dari user setelah tes round sebelumnya:
   Android/iOS (bukan web) jadi tidak bisa dites langsung dari sandbox
   — perlu konfirmasi user di HP asli, termasuk cek build **release**
   tidak kena masalah izin internet di masa depan.
+
+### 2026-07-16 — Fitur baru: Bookmark per-halaman di Reader
+Permintaan user: bisa nandain "momen epic" saat baca di halaman
+tertentu suatu chapter, biar gampang ditemukan lagi lain kali — beda
+dari progres baca biasa (yang cuma nyimpen posisi TERAKHIR, ketimpa
+terus tiap baca).
+
+- `lib/data/bookmarks_state.dart` (baru) — `BookmarkEntry` +
+  `BookmarksNotifier` (pola sama seperti `history_state.dart`: sync
+  Firestore `users/{uid}/bookmarks`, fallback in-memory kalau belum
+  login). Doc id deterministik `{comicId}_ch{chNum}_p{page}` supaya
+  toggle on/off = set/delete dokumen yang sama (tidak ada duplikat).
+  Listener SENGAJA tanpa `orderBy` (sort manual di client) — pelajaran
+  langsung dari bug history sebelumnya (`orderBy` +
+  `FieldValue.serverTimestamp()` bisa bikin dokumen hilang dari hasil
+  selama tulisan pending).
+- `lib/core/widgets/app_context_menu.dart` — tambah item "Lihat
+  bookmark" di menu "more" Reader, dan `showBookmarkListSheet()` baru:
+  daftar bookmark satu komik (label chapter + halaman), tap = lompat
+  ke situ, ikon hapus di tiap baris.
+- `lib/features/reader/reader_screen.dart` — ikon bookmark di toolbar
+  atas (di sebelah ikon "more"), terisi/kosong sesuai status halaman
+  yang lagi dibuka; tap = toggle + toast konfirmasi. `_jumpToBookmark`
+  pindah chapter+halaman (pakai ulang mekanisme `_changeSourceChapter`
+  buat sumber asli, plus `_seekToPage` buat lompat scroll — perkiraan
+  posisi awal, self-correct begitu `_computeCurrentPage` jalan lagi).
+- `docs/DATABASE.md` — dokumentasi skema `bookmarks/{bookmarkId}` baru,
+  sekalian benerin dua bagian yang sudah basi: catatan `history` masih
+  bilang query pakai `orderBy` (sudah tidak, sejak fix bug hilang
+  total), dan field `readChapters` di `library/{comicId}` yang belum
+  pernah didokumentasikan dari fix "tanda sudah dibaca" sebelumnya.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  smoke-test web — toggle bookmark → ikon terisi + toast "Bookmark
+  disimpan", buka "Lihat bookmark" dari menu more → sheet menampilkan
+  "Chapter 41 · Hal 1/8" dengan benar.
