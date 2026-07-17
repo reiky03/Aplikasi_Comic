@@ -109,6 +109,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
         final row = rows[i];
         if (row is String) {
           return Padding(
+            key: ValueKey('header:$row:$i'),
             padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
             child: Text(
               row.toUpperCase(),
@@ -122,7 +123,11 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
           );
         }
         final entry = row as UpdateEntry;
-        return _UpdateRow(entry: entry, onTap: () => _openDetail(entry));
+        return _UpdateRow(
+          key: ValueKey(entry.comicId),
+          entry: entry,
+          onTap: () => _openDetail(entry),
+        );
       },
     );
   }
@@ -167,7 +172,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
 }
 
 class _UpdateRow extends StatelessWidget {
-  const _UpdateRow({required this.entry, required this.onTap});
+  const _UpdateRow({super.key, required this.entry, required this.onTap});
 
   final UpdateEntry entry;
   final VoidCallback onTap;

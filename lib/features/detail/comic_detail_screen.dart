@@ -99,8 +99,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     final chapters = _chaptersToShow(current);
     final readCount = chapters.where((c) => c.read).length;
     final totalChapters = _realChapters?.length ?? current.ch;
-    final orderedChapters =
-        _sortDescending ? chapters : chapters.reversed.toList();
+    final orderedChapters = _sortDescending
+        ? chapters
+        : chapters.reversed.toList();
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -126,10 +127,14 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     // penting untuk komik dengan ratusan chapter.
                     delegate: SliverChildBuilderDelegate(
                       (context, i) => _ChapterRow(
+                        key: ValueKey(orderedChapters[i].num),
                         comic: current,
                         chapter: orderedChapters[i],
                         onTap: () => _openReader(
-                            context, current, orderedChapters[i].num),
+                          context,
+                          current,
+                          orderedChapters[i].num,
+                        ),
                       ),
                       childCount: orderedChapters.length,
                     ),
@@ -305,8 +310,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
               ),
               const SizedBox(width: 10),
               InkWell(
-                onTap: () =>
-                    setState(() => _sortDescending = !_sortDescending),
+                onTap: () => setState(() => _sortDescending = !_sortDescending),
                 borderRadius: BorderRadius.circular(9),
                 child: Container(
                   width: 30,
@@ -369,6 +373,10 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     : Image.network(
                         current.coverUrl!,
                         fit: BoxFit.cover,
+                        cacheWidth:
+                            (MediaQuery.sizeOf(context).width *
+                                    MediaQuery.devicePixelRatioOf(context))
+                                .round(),
                         errorBuilder: (_, _, _) => const SizedBox(),
                       ),
               ),
@@ -434,6 +442,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                         coverUrl: current.coverUrl,
                         initial: current.initial,
                         fontSize: 46,
+                        cacheWidth:
+                            (108 * MediaQuery.devicePixelRatioOf(context))
+                                .round(),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -589,15 +600,17 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     // baca satu chapter TERBARU (nomor besar) duluan, padahal belum pernah
     // buka yang lama sama sekali. Pakai [Comic.readChapters] (per-chapter,
     // ditandai saat halaman terakhirnya benar-benar tercapai).
-    final fullyRead = comic.readChapters.contains(num) ||
+    final fullyRead =
+        comic.readChapters.contains(num) ||
         (isCurrent && progress.page >= progress.pages);
     return _Chapter(
       num: num,
       title: title,
       date: date,
       read: fullyRead,
-      progressLabel:
-          (isCurrent && !fullyRead) ? 'Hal ${progress.page}/${progress.pages}' : null,
+      progressLabel: (isCurrent && !fullyRead)
+          ? 'Hal ${progress.page}/${progress.pages}'
+          : null,
       hasBookmark: bookmarked.contains(num),
     );
   }
@@ -691,8 +704,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                 read: current.read,
                 coverUrl: current.coverUrl,
                 sourceMangaUrl: current.sourceMangaUrl,
-                lastChapterUrl:
-                    chapters.isNotEmpty ? chapters.first.url : null,
+                lastChapterUrl: chapters.isNotEmpty ? chapters.first.url : null,
               );
         ref
             .read(libraryProvider.notifier)
@@ -751,6 +763,7 @@ class _Chapter {
 
 class _ChapterRow extends ConsumerWidget {
   const _ChapterRow({
+    super.key,
     required this.comic,
     required this.chapter,
     required this.onTap,
@@ -795,8 +808,11 @@ class _ChapterRow extends ConsumerWidget {
                       ),
                       if (chapter.hasBookmark) ...[
                         const SizedBox(width: 6),
-                        const Icon(Icons.bookmark_rounded,
-                            size: 13, color: AppColors.accentText),
+                        const Icon(
+                          Icons.bookmark_rounded,
+                          size: 13,
+                          color: AppColors.accentText,
+                        ),
                       ],
                     ],
                   ),

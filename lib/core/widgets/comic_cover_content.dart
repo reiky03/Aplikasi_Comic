@@ -9,6 +9,11 @@ Widget comicCoverContent({
   required String? coverUrl,
   required String initial,
   double fontSize = 52,
+  // Ukuran target decode (piksel fisik) — tanpa ini Flutter decode cover
+  // di resolusi ASLI-nya biar pun tampil kecil di grid, boros GPU/memory
+  // pas banyak kartu ke-render sekaligus saat scroll. Null = biarkan
+  // decode native (dipakai buat tampilan besar seperti hero cover Detail).
+  int? cacheWidth,
 }) {
   final placeholder = Center(
     child: Text(
@@ -24,6 +29,7 @@ Widget comicCoverContent({
   return Image.network(
     coverUrl,
     fit: BoxFit.cover,
+    cacheWidth: cacheWidth,
     errorBuilder: (_, _, _) => placeholder,
   );
 }

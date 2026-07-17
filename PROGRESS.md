@@ -1272,3 +1272,65 @@ tinggal `setState` balik ke `_editing = null`, tanpa `Navigator.pop`.
   teks TANPA nutup keyboard dulu, langsung tekan Simpan) — sekarang
   lolos tanpa page error, rename tersimpan & chip Library ke-update.
   Dites juga alur Batal (kembali ke list tanpa perubahan) — normal.
+
+### 2026-07-17 — Audit performa scroll (list chapter/komik/sumber)
+
+User lapor "patah-patah" pas scroll list chapter, list komik, list
+sumber, minta diaudit menyeluruh sesuai standar profesional. Diaudit
+semua layar dengan list/grid besar:
+
+**Sudah benar dari awal** (tidak diubah): semua list/grid besar SUDAH
+pakai lazy loading (`GridView.builder`/`ListView.builder`/
+`SliverChildBuilderDelegate`) — Library, Discover, History, Updates,
+daftar chapter Comic Detail. `_onScroll` di Reader sudah di-throttle ke
+1x per frame lewat `addPostFrameCallback` (fix sesi sebelumnya, ada
+catatan soal ini di kode). List yang masih pakai `ListView` eager
+(Sumber Saya, chip koleksi, form) semuanya berukuran kecil (puluhan
+item paling banyak) — tidak relevan buat kasus lag ini.
+
+**Ketemu & diperbaiki**:
+1. `comic_cover_content.dart` — `Image.network` buat cover komik TIDAK
+   punya `cacheWidth`, jadi Flutter decode gambar di RESOLUSI ASLI-nya
+   biar pun cuma ditampilin ~110px di grid — boros CPU/GPU/memory kalau
+   banyak cover baru discroll sekaligus. `reader_screen.dart` (halaman
+   baca) sudah benar dari awal (ada `cacheWidth` + `RepaintBoundary` +
+   catatan soal 120Hz), tapi grid Library/Discover ketinggalan. Sekarang
+   3 pemanggil (`ComicGridCard`, `_DiscoverCard`, hero cover Comic
+   Detail) hitung `cacheWidth` dari ukuran sel/tampil x
+   `devicePixelRatio`, bukan biarin default (decode native res).
+2. `ComicGridCard` & `_DiscoverCard` (kartu grid Library/Discover) —
+   dibungkus `RepaintBoundary` di level cover — kartu yang sudah
+   dirender bisa di-translate murah pas scroll (dari layer cache),
+   bukan di-rasterisasi ulang tiap frame (gradient + shadow + gambar).
+3. **Tidak ada `key` di 5 list `.builder`**: `ComicGridCard` (Library),
+   `_DiscoverCard` (Discover), `_HistoryRow` (History), `_ChapterRow`
+   (Comic Detail — bisa dibalik urutannya lewat toggle sort), `_UpdateRow`
+   (Updates — item baru bisa nyelip di depan). Tanpa `key`, Flutter
+   nyocokin widget lama/baru cuma berdasarkan POSISI, bukan identitas —
+   pas urutan berubah (ganti sort, item baru masuk), state per-item
+   (termasuk cache gambar yang baru didecode) bisa "ketuker" antar row
+   dan micu rebuild/layout ulang yang harusnya gak perlu. Semua sekarang
+   pakai `ValueKey` dari id stabil (`comic.id`/`entry.comicId`/
+   `chapter.num`).
+
+**Bukan soal kode — soal cara testing**: sepanjang sesi ini kamu selalu
+test lewat `flutter run` (mode debug/JIT) — mode ini SELALU jauh lebih
+lambat/patah dari build asli (banyak assertion tambahan, gak ada AOT
+compile, gak ada tree-shaking) — ini standar/dikenal luas di Flutter,
+bukan indikasi bug. Buat ngerasain performa yang SEBENARNYA, coba jalanin
+`flutter run --profile -d 2A311FDH300122` (lebih dekat ke rilis, tapi
+masih bisa di-profile) atau install APK release
+(`flutter build apk --release` lalu install manual). Kalau masih
+kerasa patah di situ, baru itu sinyal ada masalah nyata yang perlu
+digali lebih lanjut.
+
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  `flutter build web` sukses, smoke-test web — grid Library & daftar
+  chapter Comic Detail tampil identik (tidak ada regresi visual dari
+  `RepaintBoundary`/`cacheWidth`). Perbaikan `cacheWidth`/`RepaintBoundary`
+  butuh gambar cover ASLI (network) buat kerasa efeknya — data demo
+  di sandbox ini semua pakai gradient placeholder (tanpa `coverUrl`),
+  jadi dampak nyatanya baru kelihatan begitu ada sumber yang benar-benar
+  ngasih `coverUrl` (situs real, bukan demo) — tapi kode & logikanya
+  sudah benar secara struktural, konsisten sama pola yang sudah terbukti
+  jalan di Reader.

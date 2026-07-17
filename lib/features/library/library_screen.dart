@@ -55,8 +55,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final demoEmpty = ref.watch(demoLibEmptyProvider);
-    final library =
-        demoEmpty ? const <Comic>[] : ref.watch(libraryProvider);
+    final library = demoEmpty ? const <Comic>[] : ref.watch(libraryProvider);
     final collections = ref.watch(collectionsProvider);
     final visible = _visibleComics(library);
     final libraryEmpty = library.isEmpty;
@@ -214,6 +213,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ),
       itemCount: visible.length,
       itemBuilder: (context, i) => ComicGridCard(
+        key: ValueKey(visible[i].id),
         comic: visible[i],
         onTap: () => _openDetail(visible[i]),
         onLongPress: () => _openComicMenu(visible[i]),
@@ -224,7 +224,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildEmptyState() {
     return AppEmptyState(
       icon: const LibraryGlyph(
-          size: 42, color: AppColors.emptyIcon, strokeWidth: 1.7),
+        size: 42,
+        color: AppColors.emptyIcon,
+        strokeWidth: 1.7,
+      ),
       title: 'Belum ada komik di koleksi',
       description: TextSpan(
         children: [
@@ -247,9 +250,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   void _openDetail(Comic comic) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ComicDetailScreen(comic: comic),
-      ),
+      MaterialPageRoute<void>(builder: (_) => ComicDetailScreen(comic: comic)),
     );
   }
 
@@ -391,6 +392,17 @@ class ComicGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Lebar sel grid nyata (3 kolom, padding 18 kiri/kanan, gap antar sel)
+    // — dipakai buat `cacheWidth` di bawah, biar Image.network DECODE pas
+    // ukuran tampil (bukan resolusi asli cover yang bisa jauh lebih besar),
+    // jauh lebih ringan buat GPU/memory pas banyak kartu di-scroll sekaligus.
+    final cellWidth =
+        (MediaQuery.sizeOf(context).width -
+            36 -
+            AppDimens.gridGap * (AppDimens.gridColumns - 1)) /
+        AppDimens.gridColumns;
+    final cacheWidth = (cellWidth * MediaQuery.devicePixelRatioOf(context))
+        .round();
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -399,71 +411,78 @@ class ComicGridCard extends StatelessWidget {
         children: [
           AspectRatio(
             aspectRatio: AppDimens.coverAspectRatio,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: comicCover(comic.hue),
-                borderRadius: BorderRadius.circular(13),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x99000000),
-                    offset: Offset(0, 6),
-                    blurRadius: 16,
-                    spreadRadius: -6,
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  comicCoverContent(
-                    coverUrl: comic.coverUrl,
-                    initial: comic.initial,
-                  ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Container(
-                      height: 44,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [Color(0xB3000000), Colors.transparent],
-                        ),
-                      ),
+            // Isolasi jadi layer sendiri — pas scroll, kartu yang sudah
+            // dirender tinggal di-translate (murah), bukan di-rasterisasi
+            // ulang tiap frame (gradient + shadow + gambar bakal lumayan
+            // berat kalau diulang terus buat semua kartu yang kelihatan).
+            child: RepaintBoundary(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: comicCover(comic.hue),
+                  borderRadius: BorderRadius.circular(13),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x99000000),
+                      offset: Offset(0, 6),
+                      blurRadius: 16,
+                      spreadRadius: -6,
                     ),
-                  ),
-                  if (comic.unread > 0)
-                    Positioned(
-                      top: 7,
-                      right: 7,
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    comicCoverContent(
+                      coverUrl: comic.coverUrl,
+                      initial: comic.initial,
+                      cacheWidth: cacheWidth,
+                    ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
                       child: Container(
-                        constraints: const BoxConstraints(minWidth: 20),
-                        height: 20,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.badge,
-                          borderRadius: BorderRadius.circular(10),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x66000000),
-                              offset: Offset(0, 3),
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${comic.unread}',
-                          style: AppTypography.jakarta(
-                            size: 11,
-                            weight: FontWeight.w800,
-                            color: Colors.white,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Color(0xB3000000), Colors.transparent],
                           ),
                         ),
                       ),
                     ),
-                ],
+                    if (comic.unread > 0)
+                      Positioned(
+                        top: 7,
+                        right: 7,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 20),
+                          height: 20,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.badge,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x66000000),
+                                offset: Offset(0, 3),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${comic.unread}',
+                            style: AppTypography.jakarta(
+                              size: 11,
+                              weight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -541,8 +560,7 @@ class _SearchField extends StatelessWidget {
             onTap: onClose,
             child: const Padding(
               padding: EdgeInsets.all(4),
-              child:
-                  Icon(AppIcons.close, size: 16, color: AppColors.textMuted),
+              child: Icon(AppIcons.close, size: 16, color: AppColors.textMuted),
             ),
           ),
         ],
@@ -569,8 +587,11 @@ class _AddCollectionChip extends StatelessWidget {
           painter: const _DashedCirclePainter(
             color: Color(0x2EFFFFFF), // rgba(255,255,255,.18)
           ),
-          child: const Icon(AppIcons.add,
-              size: 16, color: AppColors.textSecondary),
+          child: const Icon(
+            AppIcons.add,
+            size: 16,
+            color: AppColors.textSecondary,
+          ),
         ),
       ),
     );

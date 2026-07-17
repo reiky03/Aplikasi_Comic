@@ -31,8 +31,7 @@ class SourceDetailScreen extends ConsumerStatefulWidget {
   final ComicSource? fallbackSource;
 
   @override
-  ConsumerState<SourceDetailScreen> createState() =>
-      _SourceDetailScreenState();
+  ConsumerState<SourceDetailScreen> createState() => _SourceDetailScreenState();
 }
 
 class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
@@ -60,7 +59,11 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   void initState() {
     super.initState();
     _gridScrollController.addListener(_onGridScroll);
-    final source = ref.read(sourcesProvider).where((s) => s.id == widget.sourceId).firstOrNull ??
+    final source =
+        ref
+            .read(sourcesProvider)
+            .where((s) => s.id == widget.sourceId)
+            .firstOrNull ??
         widget.fallbackSource;
     if (source != null) {
       // Coba 4 sumber native dulu, baru parser tema generik yang sudah
@@ -68,10 +71,14 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       // `ComicSource.parserKind` & `add_source_screen.dart`) — supaya
       // sumber custom juga bisa nampilin grid discover, bukan cuma
       // fallback ke WebView.
-      _matchedSource = SourceCatalog.matchByUrl(source.url) ??
+      _matchedSource =
+          SourceCatalog.matchByUrl(source.url) ??
           (source.parserKind != null
               ? SourceCatalog.buildGeneric(
-                  source.parserKind!, source.name, 'https://${source.url}')
+                  source.parserKind!,
+                  source.name,
+                  'https://${source.url}',
+                )
               : null);
       if (_matchedSource != null) _loadDiscover(source);
     }
@@ -104,8 +111,10 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       final result = switch (_tab) {
         _DiscoverTab.popular => await matched.fetchPopular(nextPage),
         _DiscoverTab.latest => await matched.fetchLatest(nextPage),
-        _DiscoverTab.search =>
-          await matched.fetchSearch(_search.trim(), nextPage),
+        _DiscoverTab.search => await matched.fetchSearch(
+          _search.trim(),
+          nextPage,
+        ),
       };
       if (!mounted) return;
       setState(() {
@@ -134,14 +143,14 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   }
 
   Comic _toComic(ComicSource source, SourceManga m) => Comic(
-        id: 'src_${source.id}_${Uri.encodeComponent(m.url)}',
-        title: m.title,
-        src: source.name,
-        hue: source.hue,
-        ch: 0,
-        coverUrl: m.thumbnailUrl,
-        sourceMangaUrl: m.url,
-      );
+    id: 'src_${source.id}_${Uri.encodeComponent(m.url)}',
+    title: m.title,
+    src: source.name,
+    hue: source.hue,
+    ch: 0,
+    coverUrl: m.thumbnailUrl,
+    sourceMangaUrl: m.url,
+  );
 
   /// Ambil daftar komik ASLI dari sumber yang punya parser native (lihat
   /// lib/sources/) sesuai tab aktif. Sumber di luar daftar tetap pakai
@@ -170,7 +179,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       };
       if (!mounted) return;
       setState(() {
-        _discoverResults = result.mangas.map((m) => _toComic(source, m)).toList();
+        _discoverResults = result.mangas
+            .map((m) => _toComic(source, m))
+            .toList();
         _discoverPage = page;
         _hasNextPage = result.hasNextPage;
         _discoverLoading = false;
@@ -275,7 +286,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTypography.jakarta(
-                              size: 18, weight: FontWeight.w800),
+                            size: 18,
+                            weight: FontWeight.w800,
+                          ),
                         ),
                         Text(
                           source.url,
@@ -294,8 +307,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                   // parser gagal/situs berubah struktur, tanpa harus
                   // nunggu status source berubah jadi "gagal" dulu.
                   AppHeaderIconButton(
-                      icon: LucideIcons.globe,
-                      onTap: () => _openWebView(source)),
+                    icon: LucideIcons.globe,
+                    onTap: () => _openWebView(source),
+                  ),
                   const SizedBox(width: 10),
                   if (_refreshing)
                     Container(
@@ -307,11 +321,16 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                       ),
                       alignment: Alignment.center,
                       child: const AppSpinner(
-                          size: 17, strokeWidth: 2, color: AppColors.menuIcon),
+                        size: 17,
+                        strokeWidth: 2,
+                        color: AppColors.menuIcon,
+                      ),
                     )
                   else
                     AppHeaderIconButton(
-                        icon: LucideIcons.rotateCw, onTap: _refresh),
+                      icon: LucideIcons.rotateCw,
+                      onTap: _refresh,
+                    ),
                 ],
               ),
             ),
@@ -355,7 +374,11 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
             ),
             child: Row(
               children: [
-                const Icon(LucideIcons.lock, size: 17, color: AppColors.success),
+                const Icon(
+                  LucideIcons.lock,
+                  size: 17,
+                  color: AppColors.success,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -416,8 +439,11 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
             ),
             child: Row(
               children: [
-                const Icon(AppIcons.search,
-                    size: 17, color: AppColors.textFaint),
+                const Icon(
+                  AppIcons.search,
+                  size: 17,
+                  color: AppColors.textFaint,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
@@ -425,7 +451,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                     onChanged: _onSearchChanged,
                     cursorColor: AppColors.accent,
                     style: AppTypography.jakarta(
-                        size: 13.5, weight: FontWeight.w400),
+                      size: 13.5,
+                      weight: FontWeight.w400,
+                    ),
                     decoration: InputDecoration(
                       isCollapsed: true,
                       border: InputBorder.none,
@@ -459,60 +487,55 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
         ),
         Expanded(
           child: _matchedSource != null && _discoverLoading
-              ? const Center(
-                  child: AppSpinner(size: 28, strokeWidth: 2.5),
-                )
+              ? const Center(child: AppSpinner(size: 28, strokeWidth: 2.5))
               : _matchedSource != null && _discoverError != null
-                  ? _buildDiscoverError(source)
-                  : items.isEmpty
-                      ? Padding(
-                          padding:
-                              const EdgeInsets.fromLTRB(30, 40, 30, 0),
-                          child: Text(
-                            _tab == _DiscoverTab.search &&
-                                    _search.trim().isEmpty
-                                ? 'Ketik judul untuk mencari'
-                                : 'Tidak ada hasil untuk pencarian ini',
-                            textAlign: TextAlign.center,
-                            style: AppTypography.jakarta(
-                              size: 14,
-                              weight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                            ),
+              ? _buildDiscoverError(source)
+              : items.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(30, 40, 30, 0),
+                  child: Text(
+                    _tab == _DiscoverTab.search && _search.trim().isEmpty
+                        ? 'Ketik judul untuk mencari'
+                        : 'Tidak ada hasil untuk pencarian ini',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.jakarta(
+                      size: 14,
+                      weight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                )
+              : Stack(
+                  children: [
+                    GridView.builder(
+                      controller: _gridScrollController,
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 40),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: AppDimens.gridColumns,
+                            crossAxisSpacing: AppDimens.gridGap,
+                            mainAxisSpacing: AppDimens.gridGap,
+                            childAspectRatio: 0.52,
                           ),
-                        )
-                      : Stack(
-                          children: [
-                            GridView.builder(
-                              controller: _gridScrollController,
-                              padding:
-                                  const EdgeInsets.fromLTRB(18, 14, 18, 40),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: AppDimens.gridColumns,
-                                crossAxisSpacing: AppDimens.gridGap,
-                                mainAxisSpacing: AppDimens.gridGap,
-                                childAspectRatio: 0.52,
-                              ),
-                              itemCount: items.length,
-                              itemBuilder: (context, i) => _DiscoverCard(
-                                comic: items[i],
-                                inLibrary: libraryIds.contains(items[i].id),
-                                onTap: () => _openComic(items[i]),
-                              ),
-                            ),
-                            if (_loadingMore)
-                              const Positioned(
-                                left: 0,
-                                right: 0,
-                                bottom: 10,
-                                child: Center(
-                                  child: AppSpinner(
-                                      size: 22, strokeWidth: 2.5),
-                                ),
-                              ),
-                          ],
+                      itemCount: items.length,
+                      itemBuilder: (context, i) => _DiscoverCard(
+                        key: ValueKey(items[i].id),
+                        comic: items[i],
+                        inLibrary: libraryIds.contains(items[i].id),
+                        onTap: () => _openComic(items[i]),
+                      ),
+                    ),
+                    if (_loadingMore)
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 10,
+                        child: Center(
+                          child: AppSpinner(size: 22, strokeWidth: 2.5),
                         ),
+                      ),
+                  ],
+                ),
         ),
       ],
     );
@@ -588,8 +611,15 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   /// Set discover demo prototipe: 9 judul, hue turunan sumber.
   List<Comic> _discoverItems(ComicSource source) {
     const titles = [
-      'Void Chronicles', 'Iron Petals', 'Ghostlight', 'Duskbound',
-      'Ember & Ash', 'Paper Moon', 'Silent Harbor', 'Wildcard', 'Nova Drift',
+      'Void Chronicles',
+      'Iron Petals',
+      'Ghostlight',
+      'Duskbound',
+      'Ember & Ash',
+      'Paper Moon',
+      'Silent Harbor',
+      'Wildcard',
+      'Nova Drift',
     ];
     return [
       for (var i = 0; i < titles.length; i++)
@@ -605,9 +635,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
 
   void _openComic(Comic comic) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ComicDetailScreen(comic: comic),
-      ),
+      MaterialPageRoute<void>(builder: (_) => ComicDetailScreen(comic: comic)),
     );
   }
 
@@ -648,7 +676,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                   width: 7,
                   height: 7,
                   decoration: BoxDecoration(
-                      color: status.color, shape: BoxShape.circle),
+                    color: status.color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 7),
                 Text(
@@ -711,31 +741,43 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                     children: [
                       if (_retrying) ...[
                         const AppSpinner(
-                            size: 15, strokeWidth: 2, color: Colors.white),
+                          size: 15,
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                         const SizedBox(width: 8),
                         Text('Mencoba…', style: _outlineLabel(Colors.white)),
                       ] else ...[
-                        const Icon(LucideIcons.rotateCw,
-                            size: 17, color: AppColors.textPrimary),
+                        const Icon(
+                          LucideIcons.rotateCw,
+                          size: 17,
+                          color: AppColors.textPrimary,
+                        ),
                         const SizedBox(width: 8),
-                        Text('Coba Lagi',
-                            style: _outlineLabel(AppColors.textPrimary)),
+                        Text(
+                          'Coba Lagi',
+                          style: _outlineLabel(AppColors.textPrimary),
+                        ),
                       ],
                     ],
                   ),
                 ),
                 const SizedBox(height: 9),
                 _outlineAction(
-                  onTap: () =>
-                      AppToast.show(context, 'Membuka di browser…'),
+                  onTap: () => AppToast.show(context, 'Membuka di browser…'),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(LucideIcons.externalLink,
-                          size: 17, color: AppColors.menuIcon),
+                      const Icon(
+                        LucideIcons.externalLink,
+                        size: 17,
+                        color: AppColors.menuIcon,
+                      ),
                       const SizedBox(width: 8),
-                      Text('Buka di Browser',
-                          style: _outlineLabel(AppColors.menuIcon)),
+                      Text(
+                        'Buka di Browser',
+                        style: _outlineLabel(AppColors.menuIcon),
+                      ),
                     ],
                   ),
                 ),
@@ -829,6 +871,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
 /// Kartu grid discover (tanpa caption "Ch. N", inisial 48px).
 class _DiscoverCard extends StatelessWidget {
   const _DiscoverCard({
+    super.key,
     required this.comic,
     required this.onTap,
     this.inLibrary = false,
@@ -842,6 +885,15 @@ class _DiscoverCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sama seperti ComicGridCard (Library) — decode sesuai ukuran sel
+    // tampil, bukan resolusi asli, biar scroll grid discover tetap ringan.
+    final cellWidth =
+        (MediaQuery.sizeOf(context).width -
+            36 -
+            AppDimens.gridGap * (AppDimens.gridColumns - 1)) /
+        AppDimens.gridColumns;
+    final cacheWidth = (cellWidth * MediaQuery.devicePixelRatioOf(context))
+        .round();
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -849,53 +901,59 @@ class _DiscoverCard extends StatelessWidget {
         children: [
           AspectRatio(
             aspectRatio: AppDimens.coverAspectRatio,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: comicCover(comic.hue),
-                borderRadius: BorderRadius.circular(13),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x99000000),
-                    offset: Offset(0, 6),
-                    blurRadius: 16,
-                    spreadRadius: -6,
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  comicCoverContent(
-                    coverUrl: comic.coverUrl,
-                    initial: comic.initial,
-                    fontSize: 48,
-                  ),
-                  if (inLibrary)
-                    Positioned(
-                      top: 7,
-                      right: 7,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppColors.accent,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x66000000),
-                              offset: Offset(0, 2),
-                              blurRadius: 6,
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.check,
-                            size: 14, color: Colors.white),
-                      ),
+            child: RepaintBoundary(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: comicCover(comic.hue),
+                  borderRadius: BorderRadius.circular(13),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x99000000),
+                      offset: Offset(0, 6),
+                      blurRadius: 16,
+                      spreadRadius: -6,
                     ),
-                ],
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    comicCoverContent(
+                      coverUrl: comic.coverUrl,
+                      initial: comic.initial,
+                      fontSize: 48,
+                      cacheWidth: cacheWidth,
+                    ),
+                    if (inLibrary)
+                      Positioned(
+                        top: 7,
+                        right: 7,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x66000000),
+                                offset: Offset(0, 2),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.check,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

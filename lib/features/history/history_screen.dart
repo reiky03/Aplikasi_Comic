@@ -56,6 +56,7 @@ class HistoryScreen extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
                     itemCount: history.length,
                     itemBuilder: (context, i) => _HistoryRow(
+                      key: ValueKey(history[i].comicId),
                       entry: history[i],
                       onTap: () => _openDetail(context, ref, history[i]),
                       onPlay: () => _resumeReading(context, ref, history[i]),
@@ -144,6 +145,7 @@ class _ClearButton extends StatelessWidget {
 
 class _HistoryRow extends StatelessWidget {
   const _HistoryRow({
+    super.key,
     required this.entry,
     required this.onTap,
     required this.onPlay,
