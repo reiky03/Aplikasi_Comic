@@ -194,14 +194,56 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
   late final List<SheetCollection> _items = [...widget.collections];
   final _controller = TextEditingController();
 
+  /// Koleksi yang lagi diganti nama, kalau ada — ganti TAMPILAN sheet ini
+  /// di tempat (bukan buka sheet baru di atasnya). Nested `showModalBottomSheet`
+  /// + TextField yang fokus + `Navigator.pop` sempat kepakai di sini dan
+  /// bikin crash (`'_dependents.isEmpty': is not true` — elemen ke-unmount
+  /// selagi TextField yang masih fokus/animasi keyboard punya dependent
+  /// yang belum sempat lepas). View-swap dalam sheet yang sama jauh lebih
+  /// aman: tidak ada route/AnimatedPadding kedua yang bentrok.
+  SheetCollection? _editing;
+  TextEditingController? _editController;
+
   @override
   void dispose() {
     _controller.dispose();
+    _editController?.dispose();
     super.dispose();
+  }
+
+  void _startRename(SheetCollection col) {
+    _editController?.dispose();
+    setState(() {
+      _editing = col;
+      _editController = TextEditingController(text: col.name);
+    });
+  }
+
+  void _cancelRename() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _editing = null);
+  }
+
+  void _saveRename() {
+    final col = _editing;
+    final newName = _editController?.text.trim() ?? '';
+    if (col == null || newName.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (newName != col.name) {
+      final index = _items.indexOf(col);
+      setState(() {
+        _items[index] = SheetCollection(id: col.id, name: newName, count: col.count);
+        _editing = null;
+      });
+      widget.onRename(col.id, newName);
+    } else {
+      setState(() => _editing = null);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_editing != null) return _buildRenameView();
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -215,17 +257,7 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 InkWell(
-                  onTap: () async {
-                    final newName = await _showRenameSheet(context, col.name);
-                    if (newName == null || !context.mounted) return;
-                    final index = _items.indexOf(col);
-                    setState(() => _items[index] = SheetCollection(
-                          id: col.id,
-                          name: newName,
-                          count: col.count,
-                        ));
-                    widget.onRename(col.id, newName);
-                  },
+                  onTap: () => _startRename(col),
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
                     width: 34,
@@ -312,22 +344,15 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
       ],
     );
   }
-}
 
-/// Sheet ganti nama koleksi — dibuka dari tombol edit di "Kelola koleksi".
-/// Balikin nama baru (trimmed, non-kosong, beda dari sebelumnya) atau null
-/// kalau dibatalkan.
-Future<String?> _showRenameSheet(BuildContext context, String currentName) {
-  final controller = TextEditingController(text: currentName);
-  return showAppSheet<String>(
-    context,
-    builder: (sheetContext) => Column(
+  Widget _buildRenameView() {
+    return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const AppSheetTitle('Ganti nama koleksi', bottomGap: 14),
         _NewCollectionField(
-          controller: controller,
+          controller: _editController!,
           height: 48,
           borderColor: AppColors.borderStrong,
         ),
@@ -336,7 +361,7 @@ Future<String?> _showRenameSheet(BuildContext context, String currentName) {
           children: [
             Expanded(
               child: InkWell(
-                onTap: () => Navigator.pop(sheetContext),
+                onTap: _cancelRename,
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   height: 46,
@@ -354,20 +379,17 @@ Future<String?> _showRenameSheet(BuildContext context, String currentName) {
             const SizedBox(width: 10),
             Expanded(
               child: _CreateButton(
-                controller: controller,
+                controller: _editController!,
                 height: 46,
                 label: 'Simpan',
-                onCreate: (name) => Navigator.pop(
-                  sheetContext,
-                  name == currentName ? null : name,
-                ),
+                onCreate: (_) => _saveRename(),
               ),
             ),
           ],
         ),
       ],
-    ),
-  ).whenComplete(controller.dispose);
+    );
+  }
 }
 
 class _CollectionRow extends StatelessWidget {

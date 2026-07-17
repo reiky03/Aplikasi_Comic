@@ -1231,3 +1231,44 @@ dibuat ulang).
   ikut ke-update ke nama baru secara live (listener Firestore/demo-state).
 - `flutter analyze` bersih, `flutter test` 18/18 lolos, `flutter build
   web` sukses.
+
+### 2026-07-17 — Fix crash saat edit nama koleksi (`_dependents.isEmpty`)
+
+User coba fitur edit nama koleksi yang baru ditambah di atas dan langsung
+kena red screen: `'package:flutter/src/widgets/framework.dart': Failed
+assertion: line 6268 pos 12: '_dependents.isEmpty': is not true`.
+
+Root cause: `_showRenameSheet` (implementasi awal) buka sheet BARU
+(`showModalBottomSheet` lewat `showAppSheet`) DI ATAS sheet "Kelola
+koleksi" yang sudah terbuka — nested modal route. Sheet rename itu
+punya `TextField` yang dapat fokus (keyboard kebuka, `AnimatedPadding`
+di `AppSheetShell` ikut animasi buat keyboard inset-nya). Begitu tombol
+"Simpan" ditekan SELAGI keyboard masih kebuka, `Navigator.pop` nutup
+sheet rename itu SAAT keyboard-close-animation & pop-route-animation
+jalan bersamaan — race itu yang bikin assertion `_dependents.isEmpty`
+di `InheritedElement.unmount()` gagal (elemen yang lagi di-unmount masih
+punya dependent — `TextField`/`MediaQuery` terkait keyboard — yang
+belum sempat "lepas" dengan benar sebelum elemen induknya dibongkar).
+Pola serupa (bukan identik) sudah pernah kejadian & di-dokumentasikan
+di fix tombol "Buat" sebelumnya (`FocusScope.of` vs `primaryFocus`),
+tapi kali ini akarnya beda: bukan soal salah API unfocus, tapi soal
+NESTED ROUTE + keyboard + pop yang barengan.
+
+Fix (bukan sekadar nambah `unfocus()` sebelum `pop` — itu race
+condition, tidak dijamin selesai sebelum pop jalan): buang nested sheet
+sama sekali. `_ManageCollectionsBodyState` sekarang punya state
+`_editing`/`_editController` — tombol pensil GANTI ISI sheet yang SAMA
+di tempat (`_buildRenameView()`) alih-alih buka sheet kedua. Tidak ada
+route/`AnimatedPadding` kedua yang bisa bentrok sama sekali, karena
+cuma ada SATU sheet route dari awal sampai akhir. "Batal"/"Simpan"
+tinggal `setState` balik ke `_editing = null`, tanpa `Navigator.pop`.
+
+- `collection_sheets.dart` — `_showRenameSheet` (fungsi terpisah, sheet
+  bersarang) dihapus total, diganti `_startRename`/`_cancelRename`/
+  `_saveRename`/`_buildRenameView` di dalam `_ManageCollectionsBodyState`.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  `flutter build web` sukses. Smoke-test web (FAKE_AUTH, headless)
+  ulang skenario yang sama persis yang bikin user kena crash (edit
+  teks TANPA nutup keyboard dulu, langsung tekan Simpan) — sekarang
+  lolos tanpa page error, rename tersimpan & chip Library ke-update.
+  Dites juga alur Batal (kembali ke list tanpa perubahan) — normal.
