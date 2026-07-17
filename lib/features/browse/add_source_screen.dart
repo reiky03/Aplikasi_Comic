@@ -25,6 +25,11 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
   String _lang = 'ID';
   _TestState _testState = _TestState.idle;
 
+  /// Kind parser tema generik yang berhasil dideteksi cocok (kalau URL-nya
+  /// bukan salah satu dari 4 sumber native) — lihat [_testSource] &
+  /// `SourceCatalog.detectGeneric`.
+  String? _detectedParserKind;
+
   @override
   void initState() {
     super.initState();
@@ -48,18 +53,25 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
 
   /// Uji reachability URL. Kalau URL cocok salah satu sumber yang punya
   /// parser native (lihat lib/sources/), benar-benar coba ambil daftar
-  /// komik populer. Situs lain (di luar daftar) pakai simulasi prototipe
-  /// ~1.3s — tetap bisa disimpan sebagai sumber manual (Web View).
+  /// komik populer. Kalau bukan, coba beberapa parser TEMA GENERIK
+  /// (`SourceCatalog.detectGeneric`) — banyak situs komik Indonesia pakai
+  /// tema WordPress yang sama (mis. MangaThemesia), jadi lumayan sering
+  /// bisa langsung kebaca otomatis walau situsnya bukan salah satu dari 4
+  /// yang secara eksplisit didukung. Gagal semua → tetap bisa disimpan
+  /// sebagai sumber manual (Web View).
   Future<void> _testSource() async {
     if (_testState == _TestState.loading) return;
     final url = _urlController.text.trim();
     if (url.isEmpty) return;
-    setState(() => _testState = _TestState.loading);
+    setState(() {
+      _testState = _TestState.loading;
+      _detectedParserKind = null;
+    });
 
-    final source = SourceCatalog.matchByUrl(url);
-    if (source != null) {
+    final builtIn = SourceCatalog.matchByUrl(url);
+    if (builtIn != null) {
       try {
-        await source.fetchPopular(1);
+        await builtIn.fetchPopular(1);
         if (!mounted) return;
         setState(() => _testState = _TestState.ok);
       } catch (_) {
@@ -69,17 +81,21 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       return;
     }
 
-    await Future<void>.delayed(const Duration(milliseconds: 1300));
+    final name =
+        _nameController.text.trim().isEmpty ? url : _nameController.text.trim();
+    final normalizedUrl = url.startsWith('http') ? url : 'https://$url';
+    final kind = await SourceCatalog.detectGeneric(name, normalizedUrl);
     if (!mounted) return;
-    final bad =
-        RegExp('error|fail|xxx', caseSensitive: false).hasMatch(url);
-    setState(() => _testState = bad ? _TestState.error : _TestState.ok);
+    setState(() {
+      _testState = kind != null ? _TestState.ok : _TestState.error;
+      _detectedParserKind = kind;
+    });
   }
 
   void _saveSource() {
     if (!_canSave) return;
-    final cleanUrl = _urlController.text
-        .trim()
+    final rawUrl = _urlController.text.trim();
+    final cleanUrl = rawUrl
         .replaceFirst(RegExp(r'^https?://'), '')
         .replaceFirst(RegExp(r'/$'), '');
     final sources = ref.read(sourcesProvider);
@@ -87,6 +103,10 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       AppToast.show(context, 'Sumber sudah ada');
       return;
     }
+    // parserKind cuma relevan buat sumber custom (di luar 4 sumber
+    // native) — kalau URL-nya cocok salah satu dari itu, resolusinya
+    // sudah lewat SourceCatalog.matchByUrl (by URL), tidak perlu ditandai.
+    final isBuiltIn = SourceCatalog.matchByUrl(rawUrl) != null;
     ref.read(sourcesProvider.notifier).add(ComicSource(
           id: 's${DateTime.now().millisecondsSinceEpoch}',
           name: _nameController.text.trim(),
@@ -96,9 +116,15 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
           status: _testState == _TestState.ok
               ? SourceStatus.normal
               : SourceStatus.webview,
+          parserKind: isBuiltIn ? null : _detectedParserKind,
         ));
     Navigator.of(context).pop();
-    AppToast.show(context, 'Sumber ditambahkan');
+    AppToast.show(
+      context,
+      _detectedParserKind != null
+          ? 'Sumber ditambahkan · struktur situsnya terdeteksi bisa dibaca otomatis'
+          : 'Sumber ditambahkan',
+    );
   }
 
   @override
@@ -290,7 +316,9 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Website dapat diakses · preview siap',
+                  _detectedParserKind != null
+                      ? 'Struktur situs terdeteksi cocok · bisa dibaca otomatis'
+                      : 'Website dapat diakses · preview siap',
                   style: AppTypography.jakarta(
                     size: 12,
                     weight: FontWeight.w600,

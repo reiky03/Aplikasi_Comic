@@ -10,8 +10,9 @@ import '../../data/downloads_state.dart';
 import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
+import '../../data/source_resolver.dart';
+import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
-import '../../sources/source_catalog.dart';
 import '../reader/reader_screen.dart';
 
 /// Comic Detail — spek 12. Bila [comic] berasal dari sumber asli (lihat
@@ -44,9 +45,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   /// true = chapter terbaru (nomor besar) di atas, seperti sebelumnya.
   bool _sortDescending = true;
 
-  MangaSource? get _matchedSource => SourceCatalog.sources
-      .where((s) => s.name == widget.comic.src)
-      .firstOrNull;
+  MangaSource? get _matchedSource =>
+      resolveMangaSource(widget.comic.src, ref.read(sourcesProvider));
 
   @override
   void initState() {
@@ -675,7 +675,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         AppToast.show(context, 'Dipindahkan koleksi');
       } else {
         // Isi total chapter sungguhan (comic dari discover awalnya ch: 0
-        // karena belum ada info sampai fetchChapterList selesai).
+        // karena belum ada info sampai fetchChapterList selesai). Isi juga
+        // lastChapterUrl (chapter terbaru saat ini, list newest-first) —
+        // baseline buat UpdatesNotifier deteksi chapter baru nanti.
         final chapters = _realChapters;
         final toSave = chapters == null
             ? current
@@ -689,6 +691,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                 read: current.read,
                 coverUrl: current.coverUrl,
                 sourceMangaUrl: current.sourceMangaUrl,
+                lastChapterUrl:
+                    chapters.isNotEmpty ? chapters.first.url : null,
               );
         ref
             .read(libraryProvider.notifier)

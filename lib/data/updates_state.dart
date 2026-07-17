@@ -4,9 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../sources/source_catalog.dart';
 import 'firestore_scope.dart';
 import 'library_state.dart';
+import 'source_resolver.dart';
+import 'sources_state.dart';
 
 /// Satu entri chapter baru di feed Updates — satu dokumen per komik
 /// (chapter terbaru yang terdeteksi), lihat docs/DATABASE.md.
@@ -18,6 +19,7 @@ class UpdateEntry {
     required this.hue,
     required this.ch,
     required this.detectedAt,
+    this.chapterLabel,
   });
 
   final String comicId;
@@ -25,12 +27,18 @@ class UpdateEntry {
   final String src;
   final int hue;
 
-  /// Nomor chapter terbaru yang terdeteksi saat pengecekan.
+  /// Nomor chapter terbaru yang terdeteksi saat pengecekan — POSISI
+  /// (`total chapter` saat itu), bukan nomor asli situs. Lihat
+  /// [chapterLabel] & catatan yang sama di `HistoryEntry.chapterLabel`.
   final int ch;
   final DateTime detectedAt;
 
+  /// Label chapter ASLI dari situs (mis. "Chapter 43.5 Extra") — dipakai
+  /// buat tampilan kalau ada, biar konsisten dengan yang Reader tampilkan.
+  final String? chapterLabel;
+
   String get initial => title.isEmpty ? '?' : title[0];
-  String get chLabel => 'Chapter $ch';
+  String get chLabel => chapterLabel ?? 'Chapter $ch';
 
   /// Label grup tanggal ("Hari ini", "Kemarin", dst) — dihitung saat
   /// render (bukan disimpan), sama seperti [HistoryEntry.time].
@@ -61,6 +69,7 @@ class UpdateEntry {
         'sourceName': src,
         'hue': hue,
         'chapter': ch,
+        'chapterLabel': ?chapterLabel,
       };
 
   factory UpdateEntry.fromMap(String docId, Map<String, dynamic> map) {
@@ -72,6 +81,7 @@ class UpdateEntry {
       hue: (map['hue'] as num?)?.toInt() ?? 0,
       ch: (map['chapter'] as num?)?.toInt() ?? 0,
       detectedAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      chapterLabel: map['chapterLabel'] as String?,
     );
   }
 }
@@ -136,30 +146,60 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
   /// situs sumber dengan banyak request sekaligus. Kegagalan per-komik
   /// (situs down, parser meleset) dilewati, tidak menggagalkan keseluruhan
   /// pengecekan.
+  ///
+  /// Deteksi "ada chapter baru" TIDAK pakai `chapters.length > comic.ch`
+  /// doang — jumlah mentah gampang tidak stabil antar fetch (situs bisa
+  /// punya chapter spesial/bonus yang bikin hitungan geser meski tidak
+  /// ada penambahan sungguhan, sama akar masalah yang bikin nomor chapter
+  /// di History dulu suka meleset). Cek chapter TERBARU (`chapters.first`,
+  /// list newest-first) beda dari [Comic.lastChapterUrl] yang terakhir
+  /// diketahui — itu sinyal yang jauh lebih akurat, terlepas dari noise
+  /// pada hitungan total.
   Future<UpdateCheckResult> refresh() async {
     final library = ref.read(libraryProvider);
     final libraryNotifier = ref.read(libraryProvider.notifier);
+    final customSources = ref.read(sourcesProvider);
     var checked = 0;
     var updated = 0;
     var failed = 0;
     for (final comic in library) {
       final mangaUrl = comic.sourceMangaUrl;
       if (mangaUrl == null) continue;
-      final source =
-          SourceCatalog.sources.where((s) => s.name == comic.src).firstOrNull;
+      final source = resolveMangaSource(comic.src, customSources);
       if (source == null) continue;
       checked++;
       try {
         final chapters = await source.fetchChapterList(mangaUrl);
-        final newTotal = chapters.length;
-        if (newTotal > comic.ch) {
-          final delta = newTotal - comic.ch;
+        if (chapters.isEmpty) continue;
+        final newest = chapters.first;
+        final hasNew = comic.lastChapterUrl == null
+            // Komik lama sebelum lastChapterUrl ada — fallback ke
+            // perbandingan jumlah sekali ini saja, sampai field-nya
+            // ke-isi dari pengecekan ini.
+            ? chapters.length > comic.ch
+            : newest.url != comic.lastChapterUrl;
+        if (hasNew) {
+          final newTotal = chapters.length;
+          // Jumlah chapter baru yang sebenarnya tetap dihitung dari
+          // selisih total (buat badge unread) — clamp minimal 1 supaya
+          // tidak pernah 0/negatif kalau hitungannya kebetulan turun
+          // (mis. situsnya gabung/hapus chapter lama) padahal jelas ada
+          // yang baru (chapter terbaru berbeda).
+          final delta = (newTotal - comic.ch).clamp(1, newTotal);
           await libraryNotifier.applyNewChapters(
             comic.id,
             newTotal: newTotal,
             deltaUnread: delta,
+            lastChapterUrl: newest.url,
           );
-          await _recordUpdate(comic.id, comic.title, comic.src, comic.hue, newTotal);
+          await _recordUpdate(
+            comic.id,
+            comic.title,
+            comic.src,
+            comic.hue,
+            newTotal,
+            newest.name,
+          );
           updated++;
         }
       } catch (e) {
@@ -176,6 +216,7 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
     String src,
     int hue,
     int newCh,
+    String chapterLabel,
   ) async {
     final col = _col;
     if (col == null) {
@@ -187,6 +228,7 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
           hue: hue,
           ch: newCh,
           detectedAt: DateTime.now(),
+          chapterLabel: chapterLabel,
         ),
         ...state.where((e) => e.comicId != comicId),
       ];
@@ -198,6 +240,7 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
       'sourceName': src,
       'hue': hue,
       'chapter': newCh,
+      'chapterLabel': chapterLabel,
       'detectedAt': FieldValue.serverTimestamp(),
     });
   }

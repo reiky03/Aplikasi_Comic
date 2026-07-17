@@ -176,11 +176,14 @@ class LibraryNotifier extends Notifier<List<Comic>> {
   }
 
   /// Terapkan chapter baru yang ketemu dari pengecekan Updates
-  /// (`updates_state.dart`) — update total chapter & tambah badge unread.
+  /// (`updates_state.dart`) — update total chapter, tambah badge unread,
+  /// dan simpan [lastChapterUrl] (chapter TERBARU yang diketahui) buat
+  /// deteksi update berikutnya.
   Future<void> applyNewChapters(
     String comicId, {
     required int newTotal,
     required int deltaUnread,
+    String? lastChapterUrl,
   }) async {
     final current = state.where((c) => c.id == comicId).firstOrNull;
     if (current == null) return;
@@ -189,7 +192,11 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       state = [
         for (final c in state)
           if (c.id == comicId)
-            c.copyWith(ch: newTotal, unread: current.unread + deltaUnread)
+            c.copyWith(
+              ch: newTotal,
+              unread: current.unread + deltaUnread,
+              lastChapterUrl: lastChapterUrl,
+            )
           else
             c,
       ];
@@ -198,6 +205,7 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     await col.doc(comicId).update({
       'totalChapters': newTotal,
       'unread': current.unread + deltaUnread,
+      'lastChapterUrl': ?lastChapterUrl,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

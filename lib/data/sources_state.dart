@@ -21,6 +21,7 @@ class ComicSource {
     this.active = true,
     this.status = SourceStatus.normal,
     this.session = false,
+    this.parserKind,
   });
 
   final String id;
@@ -33,6 +34,14 @@ class ComicSource {
 
   /// true bila sesi WebView sudah dibuat untuk sumber ini.
   final bool session;
+
+  /// Kalau sumber ini BUKAN salah satu dari 4 sumber native (lihat
+  /// lib/sources/source_catalog.dart), tapi berhasil di-auto-detect cocok
+  /// dengan salah satu parser TEMA GENERIK (mis. "mangathemesia",
+  /// "natsuid") saat ditambahkan — lihat `SourceCatalog.detectGeneric` &
+  /// `add_source_screen.dart`. Null berarti tidak ada parser otomatis sama
+  /// sekali (WebView Session Mode saja).
+  final String? parserKind;
 
   String get initial => name.isEmpty ? '?' : name[0];
 
@@ -67,6 +76,7 @@ class ComicSource {
       active: active ?? this.active,
       status: status ?? this.status,
       session: session ?? this.session,
+      parserKind: parserKind,
     );
   }
 
@@ -79,6 +89,7 @@ class ComicSource {
         'active': active,
         'status': status.name,
         'session': session,
+        'parserKind': ?parserKind,
       };
 
   factory ComicSource.fromMap(String id, Map<String, dynamic> map) =>
@@ -94,6 +105,7 @@ class ComicSource {
           orElse: () => SourceStatus.normal,
         ),
         session: map['session'] as bool? ?? false,
+        parserKind: map['parserKind'] as String?,
       );
 }
 

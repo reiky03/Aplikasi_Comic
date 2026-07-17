@@ -44,6 +44,7 @@ users/{uid}                          ← profil + meta sync
 | `status` | string | `normal` \| `webview` \| `limited` \| `failed` |
 | `session` | bool | session WebView tersimpan (lihat catatan keamanan di bawah) |
 | `desc` | string? | field Deskripsi di form Add Source |
+| `parserKind` | string? | hasil auto-deteksi struktur situs saat "Test Sumber" (mis. `mangathemesia`, `natsuid`) — kalau cocok salah satu tema generik yang sudah didukung (`SourceCatalog.detectGeneric`), sumber custom ini otomatis bisa dibaca native (discover grid, chapter list, reader) tanpa WebView. Null = tidak terdeteksi / tetap WebView-only |
 | `createdAt`, `updatedAt` | timestamp | urutan tampil + resolusi konflik |
 
 > Catatan: **cookie/sesi WebView asli TIDAK disimpan di cloud** — itu tetap di
@@ -70,6 +71,7 @@ users/{uid}                          ← profil + meta sync
 | `read` | number | nomor chapter TERJAUH yang pernah dibuka (drive label "Ch. N", "Lanjut Baca") — bukan hitungan chapter selesai, lihat `readChapters` |
 | `unread` | number | badge grid |
 | `readChapters` | array<number> | nomor chapter yang halaman terakhirnya BENAR-BENAR tercapai (per-chapter, dipakai tanda "Dibaca" di Comic Detail) — sengaja terpisah dari `read` karena user bisa baca lompat-lompat, bukan urut dari chapter 1 |
+| `lastChapterUrl` | string? | URL chapter TERBARU yang diketahui saat komik ditambah/di-cek terakhir kali — identifier stabil dipakai [`UpdatesNotifier.refresh`] buat deteksi "ada chapter baru": bandingkan URL chapter terbaru hasil fetch vs field ini, bukan `totalChapters > ch` (jumlah mentah bisa tidak stabil kalau situs punya chapter spesial/bonus). Null untuk komik lama sebelum field ini ada ⇒ fallback sekali ke perbandingan jumlah |
 | `collectionId` | string? | null = hanya di "Semua" |
 | `addedAt`, `updatedAt` | timestamp | urutan "Terakhir dibaca" pakai `updatedAt` desc |
 

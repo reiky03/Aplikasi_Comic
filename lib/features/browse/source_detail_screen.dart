@@ -63,7 +63,16 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     final source = ref.read(sourcesProvider).where((s) => s.id == widget.sourceId).firstOrNull ??
         widget.fallbackSource;
     if (source != null) {
-      _matchedSource = SourceCatalog.matchByUrl(source.url);
+      // Coba 4 sumber native dulu, baru parser tema generik yang sudah
+      // ke-auto-detect saat sumber ini ditambahkan (lihat
+      // `ComicSource.parserKind` & `add_source_screen.dart`) — supaya
+      // sumber custom juga bisa nampilin grid discover, bukan cuma
+      // fallback ke WebView.
+      _matchedSource = SourceCatalog.matchByUrl(source.url) ??
+          (source.parserKind != null
+              ? SourceCatalog.buildGeneric(
+                  source.parserKind!, source.name, 'https://${source.url}')
+              : null);
       if (_matchedSource != null) _loadDiscover(source);
     }
   }

@@ -1056,3 +1056,83 @@ ditampilkan gak sinkron antar dua tempat.
   nampilin "Chapter 41" (label asli), entri lama (seed, belum punya
   `chapterLabel`) tetap fallback ke format "Ch. N" seperti sebelumnya
   — kompatibel mundur, tidak ada regresi.
+
+### 2026-07-17 — Fix Updates gagal deteksi chapter baru + fitur auto-deteksi sumber custom
+
+User lapor menu Updates gagal nampilin chapter baru padahal jelas-jelas
+ada di situs sumbernya. Sekaligus minta dua hal lain: (1) status fitur
+"tambah repository", dan (2) fitur biar app bisa "ngeget" (mengenali)
+sumber komik apapun saat user nambah sumber custom sendiri, bukan cuma
+4 situs bawaan.
+
+**Fix Updates**: root cause SAMA PERSIS dengan fix akar #1/#3 di atas
+(chapter number tidak stabil) tapi kena bagian deteksi, bukan tampilan.
+`refresh()` lama bandingin `chapters.length > comic.ch` (jumlah mentah)
+buat nentuin "ada update" — kalau situs punya chapter spesial/bonus
+yang bikin hitungan geser TANPA nambah (atau pengurangan sementara),
+chapter baru yang beneran ADA bisa gagal kedeteksi karena hitungannya
+kebetulan sama/lebih kecil dari sebelumnya.
+
+- `models.dart` — `Comic` dapat field baru `lastChapterUrl` (nullable) —
+  URL chapter terbaru yang diketahui terakhir kali dicek/ditambah.
+- `library_state.dart` — `applyNewChapters()` terima & simpan
+  `lastChapterUrl`.
+- `updates_state.dart` — `refresh()` sekarang bandingin
+  `chapters.first.url` (chapter terbaru hasil fetch, identifier stabil)
+  vs `comic.lastChapterUrl`, bukan jumlah mentah. Fallback ke
+  perbandingan jumlah HANYA untuk komik lama yang belum punya
+  `lastChapterUrl` (null). `UpdateEntry` juga dapat `chapterLabel`
+  (label asli situs, sama pola dengan `HistoryEntry`) biar Updates dan
+  History/Reader konsisten nampilin nomor yang sama.
+- `comic_detail_screen.dart` — nyimpen `lastChapterUrl` (chapter
+  terbaru saat itu) begitu komik pertama kali ditambah ke Library, jadi
+  ada baseline buat deteksi Updates berikutnya.
+
+**Fitur auto-deteksi sumber custom** ("ngeget semua jenis komik"):
+app sudah punya 2 parser tema generik yang DIRANCANG buat kerja di
+situs manapun yang pakai tema WordPress-manga umum tsb (MangaThemesia,
+NatsuID) — sebelumnya cuma dipakai buat 2 dari 4 sumber bawaan
+(Komikindo, Ikiru), padahal keduanya sudah menerima `name`/`baseUrl`
+custom di constructor-nya. Manfaatkan itu: begitu user nambah sumber
+custom, coba pasang tiap parser generik ke URL barunya dan panggil
+`fetchPopular(1)` — kalau berhasil dapat hasil non-kosong, berarti
+struktur situsnya cocok dan bisa dibaca native (bukan cuma WebView).
+
+- `sources_state.dart` — `ComicSource` dapat field `parserKind`
+  (nullable string) — hasil deteksi ("mangathemesia"/"natsuid"), null
+  kalau tidak cocok satupun (tetap WebView-only).
+- `source_catalog.dart` — `genericKinds`, `buildGeneric(kind, name,
+  baseUrl)`, `detectGeneric(name, baseUrl)` (coba tiap kind, return
+  kind pertama yang berhasil `fetchPopular` tanpa error & non-kosong).
+- `source_resolver.dart` (baru) — `resolveMangaSource(sourceName,
+  customSources)`: helper terpusat dipakai widget (`WidgetRef`) maupun
+  Notifier (`Ref`) — coba 4 sumber native dulu, baru sumber custom yang
+  punya `parserKind`. Diambil sebagai `List<ComicSource>` (bukan
+  `Ref`/`WidgetRef` langsung) karena dua tipe itu beda di Riverpod dan
+  tidak saling bisa dipakai gantian.
+- `add_source_screen.dart` — tombol "Test Sumber" sekarang beneran coba
+  `detectGeneric` kalau bukan salah satu dari 4 sumber bawaan (dulu
+  cuma heuristik regex `error|fail|xxx` di URL, palsu). Hasil deteksi
+  disimpan sebagai `parserKind` saat sumber disimpan; toast beda kalau
+  terdeteksi ("struktur situs terdeteksi cocok · bisa dibaca otomatis").
+- `comic_detail_screen.dart`, `reader_screen.dart`, `updates_state.dart`,
+  `source_detail_screen.dart` — resolusi `MangaSource` buat Comic
+  Detail, Reader, pengecekan Updates, dan grid discover Source Detail
+  semuanya dialihkan lewat `resolveMangaSource`/`buildGeneric`, jadi
+  sumber custom yang berhasil auto-detect bisa dipakai penuh (discover
+  grid, baca chapter, cek update) — bukan cuma WebView pasif.
+- `docs/DATABASE.md` — dokumentasi field `sources.parserKind` &
+  `library.lastChapterUrl` baru.
+- Repository ("tambah repository"): TIDAK diubah — sudah dijelaskan ke
+  user sebelumnya kalau index repo Tachiyomi/Mihon-style isinya
+  kebanyakan sumber yang butuh parser native per-situs (bukan generik),
+  jadi kebanyakan entrinya tetap gak bisa langsung dibaca meski index-nya
+  di-fetch beneran. Auto-deteksi tema generik di atas ini justru manfaat
+  buat SEMUA jalur nambah sumber (manual maupun lewat repo), bukan cuma
+  satu tempat, jadi prioritasnya di situ dulu.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos.
+  Deteksi generik butuh network beneran ke situs sumber (tidak bisa
+  direproduksi dari sandbox yang network-nya dibatasi) — tapi logika
+  & pemanggilannya sudah diverifikasi lewat analyze/test yang cover
+  parser MangaThemesia/NatsuID yang sudah ada testnya sendiri
+  (`mangathemesia_source_test.dart`/`natsuid_source_test.dart`).

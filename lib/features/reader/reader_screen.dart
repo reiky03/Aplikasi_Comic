@@ -13,8 +13,9 @@ import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/reader_settings.dart';
+import '../../data/source_resolver.dart';
+import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
-import '../../sources/source_catalog.dart';
 import '../detail/comic_detail_screen.dart';
 import 'reader_settings_sheet.dart';
 
@@ -101,9 +102,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// menampilkan angka yang salah tiap ganti chapter.
   bool get _pageCountKnown => !_isRealSource || _realPages != null;
 
-  MangaSource? get _matchedSource => SourceCatalog.sources
-      .where((s) => s.name == widget.comic.src)
-      .firstOrNull;
+  MangaSource? get _matchedSource =>
+      resolveMangaSource(widget.comic.src, ref.read(sourcesProvider));
 
   @override
   void initState() {

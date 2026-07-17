@@ -14,6 +14,7 @@ class Comic {
     this.coverUrl,
     this.sourceMangaUrl,
     this.readChapters = const {},
+    this.lastChapterUrl,
   });
 
   final String id;
@@ -50,6 +51,16 @@ class Comic {
   /// chapter terbaru duluan), bukan cuma urut dari chapter 1.
   final Set<int> readChapters;
 
+  /// URL chapter TERBARU yang diketahui saat terakhir kali chapter list
+  /// di-fetch (buat komik dari sumber asli) — dipakai `UpdatesNotifier`
+  /// buat deteksi "ada chapter baru beneran apa nggak". SENGAJA bukan
+  /// dibandingkan pakai jumlah total chapter (`ch`) doang: jumlah mentah
+  /// itu gampang tidak stabil antar fetch (situs bisa punya chapter
+  /// spesial/bonus yang bikin hitungan geser meski tidak ada penambahan
+  /// sungguhan) — cek "chapter TERBARU beda dari yang terakhir diketahui"
+  /// jauh lebih akurat sebagai sinyal, terlepas dari noise pada hitungan.
+  final String? lastChapterUrl;
+
   String get initial => title.isEmpty ? '?' : title[0];
 
   /// Caption "Ch. N" di bawah judul (logika prototipe: read || ch).
@@ -62,6 +73,7 @@ class Comic {
     String? col,
     bool clearCol = false,
     Set<int>? readChapters,
+    String? lastChapterUrl,
   }) {
     return Comic(
       id: id,
@@ -75,6 +87,7 @@ class Comic {
       coverUrl: coverUrl,
       sourceMangaUrl: sourceMangaUrl,
       readChapters: readChapters ?? this.readChapters,
+      lastChapterUrl: lastChapterUrl ?? this.lastChapterUrl,
     );
   }
 
@@ -90,6 +103,7 @@ class Comic {
         'coverUrl': coverUrl,
         'sourceMangaUrl': sourceMangaUrl,
         'readChapters': readChapters.toList()..sort(),
+        'lastChapterUrl': ?lastChapterUrl,
       };
 
   factory Comic.fromMap(String id, Map<String, dynamic> map) => Comic(
@@ -107,6 +121,7 @@ class Comic {
                 ?.map((e) => (e as num).toInt())
                 .toSet() ??
             const {},
+        lastChapterUrl: map['lastChapterUrl'] as String?,
       );
 }
 
