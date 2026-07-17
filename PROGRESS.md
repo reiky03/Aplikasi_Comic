@@ -1334,3 +1334,72 @@ digali lebih lanjut.
   ngasih `coverUrl` (situs real, bukan demo) — tapi kode & logikanya
   sudah benar secara struktural, konsisten sama pola yang sudah terbukti
   jalan di Reader.
+
+### 2026-07-17 — Fix progres baca: gak kesimpan, kesimpan salah, "sudah tamat" gak kedetek
+
+User lapor 3 bug soal progres baca di Reader: (1) beberapa komik gagal
+kesimpan progresnya, (2) kadang kesimpan tapi begitu coba chapter lain
+angka "hal X/Y"-nya keganti jadi salah, (3) baca sampai tamat tapi
+counter/slider di reader belum nunjuk halaman terakhir, jadi keluar
+chapter-nya gak ketandain "sudah dibaca". Digali `reader_screen.dart`
+menyeluruh (bukan cuma baca sepintas) + smoke-test berulang buat
+mereproduksi — ketemu 4 akar masalah beda, semuanya di seputar mekanisme
+simpan progres yang di-debounce 2 detik:
+
+1. **Progres chapter lama ketiban chapter baru** (akar bug #2): cuma ADA
+   SATU `Timer` debounce buat seluruh sesi baca. Kalau user pindah
+   chapter SEBELUM debounce chapter lama (2 detik) sempat jalan,
+   `_scheduleProgressSave()` yang dipanggil abis pindah nge-`cancel()`
+   timer lama itu TANPA PERNAH nyimpennya — progres chapter yang lagi
+   ditinggalkan hilang begitu saja, ketiban timer baru yang nyimpen data
+   chapter BARU begitu jalan.
+2. **"pages" kesimpan salah kalau ganti chapter pas sumbernya lambat**
+   (akar bug #1 & #2): `_totalPages` jatuh ke nilai MOCK (8) selama
+   halaman asli suatu chapter masih di-fetch. Kalau debounce 2 detik
+   sempat jalan SEBELUM fetch beres (situs lambat), yang kesimpan ke
+   History itu `pages: 8` (salah), bukan angka asli (mis. 24).
+3. **"Sudah tamat" gak kedetek kalau langsung tap Next/footer**: tanda
+   chapter selesai cuma jalan kalau `_page` sempat "sadar" sudah di
+   halaman terakhir lewat listener scroll (`_computeCurrentPage`,
+   dipicu `addPostFrameCallback` — async). Kalau user langsung tap
+   tombol Next atau footer "Akhir chapter" TEPAT sebelum listener itu
+   sempat jalan, `markChapterRead` tidak pernah terpanggil buat chapter
+   yang sebenarnya sudah tamat dibaca.
+4. **`ref` dipakai di `dispose()`** (ke-reproduksi lewat smoke-test,
+   root cause KONKRET buat "beberapa komik gak bisa kesimpan"): kode
+   lama manggil `ref.read(historyProvider.notifier)`/
+   `ref.read(libraryProvider.notifier)` di `_saveProgress()`, yang juga
+   dipanggil dari `dispose()` (nyimpen progres terakhir pas Reader
+   ditutup). Riverpod nolak pemakaian `ref` begitu widget "about to or
+   has been unmounted" — persis pas KELUAR chapter (kesempatan terakhir
+   nyimpen) jadi momen paling rawan exception ini, bikin simpanan
+   terakhir GAGAL diam-diam.
+
+Fix:
+- `_leavingChapter()` (baru) — dipanggil SEBELUM state chapter/halaman
+  berubah (`_changeChapter`, `_changeSourceChapter`, `_jumpToBookmark`):
+  cek ulang posisi scroll sekarang (`_computeCurrentPage()`, nangkep
+  kasus #3) lalu flush SEKARANG progres yang masih nunggu di debounce
+  (`_flushPendingSave()`, nangkep kasus #1) — sebelum apa pun soal
+  chapter baru disentuh.
+- `_saveProgress()` — tambah guard di awal: kalau masih fetch daftar
+  chapter/halaman asli (`!_pageCountKnown`) DAN belum ada error permanen,
+  reschedule lagi (bukan simpan pakai mock, bukan drop) — nangkep
+  kasus #2.
+- `_historyNotifier`/`_libraryNotifier` — diambil SEKALI di `initState`
+  (`ref.read(...)`) dan disimpan sebagai field, dipakai ulang di
+  `_saveProgress()` alih-alih `ref.read(...)` fresh tiap kali — provider-
+  nya sendiri hidup sepanjang sesi app (bukan `.autoDispose`), jadi aman
+  dipanggil kapan saja termasuk dari `dispose()` — nangkep kasus #4.
+- Sekalian ketemu (efek samping investigasi ini, bukan salah satu dari 3
+  yang dilaporkan tapi di titik kode yang sama): `WakelockPlus.enable()`/
+  `.disable()` di `_applyWakelock()` & `dispose()` tidak pernah
+  ditangkap errornya — kalau API wake-lock platform nolak (izin, device
+  tertentu), jadi unhandled Future rejection. Dibungkus `.catchError`.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos,
+  `flutter build web` sukses. Smoke-test web berulang (headless,
+  FAKE_AUTH) — reproduksi persis skenario "ganti chapter cepat berkali-
+  kali" (yang sebelumnya micu exception `ref` tak tertangani DAN unhandled
+  wakelock rejection, keduanya kekonfirmasi lewat stack trace) — sekarang
+  bersih tanpa satu pun page/console error, chapter berpindah normal
+  sampai mentok "Sudah chapter terakhir" tanpa crash.

@@ -93,6 +93,22 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   bool _chaptersLoading = false;
   String? _chaptersError;
 
+  /// Diambil sekali di [initState] dan dipakai lagi lewat referensi ini —
+  /// BUKAN `ref.read(...)` fresh tiap kali — karena [_saveProgress] juga
+  /// dipanggil dari [dispose] (lewat [_flushPendingSave], nyimpen progres
+  /// terakhir pas Reader ditutup). Riverpod nolak `ref.read`/`ref.watch`
+  /// begitu widget "about to or has been unmounted" (`Bad state: Using
+  /// "ref" when a widget is about to or has been unmounted is unsafe`,
+  /// ke-reproduksi lewat smoke-test) — itu salah satu penyebab konkret
+  /// laporan "progres kadang gak kesimpan": justru pas KELUAR dari
+  /// chapter itulah kesempatan terakhir buat nyimpen, dan itu juga momen
+  /// paling rawan exception ini. Notifier-nya sendiri aman disimpan &
+  /// dipanggil kapan saja (provider-nya bukan `.autoDispose`, hidup
+  /// sepanjang sesi app) — cuma `ref.read(...)`-nya yang harus dihindari
+  /// begitu widget mulai di-unmount.
+  late final HistoryNotifier _historyNotifier;
+  late final LibraryNotifier _libraryNotifier;
+
   bool get _isRealSource => widget.comic.sourceMangaUrl != null;
   int get _totalPages => _realPages?.length ?? _mockTotalPages;
 
@@ -108,14 +124,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    _historyNotifier = ref.read(historyProvider.notifier);
+    _libraryNotifier = ref.read(libraryProvider.notifier);
     _scrollController.addListener(_onScroll);
     _applyWakelock();
     if (_isRealSource) {
       final chapters = widget.sourceChapters;
       if (chapters != null) {
         _chapters = chapters;
-        final idx =
-            chapters.indexWhere((c) => c.url == widget.initialChapterUrl);
+        final idx = chapters.indexWhere(
+          (c) => c.url == widget.initialChapterUrl,
+        );
         _sourceChapterIndex = idx == -1 ? 0 : idx;
         _loadRealPages();
       } else {
@@ -130,12 +149,46 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   @override
   void dispose() {
-    final pendingSave = _progressDebounce?.isActive ?? false;
-    _progressDebounce?.cancel();
-    if (pendingSave) _saveProgress();
+    _flushPendingSave();
     _scrollController.dispose();
-    WakelockPlus.disable();
+    WakelockPlus.disable().catchError(
+      (Object e) => debugPrint('Wakelock gagal: $e'),
+    );
     super.dispose();
+  }
+
+  /// Simpan SEKARANG kalau ada progres yang masih nunggu di debounce,
+  /// alih-alih dibiarkan kena `cancel()` begitu `_scheduleProgressSave()`
+  /// dipanggil lagi (lihat [_leavingChapter]). Aman dipanggil dari
+  /// `dispose()` — tidak ada `setState`.
+  void _flushPendingSave() {
+    final pending = _progressDebounce?.isActive ?? false;
+    _progressDebounce?.cancel();
+    if (pending) _saveProgress();
+  }
+
+  /// Dipanggil SEBELUM state chapter/halaman berpindah (ganti chapter,
+  /// lompat ke bookmark) — dua bug yang ini benerin:
+  ///
+  /// 1. **Progres ketiban chapter baru**: `_progressDebounce` cuma SATU
+  ///    Timer buat seluruh sesi baca. Kalau user pindah chapter SEBELUM
+  ///    debounce 2 detik chapter LAMA sempat jalan,
+  ///    `_scheduleProgressSave()` yang dipanggil abis pindah nge-`cancel()`
+  ///    timer lama itu tanpa pernah nyimpennya — progres chapter lama
+  ///    ("2/24" dst) HILANG, ketiban timer baru yang bakal nyimpen data
+  ///    chapter BARU begitu jalan. Flush dulu progres yang lagi ditunggu
+  ///    SEBELUM ganti apa pun.
+  /// 2. **"Sudah habis" gak kedetek**: tanda chapter selesai
+  ///    (`markChapterRead`) cuma jalan kalau `_page` sempat kebaca sebagai
+  ///    halaman terakhir lewat scroll listener (`_computeCurrentPage`,
+  ///    lihat catatan di sana). Kalau user langsung tap tombol
+  ///    Next/footer "Akhir chapter" pas SUDAH sebenarnya sampai bawah tapi
+  ///    listener scroll-nya belum sempat kepanggil, chapter itu ketinggal
+  ///    tidak ketandain selesai. Cek posisi sekali lagi di sini,
+  ///    SEBELUM pindah, biar kesempatan terakhir ini kepakai.
+  void _leavingChapter() {
+    _computeCurrentPage();
+    _flushPendingSave();
   }
 
   /// Fetch daftar chapter sendiri kalau pemanggil (mis. tombol "play" di
@@ -169,8 +222,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       final index = byUrl != -1 ? byUrl : chapters.length - widget.chapter;
       setState(() {
         _chapters = chapters;
-        _sourceChapterIndex =
-            (index >= 0 && index < chapters.length) ? index : 0;
+        _sourceChapterIndex = (index >= 0 && index < chapters.length)
+            ? index
+            : 0;
         _chaptersLoading = false;
       });
       _loadRealPages();
@@ -234,9 +288,31 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   void _saveProgress() {
+    if (mounted &&
+        _isRealSource &&
+        !_pageCountKnown &&
+        _pagesError == null &&
+        _chaptersError == null) {
+      // Total halaman ASLI belum diketahui (masih fetch daftar chapter
+      // atau daftar halamannya, `_totalPages` jatuh ke nilai mock 8) —
+      // kalau tetap disimpan sekarang, "pages" yang kesimpan ke
+      // History/dipakai buat cek "sudah tamat" jadi SALAH (mock, bukan
+      // angka asli mis. 24), dan begitu chapter lain dibuka nilainya
+      // ketiban lagi lewat [_leavingChapter] — itu bug "progres kadang
+      // gak kesimpan / kesimpan tapi kegantI ke angka salah" yang
+      // dilaporkan. Coba lagi sebentar begitu halaman aslinya sudah
+      // ketahuan (bukan drop begitu saja). Berhenti coba lagi kalau
+      // fetch-nya sudah gagal permanen (`_pagesError`/`_chaptersError`),
+      // atau widget-nya sudah/lagi di-unmount (`!mounted`, dipanggil dari
+      // [dispose] lewat [_flushPendingSave]) — reschedule di situ percuma
+      // (Timer barunya bakal manggil method ini lagi di State yang sudah
+      // dibuang, cuma numpuk exception baru), lebih baik simpan seadanya
+      // sekarang daripada progresnya ilang sama sekali.
+      _scheduleProgressSave();
+      return;
+    }
     final comic = widget.comic;
-    ref
-        .read(historyProvider.notifier)
+    _historyNotifier
         .upsert(
           comicId: comic.id,
           title: comic.title,
@@ -249,8 +325,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           chapterLabel: _chapterLabel,
         )
         .catchError((Object e) => _reportSaveError('history', e));
-    ref
-        .read(libraryProvider.notifier)
+    _libraryNotifier
         .updateProgress(comic.id, read: _chapter)
         .catchError((Object e) => _reportSaveError('library', e));
     // Tandai chapter ini selesai kalau sudah di halaman terakhir — terpisah
@@ -258,8 +333,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     // bukan penanda per-chapter yang dipakai buat tampilan "Dibaca" di
     // Comic Detail).
     if (_pageCountKnown && _page + 1 >= _totalPages) {
-      ref
-          .read(libraryProvider.notifier)
+      _libraryNotifier
           .markChapterRead(comic.id, _chapter)
           .catchError((Object e) => _reportSaveError('tandai selesai', e));
     }
@@ -277,11 +351,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   void _applyWakelock() {
     final keepOn = ref.read(readerSettingsProvider).keepScreenOn;
-    if (keepOn) {
-      WakelockPlus.enable();
-    } else {
-      WakelockPlus.disable();
-    }
+    // `.catchError` — platform wake lock API bisa nolak (mis. web tanpa
+    // izin/gesture pengguna, atau device tertentu) dan itu Future gagal
+    // yang dibiarkan begitu saja (tidak di-await/ditangkap) jadi unhandled
+    // exception yang nyembul belakangan (ke-reproduksi lewat smoke-test:
+    // muncul persis pas Reader dibuka/ditutup, dua titik ini dipanggil).
+    // Fitur keep-screen-on gagal tidak boleh sampai ganggu baca/nyimpen
+    // progres — cukup log, jangan biarkan nyembul jadi error tak tertangani.
+    final future = keepOn ? WakelockPlus.enable() : WakelockPlus.disable();
+    future.catchError((Object e) => debugPrint('Wakelock gagal: $e'));
   }
 
   /// Perkiraan tinggi satu blok halaman webtoon + gap — dipakai untuk
@@ -344,7 +422,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final viewportBox =
         _viewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.attached) return;
-    final targetY = viewportBox.localToGlobal(Offset.zero).dy +
+    final targetY =
+        viewportBox.localToGlobal(Offset.zero).dy +
         viewportBox.size.height * 0.4;
     // Buang key halaman yang sudah tidak ter-mount (di luar cache
     // extent) — biar peta tidak terus membesar sepanjang chapter panjang.
@@ -391,6 +470,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       );
       return;
     }
+    _leavingChapter();
     setState(() {
       _chapter = next;
       _page = 0;
@@ -416,6 +496,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       );
       return;
     }
+    _leavingChapter();
     setState(() {
       _sourceChapterIndex = newIndex;
       _chapter = chapters.length - newIndex;
@@ -477,17 +558,30 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           children: [
             if (_isRealSource && _chaptersLoading)
               const Center(
-                child: AppSpinner(size: 30, strokeWidth: 2.5, color: Colors.white),
+                child: AppSpinner(
+                  size: 30,
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
               )
             else if (_isRealSource && _chaptersError != null)
               _buildLoadError(
-                  'Gagal memuat daftar chapter.\n$_chaptersError', _loadChapterList)
+                'Gagal memuat daftar chapter.\n$_chaptersError',
+                _loadChapterList,
+              )
             else if (_isRealSource && _pagesLoading)
               const Center(
-                child: AppSpinner(size: 30, strokeWidth: 2.5, color: Colors.white),
+                child: AppSpinner(
+                  size: 30,
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
               )
             else if (_isRealSource && _pagesError != null)
-              _buildLoadError('Gagal memuat halaman.\n$_pagesError', _loadRealPages)
+              _buildLoadError(
+                'Gagal memuat halaman.\n$_pagesError',
+                _loadRealPages,
+              )
             else if (settings.isWebtoon)
               _buildWebtoon(settings)
             else
@@ -499,10 +593,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   color: Colors.black.withValues(alpha: dimOpacity),
                 ),
               ),
-            if (_showChrome) ...[
-              _buildTopToolbar(),
-              _buildBottomToolbar(),
-            ],
+            if (_showChrome) ...[_buildTopToolbar(), _buildBottomToolbar()],
           ],
         ),
       ),
@@ -535,11 +626,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(11),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
                 ),
-                child: Text('Coba Lagi',
-                    style: AppTypography.jakarta(
-                        size: 13, weight: FontWeight.w700, color: Colors.white)),
+                child: Text(
+                  'Coba Lagi',
+                  style: AppTypography.jakarta(
+                    size: 13,
+                    weight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],
@@ -551,9 +649,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// Blok placeholder demo (gradient + "PAGE N") — dipakai komik lokal,
   /// dan sebagai fallback loading/error untuk gambar asli.
   Widget _mockPageBlock(int i, {bool large = false}) => DecoratedBox(
-        decoration: BoxDecoration(gradient: _pageGradient(i)),
-        child: _PageMock(number: i + 1, large: large),
-      );
+    decoration: BoxDecoration(gradient: _pageGradient(i)),
+    child: _PageMock(number: i + 1, large: large),
+  );
 
   /// Halaman webtoon: lebar penuh, tinggi menyesuaikan rasio ASLI gambar
   /// (bukan dipaksa 2:3+cover — itu yang bikin gambar kepotong).
@@ -562,7 +660,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   Widget _webtoonPage(int i, double width, double dpr) {
     final pages = _realPages;
     if (pages == null || i >= pages.length) {
-      return SizedBox(width: width, height: width * 1.5, child: _mockPageBlock(i));
+      return SizedBox(
+        width: width,
+        height: width * 1.5,
+        child: _mockPageBlock(i),
+      );
     }
     // RepaintBoundary + FilterQuality.low: raster tiap halaman diisolasi
     // (scroll tidak memicu repaint halaman lain) dan digambar lebih
@@ -582,7 +684,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(gradient: _pageGradient(i)),
                   child: const Center(
-                    child: AppSpinner(size: 22, strokeWidth: 2, color: Colors.white),
+                    child: AppSpinner(
+                      size: 22,
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -656,31 +762,37 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           child: isReal
               ? RepaintBoundary(
                   child: Image.network(
-                  pages[_page].imageUrl,
-                  fit: BoxFit.contain,
-                  cacheWidth: (MediaQuery.sizeOf(context).width *
-                          MediaQuery.devicePixelRatioOf(context))
-                      .round(),
-                  filterQuality: FilterQuality.low,
-                  gaplessPlayback: true,
-                  loadingBuilder: (context, child, progress) => progress == null
-                      ? child
-                      : AspectRatio(
-                          aspectRatio: AppDimens.coverAspectRatio,
-                          child: DecoratedBox(
-                            decoration:
-                                BoxDecoration(gradient: _pageGradient(_page)),
-                            child: const Center(
-                              child: AppSpinner(
-                                  size: 26, strokeWidth: 2.5, color: Colors.white),
+                    pages[_page].imageUrl,
+                    fit: BoxFit.contain,
+                    cacheWidth:
+                        (MediaQuery.sizeOf(context).width *
+                                MediaQuery.devicePixelRatioOf(context))
+                            .round(),
+                    filterQuality: FilterQuality.low,
+                    gaplessPlayback: true,
+                    loadingBuilder: (context, child, progress) =>
+                        progress == null
+                        ? child
+                        : AspectRatio(
+                            aspectRatio: AppDimens.coverAspectRatio,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: _pageGradient(_page),
+                              ),
+                              child: const Center(
+                                child: AppSpinner(
+                                  size: 26,
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                  errorBuilder: (_, _, _) => AspectRatio(
-                    aspectRatio: AppDimens.coverAspectRatio,
-                    child: _mockPageBlock(_page, large: true),
+                    errorBuilder: (_, _, _) => AspectRatio(
+                      aspectRatio: AppDimens.coverAspectRatio,
+                      child: _mockPageBlock(_page, large: true),
+                    ),
                   ),
-                ),
                 )
               : AspectRatio(
                   aspectRatio: AppDimens.coverAspectRatio,
@@ -721,7 +833,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         onTap: () {}, // jangan toggle chrome saat tap toolbar
         child: Container(
           padding: EdgeInsets.fromLTRB(
-              12, MediaQuery.paddingOf(context).top + 8, 12, 12),
+            12,
+            MediaQuery.paddingOf(context).top + 8,
+            12,
+            12,
+          ),
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -811,12 +927,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     width: 44,
                     child: Text(
                       _pageCountKnown ? '${_page + 1} / $_totalPages' : '–',
-                      style: AppTypography.jakarta(
-                        size: 12,
-                        weight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: 0.7),
-                      ).copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()]),
+                      style:
+                          AppTypography.jakarta(
+                            size: 12,
+                            weight: FontWeight.w400,
+                            color: Colors.white.withValues(alpha: 0.7),
+                          ).copyWith(
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -842,8 +960,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     child: _chapterNavButton(
                       onTap: () => _changeChapter(-1),
                       children: [
-                        const Icon(AppIcons.back,
-                            size: 15, color: Colors.white),
+                        const Icon(
+                          AppIcons.back,
+                          size: 15,
+                          color: Colors.white,
+                        ),
                         const SizedBox(width: 6),
                         _navLabel('Prev'),
                       ],
@@ -860,8 +981,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         color: Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(11),
                       ),
-                      child: const Icon(LucideIcons.slidersVertical,
-                          size: 19, color: Colors.white),
+                      child: const Icon(
+                        LucideIcons.slidersVertical,
+                        size: 19,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -871,8 +995,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                       children: [
                         _navLabel('Next'),
                         const SizedBox(width: 6),
-                        const Icon(AppIcons.forward,
-                            size: 15, color: Colors.white),
+                        const Icon(
+                          AppIcons.forward,
+                          size: 15,
+                          color: Colors.white,
+                        ),
                       ],
                     ),
                   ),
@@ -886,13 +1013,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   Text _navLabel(String text) => Text(
-        text,
-        style: AppTypography.jakarta(
-          size: 12.5,
-          weight: FontWeight.w600,
-          color: Colors.white,
-        ),
-      );
+    text,
+    style: AppTypography.jakarta(
+      size: 12.5,
+      weight: FontWeight.w600,
+      color: Colors.white,
+    ),
+  );
 
   Widget _chapterNavButton({
     required VoidCallback onTap,
@@ -976,7 +1103,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final comic = widget.comic;
     final wasBookmarked = ref
         .read(bookmarksProvider)
-        .any((b) => b.id == BookmarksNotifier.idFor(comic.id, _chapter, _page + 1));
+        .any(
+          (b) => b.id == BookmarksNotifier.idFor(comic.id, _chapter, _page + 1),
+        );
     ref
         .read(bookmarksProvider.notifier)
         .toggle(
@@ -1002,14 +1131,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final items = ref
         .read(bookmarksProvider.notifier)
         .forComic(comic.id)
-        .map((b) => BookmarkListItem(
-              id: b.id,
-              chNum: b.chNum,
-              chapterLabel: b.chapterLabel,
-              page: b.page,
-              pages: b.pages,
-              chapterUrl: b.chapterUrl,
-            ))
+        .map(
+          (b) => BookmarkListItem(
+            id: b.id,
+            chNum: b.chNum,
+            chapterLabel: b.chapterLabel,
+            page: b.page,
+            pages: b.pages,
+            chapterUrl: b.chapterUrl,
+          ),
+        )
         .toList();
     showBookmarkListSheet(
       context,
@@ -1031,14 +1162,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// halaman targetnya kelihatan dan koreksi otomatis lewat
   /// [_computeCurrentPage] jalan.
   void _jumpToBookmark(BookmarkListItem item) {
+    _leavingChapter();
     if (_isRealSource) {
       final chapters = _chapters;
       if (chapters == null) return; // daftar chapter belum selesai di-fetch
       final byUrl = item.chapterUrl == null
           ? -1
           : chapters.indexWhere((c) => c.url == item.chapterUrl);
-      final targetIndex =
-          byUrl != -1 ? byUrl : chapters.length - item.chNum;
+      final targetIndex = byUrl != -1 ? byUrl : chapters.length - item.chNum;
       if (targetIndex < 0 || targetIndex >= chapters.length) return;
       setState(() {
         _sourceChapterIndex = targetIndex;
@@ -1050,8 +1181,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _loadRealPages().then((_) {
         if (!mounted) return;
-        WidgetsBinding.instance
-            .addPostFrameCallback((_) => _seekToPage(_page));
+        WidgetsBinding.instance.addPostFrameCallback((_) => _seekToPage(_page));
       });
     } else {
       setState(() {
@@ -1110,12 +1240,12 @@ class _PageMock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget panel() => Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppColors.sheetTopBorder),
-          ),
-        );
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.sheetTopBorder),
+      ),
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
