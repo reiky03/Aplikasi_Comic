@@ -57,22 +57,64 @@ class HistoryScreen extends ConsumerWidget {
                           'mudah dilanjutkan.',
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
-                    itemCount: history.length,
-                    itemBuilder: (context, i) => _HistoryRow(
-                      key: ValueKey(history[i].comicId),
-                      entry: history[i],
-                      coverUrl:
-                          history[i].coverUrl ??
-                          libraryById[history[i].comicId]?.coverUrl,
-                      onTap: () => _openDetail(context, ref, history[i]),
-                      onPlay: () => _resumeReading(context, ref, history[i]),
-                    ),
-                  ),
+                : _buildFeed(context, ref, history, libraryById),
           ),
         ],
       ),
+    );
+  }
+
+  /// Feed History dikelompokkan per tanggal ("Hari ini", "Kemarin", "2 hari
+  /// lalu", dst) — header tanggal diselipkan sebagai baris tersendiri di
+  /// antara baris entri, sama pola dengan tab Updates biar konsisten &
+  /// gampang di-track. Tetap lazy (`ListView.builder`) supaya riwayat
+  /// panjang tidak nge-lag: `rows` di-flatten jadi campuran `String`
+  /// (header) + `HistoryEntry` (baris komik). `history` sendiri sudah
+  /// terurut `readAt` desc dari notifier, jadi urutan grup otomatis benar.
+  Widget _buildFeed(
+    BuildContext context,
+    WidgetRef ref,
+    List<HistoryEntry> history,
+    Map<String, Comic> libraryById,
+  ) {
+    final rows = <Object>[];
+    String? currentGroup;
+    for (final entry in history) {
+      if (entry.dateGroup != currentGroup) {
+        currentGroup = entry.dateGroup;
+        rows.add(currentGroup);
+      }
+      rows.add(entry);
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
+      itemCount: rows.length,
+      itemBuilder: (context, i) {
+        final row = rows[i];
+        if (row is String) {
+          return Padding(
+            key: ValueKey('header:$row:$i'),
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            child: Text(
+              row.toUpperCase(),
+              style: AppTypography.jakarta(
+                size: 12,
+                weight: FontWeight.w800,
+                letterSpacing: 0.6,
+                color: AppColors.textMuted,
+              ),
+            ),
+          );
+        }
+        final entry = row as HistoryEntry;
+        return _HistoryRow(
+          key: ValueKey(entry.comicId),
+          entry: entry,
+          coverUrl: entry.coverUrl ?? libraryById[entry.comicId]?.coverUrl,
+          onTap: () => _openDetail(context, ref, entry),
+          onPlay: () => _resumeReading(context, ref, entry),
+        );
+      },
     );
   }
 

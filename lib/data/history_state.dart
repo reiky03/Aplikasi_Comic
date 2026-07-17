@@ -66,6 +66,24 @@ class HistoryEntry {
   /// render (bukan disimpan), sesuai docs/DATABASE.md.
   String get time => _relativeLabel(readAt);
 
+  /// Label grup tanggal ("Hari ini", "Kemarin", "2 hari lalu", dst) —
+  /// dipakai buat header pemisah di layar History, sama persis dengan
+  /// [UpdateEntry.dateGroup] biar dua tab konsisten. Dihitung dari
+  /// perbedaan HARI kalender (bukan selisih jam mentah) supaya jam 23:00
+  /// vs 01:00 keesokan harinya tetap kebaca beda hari, bukan "sama-sama <24
+  /// jam".
+  String get dateGroup {
+    final now = DateTime.now();
+    final diff = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(readAt.year, readAt.month, readAt.day))
+        .inDays;
+    if (diff <= 0) return 'Hari ini';
+    if (diff == 1) return 'Kemarin';
+    if (diff < 7) return '$diff hari lalu';
+    if (diff < 30) return '${(diff / 7).floor()} minggu lalu';
+    return '${(diff / 30).floor()} bulan lalu';
+  }
+
   Map<String, dynamic> toMap() => {
     'title': title,
     'sourceName': src,
