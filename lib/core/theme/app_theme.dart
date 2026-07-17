@@ -13,8 +13,9 @@ export 'app_icons.dart';
 export 'app_motion.dart';
 export 'app_typography.dart';
 
-/// Tema "Kizen" — dark-first, satu-satunya tema.
-/// Toggle tema terang di Settings masih dekoratif (TODO), sesuai handoff.
+/// Tema "Kizen" — dark-first, satu-satunya tema (sesuai handoff desain).
+/// Baris "Tema" di Settings sengaja cuma info ("Gelap"), bukan tombol
+/// pilihan — tidak ada opsi Terang/Ikuti sistem yang bisa dipilih.
 abstract final class AppTheme {
   /// Status bar: ikon terang di atas background gelap.
   static const SystemUiOverlayStyle systemOverlayStyle = SystemUiOverlayStyle(

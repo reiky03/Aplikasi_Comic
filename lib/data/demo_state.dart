@@ -14,14 +14,3 @@ final demoLibEmptyProvider = NotifierProvider<DemoFlag, bool>(DemoFlag.new);
 final demoHistEmptyProvider = NotifierProvider<DemoFlag, bool>(DemoFlag.new);
 final demoBrowseEmptyProvider = NotifierProvider<DemoFlag, bool>(DemoFlag.new);
 final demoRepoEmptyProvider = NotifierProvider<DemoFlag, bool>(DemoFlag.new);
-
-/// Label tema aktif — dekoratif (dark-first; Terang/Sistem menyusul).
-class ThemeModeLabel extends Notifier<String> {
-  @override
-  String build() => 'Gelap';
-
-  void set(String label) => state = label;
-}
-
-final themeModeLabelProvider =
-    NotifierProvider<ThemeModeLabel, String>(ThemeModeLabel.new);

@@ -1136,3 +1136,31 @@ struktur situsnya cocok dan bisa dibaca native (bukan cuma WebView).
   & pemanggilannya sudah diverifikasi lewat analyze/test yang cover
   parser MangaThemesia/NatsuID yang sudah ada testnya sendiri
   (`mangathemesia_source_test.dart`/`natsuid_source_test.dart`).
+
+### 2026-07-17 — Setelan: hapus toggle Tema yang fake (Terang/Ikuti sistem)
+
+User minta menu Setelan dibikin beneran jalan. Diaudit satu-satu: Reader
+Settings, Sinkronisasi & Cadangan, Keluar, dan semua toggle demo state
+ternyata sudah beneran berfungsi. Satu-satunya yang masih murni dekoratif
+adalah baris "Tema" — sheet-nya nawarin pilihan "Gelap"/"Terang"/"Ikuti
+sistem" tapi motong ke `ThemeModeLabel` doang (cuma nyimpen teks), TIDAK
+pernah benar-benar ganti `ThemeMode`/`ColorScheme` aplikasi. Ditanya user:
+implementasikan tema Terang sungguhan (kerjaan besar — `AppColors.xxx`
+dipanggil sebagai konstanta statis langsung di puluhan file di seluruh
+app, bukan lewat `Theme.of(context)`, jadi butuh refactor besar biar
+warna ikut brightness aktif), atau jujurkan tampilannya jadi dark-only
+tanpa pilihan palsu. User pilih opsi kedua.
+
+- `settings_screen.dart` — baris "Tema" sekarang cuma nampilin teks statis
+  "Gelap" tanpa `onTap`/chevron (bukan lagi tombol yang buka sheet
+  pilihan) — gak ada lagi UI yang keliatan interaktif tapi sebenarnya
+  gak ngefek apa-apa. `_openThemeSheet` (sheet pilihan tema) dihapus
+  total, `_menuRow`'s `onTap` jadi nullable buat dukung baris info-only
+  ini (InkWell otomatis non-interaktif kalau `onTap` null).
+- `demo_state.dart` — `ThemeModeLabel`/`themeModeLabelProvider` dihapus
+  (sudah tidak dipakai di manapun lagi).
+- `app_theme.dart` — komentar diperbarui, dari "(TODO)" jadi penjelasan
+  final: baris Tema di Settings sengaja cuma info, bukan pilihan.
+- Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos
+  (`-j 1`, semua file test termasuk mangathemesia/natsuid ikut jalan),
+  `flutter build web` sukses tanpa error kompilasi.

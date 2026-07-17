@@ -18,7 +18,6 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider);
-    final themeLabel = ref.watch(themeModeLabelProvider);
 
     final name = user?.name ?? 'Adin Pratama';
     final email = user?.email ?? 'adin.pratama@gmail.com';
@@ -118,14 +117,16 @@ class SettingsScreen extends ConsumerWidget {
                     icon: LucideIcons.moon,
                     label: 'Tema',
                     trailing: Text(
-                      themeLabel,
+                      'Gelap',
                       style: AppTypography.jakarta(
                         size: 13,
                         weight: FontWeight.w400,
                         color: AppColors.textMuted,
                       ),
                     ),
-                    onTap: () => _openThemeSheet(context, ref),
+                    // Dark-first by design, bukan pilihan — tanpa onTap/chevron
+                    // supaya gak keliatan kayak tombol yang beneran ganti tema.
+                    onTap: null,
                   ),
                   _menuRow(
                     icon: LucideIcons.alignLeft,
@@ -220,7 +221,7 @@ class SettingsScreen extends ConsumerWidget {
     required IconData icon,
     required String label,
     required Widget trailing,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
     bool showDivider = true,
   }) {
     return InkWell(
@@ -295,58 +296,6 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _openThemeSheet(BuildContext context, WidgetRef ref) {
-    showAppSheet<void>(
-      context,
-      builder: (sheetContext) => Consumer(
-        builder: (context, ref, _) {
-          final current = ref.watch(themeModeLabelProvider);
-          void pick(String label) {
-            ref.read(themeModeLabelProvider.notifier).set(label);
-            Navigator.pop(sheetContext);
-            AppToast.show(context, 'Tema: $label');
-          }
-
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const AppSheetTitle('Tema aplikasi'),
-              AppSheetOptionRow(
-                label: 'Gelap',
-                selected: current == 'Gelap',
-                showTopDivider: false,
-                onTap: () => pick('Gelap'),
-              ),
-              AppSheetOptionRow(
-                label: 'Terang',
-                selected: current == 'Terang',
-                onTap: () => pick('Terang'),
-              ),
-              AppSheetOptionRow(
-                label: 'Ikuti sistem',
-                selected: current == 'Ikuti sistem',
-                onTap: () => pick('Ikuti sistem'),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-                child: Text(
-                  'Prototype ini dark-first — mode Terang/Sistem tersedia di '
-                  'versi final.',
-                  style: AppTypography.jakarta(
-                    size: 11,
-                    weight: FontWeight.w400,
-                    color: AppColors.textFaintest,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
       ),
     );
   }

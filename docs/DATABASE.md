@@ -19,7 +19,7 @@ users/{uid}                          ← profil + meta sync
 ├── updates/{comicId}                ← chapter baru terdeteksi per komik (spek 05)
 └── settings/
     ├── reader                       ← preferensi reader (spek 13)
-    └── app                          ← bahasa aktif, bookmark repo, tema (spek 08/14)
+    └── app                          ← bahasa aktif, bookmark repo (spek 08)
 ```
 
 ## Detail per koleksi
@@ -155,7 +155,10 @@ keseluruhan pengecekan.
 |---|---|---|
 | `activeLangs` | array<string> | `["ID","EN"]` — global, bukan per repo (spek 08) |
 | `repoBookmarks` | array<string> | id `rp-{repoId}-{sourceId}` — terpisah dari sources (keputusan desain: bookmark ≠ Sumber Saya) |
-| `themeMode` | string | "Gelap" (dekoratif dulu) |
+
+> Tidak ada field `themeMode` — app dark-only by design (lihat
+> `app_theme.dart`), baris "Tema" di Settings cuma info statis "Gelap",
+> tidak ada state yang perlu disimpan/disinkronkan.
 
 ## Yang sengaja TIDAK di-cloud
 
