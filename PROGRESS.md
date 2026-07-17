@@ -27,6 +27,79 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-07-17 — Hardening source/repository + Updates dan Settings final
+- Runtime extension Android sekarang punya compatibility stub yang lebih luas,
+  cache hasil request, resolver source stabil berdasarkan package/source ID,
+  dan bridge penuh untuk popular/latest/search/detail/chapter/page. Source dari
+  repo yang APK-nya terpasang bisa dipakai sebagai `MangaSource` sungguhan.
+- Universal parser diperluas untuk HTML, JSON/REST, WordPress, script-embedded
+  image, header/cookie sesi WebView, dan berbagai pola reader/chapter. Parser
+  khusus Asura juga ditambah; gambar reader mempertahankan rasio/header asli.
+- Repository otomatis refresh index saat tab dibuka atau lewat tombol refresh,
+  mengikuti perubahan domain/base URL dan membandingkan versionCode/versionName
+  extension. Source terpasang naik ke atas, tersedia install/update/uninstall,
+  pencarian tetap fixed di atas, dan bookmark repo lama diganti konsep install.
+- Progress parsial Reader sekarang disimpan per chapter memakai identitas URL,
+  jadi posisi seperti 3/16 dan 4/16 dari dua chapter tidak saling overwrite.
+  Reader juga memakai lazy image, cacheWidth, precache terkontrol, dan rasio
+  source supaya scroll profile lebih ringan tanpa memotong gambar.
+- Feed Updates sekarang membuat satu snapshot chapter terbaru untuk setiap komik
+  Library yang berhasil diperiksa, menyimpan `chapterUrl` stabil, cover, dan
+  label asli. Refresh tanpa perubahan tidak menulis ulang timestamp/unread;
+  entri komik yang sudah keluar dari Library tidak ditampilkan.
+- Sumber Saya, source repo, repository list, dan preview memakai favicon situs
+  dengan fallback berlapis. Label bahasa ID/EN dibuat lebih terang.
+- Tentang disederhanakan menjadi `@reiky03`, pemeriksaan pembaruan, dan lisensi
+  open source. Tombol Keluar kini meminta konfirmasi; logout memutus Firebase
+  dan mereset seluruh provider data akun, lalu provider di-reset lagi sebelum
+  sync login berikutnya agar data antarakun tidak bercampur.
+- Verifikasi: `flutter analyze lib test` bersih, seluruh 48 test lolos, APK
+  profile berhasil dibuild dan dipasang ke Pixel 7 Pro serta iQOO I2508.
+
+### 2026-07-17 — Repository runtime Tachiyomi + fix gambar reader Komiku
+- Android extension runtime diperluas dari POC popular menjadi bridge penuh:
+  popular/latest/search, manga details, chapter list, dan page list dari APK
+  extension Tachiyomi/Mihon yang terpasang di device.
+- `ExtensionRuntimeSource` ditambahkan sebagai implementasi `MangaSource`; source
+  Repository yang punya `pkg` sekarang diarahkan ke `extension-runtime:<pkg>`.
+  Ini membuat source repo seperti Komiku bisa muncul di Source Detail, membuka
+  detail manga, mengambil daftar chapter, dan masuk Reader tanpa parser Dart
+  manual khusus per-web.
+- Repository tab punya pencarian source; index Keiyoushi/Yuzono tetap dibaca dari
+  metadata repo, dengan fallback parser universal/WebView untuk source yang belum
+  punya APK runtime terpasang.
+- Validasi Pixel 7 Pro: APK profile terinstall, Komiku repository/source detail
+  memuat daftar populer, detail One Piece, chapter list 1207 item, dan reader
+  berhasil membuka gambar asli.
+- Fix tambahan untuk `KomikuSource` manual: image reader sekarang membawa header
+  browser-like (`Referer`, `Accept`, `Accept-Language`, `Sec-Fetch-*`) sehingga
+  `img.komiku.org` tidak lagi 403/placeholder. Sebelum fix log menunjukkan
+  `HTTP request failed, statusCode: 403` dengan `headers={}`.
+- Verifikasi: `flutter analyze lib test` bersih, `flutter test` lolos 29/29,
+  `flutter build apk --profile` sukses, dan APK profile sudah di-install ke
+  Pixel.
+
+### 2026-07-17 — Installer extension repo + domain matcher Sumber Saya
+- Repository row sekarang membaca package extension terpasang via
+  `ExtensionRuntimeBridge.listInstalledExtensions()`; row menampilkan tombol
+  status kecil: centang kalau APK sudah terpasang, download kalau belum.
+- Android runtime menambah `installExtensionApk`: download APK dari URL repo ke
+  cache app, lalu buka Android Package Installer lewat `FileProvider`.
+  Manifest ditambah `REQUEST_INSTALL_PACKAGES` dan provider cache
+  `@xml/file_paths`; dependency AndroidX Core ditambahkan untuk `FileProvider`.
+- URL APK dibentuk dari metadata repository: contoh
+  `.../repo/index.min.json` + `tachiyomi-id.komiku-v1.4.21.apk` menjadi
+  `.../repo/apk/tachiyomi-id.komiku-v1.4.21.apk`.
+- Add Source / Sumber Saya sekarang mencocokkan domain URL manual ke source
+  repository (`baseUrl`). Kalau cocok dan source punya `pkg`, parser yang
+  disimpan menjadi `extension-runtime:<pkg>`, sehingga URL manual bisa pakai
+  runtime extension juga.
+- Resolver global (Comic Detail, Reader, Updates) ikut membaca repository, jadi
+  sumber lama di Sumber Saya yang domainnya cocok repo bisa naik ke runtime
+  extension tanpa perlu ditambah ulang.
+- Verifikasi: `flutter analyze lib test` bersih, `flutter test` lolos 31/31,
+  `:app:compileProfileKotlin` sukses.
+
 ### 2026-07-16 — Firebase tersambung (Android/iOS/Web)
 - User berhasil `flutterfire configure --project=kizen-da39f` (Android, iOS, Web) —
   `lib/firebase_options.dart`, `android/app/google-services.json`,
@@ -1403,3 +1476,274 @@ Fix:
   wakelock rejection, keduanya kekonfirmasi lewat stack trace) — sekarang
   bersih tanpa satu pun page/console error, chapter berpindah normal
   sampai mentok "Sudah chapter terakhir" tanpa crash.
+
+### 2026-07-17 — Fix progress parsial per-chapter tidak boleh saling overwrite
+
+User tes di Pixel 7 Pro profile mode: performa jauh lebih lancar daripada
+debug, tapi bug progres masih terasa secara spesifik: baca chapter 300
+berhenti di "Hal 3/16", lalu baca chapter 298 berhenti di "Hal 4/16" —
+tanda chapter 300 hilang dan pindah ke chapter 298.
+
+Root cause: desain data sebelumnya memang cuma punya **satu** posisi aktif
+per komik (`history/{comicId}`) untuk "Lanjut Baca". Comic Detail juga
+menampilkan label progress parsial dari `history` itu saja. Jadi saat
+chapter 298 jadi posisi terakhir, label parsial chapter 300 pasti hilang.
+Ini bukan bug debounce/debug lagi, tapi kebutuhan data baru: progress
+parsial harus disimpan **per chapter**, sementara History tetap satu posisi
+terakhir.
+
+- `models.dart` — tambah `ChapterProgress` + field
+  `Comic.chapterProgress` (`Map<int, ChapterProgress>`), diserialisasi ke
+  Firestore sebagai map string-keyed: `chapterProgress: {"300":
+  {page,pages,chapterUrl,chapterLabel}}`.
+- `library_state.dart` — `updateProgress()` sekarang menerima
+  `page/pages/chapterUrl/chapterLabel` dan menyimpan progress untuk chapter
+  yang sedang dibaca tanpa menghapus progress chapter lain. `markChapterRead`
+  menghapus progress parsial chapter yang sudah tamat dan tetap menandainya
+  di `readChapters`.
+- `comic_detail_screen.dart` — row chapter sekarang membaca label
+  "Hal X/Y" dari `Comic.chapterProgress` untuk semua chapter, dengan
+  `history` hanya sebagai fallback/posisi terakhir. Jadi chapter 300 dan
+  298 bisa sama-sama punya progress parsial.
+- `reader_screen.dart` — `_saveProgress()` meneruskan data halaman+label ke
+  `LibraryNotifier.updateProgress()`.
+- `docs/DATABASE.md` — dokumentasi field `library.chapterProgress`.
+
+Perlu verifikasi di HP asli: ulang skenario chapter 300 → chapter 298 →
+kembali ke Comic Detail, kedua label parsial harus tetap tampil masing-masing
+selama chapter belum tamat dibaca.
+
+### 2026-07-17 — Tambah dukungan sumber: Asura + Luvyaa alias + WordPress date format
+
+User minta sumber custom di Jelajahi lebih leluasa, karena Asura Scans hanya
+jatuh ke WebView, Luvyaa gagal load chapter, dan Comick juga gagal.
+
+- Status push: perubahan masih lokal, belum di-push ke branch Claude.
+- `lib/sources/asura_source.dart` (baru) — parser native Asura Scans modern:
+  search lewat `https://api.asurascans.com/api/search`, chapter list lewat
+  `https://api.asurascans.com/api/series/{slug-hash}/chapters`, detail dan
+  halaman chapter dari props SSR Astro di HTML. Halaman image Asura sudah
+  kebaca dari `pages` props.
+- `source_catalog.dart` — Asura masuk built-in source. Luvyaa juga masuk
+  built-in sebagai `MangaThemesiaSource(name: 'Luvyaa',
+  baseUrl: 'https://v4.luvyaa.co')`, plus alias URL `luvyaa.my.id`,
+  `luvyaa.co`, `v4.luvyaa.co`. Jadi kalau user mengetik launcher
+  `luvyaa.my.id`, app tetap resolve ke host baca sebenarnya.
+- `mangathemesia_source.dart` — parser tanggal chapter ditambah format
+  `dd/MM/yyyy` (contoh Luvyaa `14/07/2026`), selain format lama
+  `MMMM dd, yyyy`.
+- `test/sources/asura_source_test.dart` (baru) — fixture mock untuk search,
+  detail props Astro, chapter API, dan pages props Astro.
+- `test/sources/mangathemesia_source_test.dart` — tambah cakupan format
+  tanggal numerik.
+- Comick: belum ditambah native reading. Saat dicek, `comick.dev` kena
+  Cloudflare challenge dari request non-browser dan status komunitasnya kini
+  cenderung tracking/wiki, bukan host baca langsung. Untuk Comick masih
+  fallback WebView sampai ada endpoint/API reader yang stabil dan accessible.
+- Diverifikasi: `flutter analyze lib test` bersih, `flutter test` 22/22 lolos.
+
+Follow-up tes HP:
+- Asura: sebagian gambar sudah kebaca tapi agak buram. Penyebabnya cap decode
+  sebelumnya terlalu konservatif untuk strip webtoon panjang. Reader sekarang
+  tetap memakai DPR penuh selama tinggi bitmap aman, lalu cap tinggi decode di
+  ~12k px agar tidak melewati batas GPU Android.
+- Asura: beberapa chapter gagal. URL chapter sekarang memakai `slug` dari API
+  Asura kalau tersedia (bukan selalu `number`), karena route slug juga valid dan
+  lebih tahan untuk chapter special/numbering aneh.
+- Luvyaa: `v4.luvyaa.co` saat dicek mengembalikan Redis error, sementara
+  `luvyaa.my.id` kena Cloudflare JS challenge untuk request native Dart. Base
+  Luvyaa dikembalikan ke `https://luvyaa.my.id`, tapi parser sekarang mendeteksi
+  challenge/Redis dan menampilkan error yang jelas alih-alih jatuh ke template.
+- MangaThemesia/Luvyaa: page parser sekarang membuang URL gambar placeholder
+  (`data:`, `placeholder`, `loading`, `blank`) dan melempar error kalau tidak
+  ada gambar asli, supaya Reader tidak menampilkan halaman template palsu.
+- Source Detail: source tanpa parser native/generic tidak lagi menampilkan dummy
+  discover/reader walau status dokumen `normal`; fallback-nya WebView/error.
+- Diverifikasi ulang: `flutter analyze lib test` bersih, `flutter test` 22/22
+  lolos.
+
+Correction: forced `AspectRatio` di webtoon page ternyata bikin gambar Asura
+terpotong saat metadata page kosong/meleset. Reverted: setelah image berhasil
+load, tinggi layout kembali mengikuti tinggi asli `Image.network` + `fitWidth`
+(cara aman yang sudah pernah diperbaiki). Placeholder loading saja yang tetap
+punya rasio sementara. Luvyaa dicabut dari built-in parser karena host aktifnya
+antara 500 Redis (`v4.luvyaa.co`) atau Cloudflare JS challenge (`luvyaa.my.id`);
+sementara fallback yang benar adalah WebView, bukan native parser 404/template.
+
+Follow-up iQOO 120Hz: reader webtoon masih bisa nyendat saat gambar besar baru
+ter-decode. Ditambah controlled precache untuk halaman sekitar posisi aktif
+(`current-1..current+2`) memakai `NetworkImage` + headers + `cacheWidth` yang
+sama dengan `Image.network`, supaya scroll berikutnya tidak selalu decode
+dadakan. Luvyaa lama yang masih punya `parserKind: mangathemesia` juga diblok
+di `SourceCatalog.buildGeneric()` untuk host `luvyaa.*`, jadi tidak lagi
+memaksa parser generik/template; fallback WebView.
+
+### 2026-07-17 — Universal HTML parser untuk sumber baru
+
+User menegaskan niat awal app: user bisa menaruh URL web komik baru dan app
+harus mencoba banyak metode otomatis, bukan selalu perlu parser per-web manual.
+
+- Tambah `UniversalHtmlSource`: fallback generic yang mencoba banyak pola HTML
+  umum sekaligus untuk listing komik, detail, daftar chapter, dan gambar reader
+  (`MangaThemesia`/WordPress-like, Madara-like, selector reader umum seperti
+  `#readerarea`, `.reading-content`, `.chapter-content`, `.entry-content`, dan
+  regex URL gambar di script).
+- `SourceCatalog.genericKinds` sekarang mencoba `mangathemesia`, `natsuid`,
+  lalu `universal-html`. Jadi Add Source punya pipeline auto-detection yang
+  lebih luas sebelum fallback WebView.
+- `AddSourceScreen._saveSource()` sekarang auto-detect generic parser saat user
+  langsung menekan Simpan tanpa menekan Test Sumber. Jadi flow lebih dekat ke
+  "paste URL → simpan → kalau struktur dikenali langsung kebaca".
+- Tetap ada batas: Cloudflare JS challenge, Redis/server error, login, dan web
+  yang render penuh via JS browser tidak bisa diekstrak native HTTP; untuk itu
+  fallback-nya WebView.
+- Tambah `test/sources/universal_html_source_test.dart`.
+- Diverifikasi: `flutter analyze lib test` bersih, `flutter test` 26/26 lolos.
+
+### 2026-07-17 — Repository Tachiyomi/Keiyoushi/Yuzono mulai dibaca sungguhan
+
+User memberi contoh repo:
+- `https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json`
+- `https://raw.githubusercontent.com/yuzono/manga-repo/repo/index.min.json`
+
+Temuan: formatnya array extension Tachiyomi-style. Tiap item punya `pkg`,
+`apk`, `lang`, `version`, dan `sources[]` berisi `name`, `lang`, `id`,
+`baseUrl`. Ini metadata extension APK, bukan parser yang bisa langsung
+dieksekusi Dart/Flutter.
+
+- `repository_state.dart` sekarang punya `fetchRepositoryIndex()` untuk fetch
+  dan parse index Tachiyomi-style. Source diflatten ke `RepoSource` dengan
+  `baseUrl`, `pkg`, `apk`, `version`, dan fallback `parserKind:
+  universal-html`.
+- `RepoSource` menyimpan metadata extension tambahan ke Firestore.
+- Add/Edit Repository tidak lagi dummy. Tombol `Periksa Repository` benar-benar
+  fetch URL index, menampilkan preview, dan simpan sumber asli. Jika user
+  langsung menekan Tambah Repository, app tetap coba fetch dulu.
+- Repo Browse membuka source repo memakai `baseUrl` source, bukan URL index
+  repo. Karena APK extension belum dieksekusi, source repo dicoba lewat
+  `UniversalHtmlSource`; kalau struktur situsnya custom/Cloudflare/JS-only,
+  tetap butuh port parser atau engine extension beneran.
+- Tambah bahasa `ALL` untuk source multi-language dari repo Tachiyomi.
+- Tambah `test/data/repository_state_test.dart`.
+
+### 2026-07-17 — Fondasi Android Extension Runtime
+
+User menanyakan kenapa Tachimanga di iOS bisa mendukung extension ala
+Tachiyomi. Klarifikasi: artinya bukan APK Android dijalankan langsung di iOS,
+tapi ada compatibility/runtime layer yang memahami kontrak extension.
+
+Implementasi awal:
+- `android/app/src/main/kotlin/.../MainActivity.kt` sekarang register
+  `ExtensionRuntimeBridge`.
+- `android/app/src/main/kotlin/.../extensions/ExtensionRuntimeBridge.kt`
+  menambah `MethodChannel` `kizen/extension_runtime`.
+- Method native tahap awal:
+  - `runtimeInfo`
+  - `listInstalledExtensions`
+- `AndroidManifest.xml` menambah `QUERY_ALL_PACKAGES` agar runtime bisa melihat
+  APK extension Tachiyomi/Mihon yang sudah terpasang di device (perlu direview
+  ulang jika target distribusi Play Store).
+- `lib/data/extension_runtime.dart` menambah wrapper Dart dan model runtime.
+- `settings_screen.dart` menambah row `Extension Runtime` di Setelan → Library
+  & Sumber untuk sanity check native bridge dari HP.
+- `test/data/extension_runtime_test.dart` menambah test kontrak channel.
+- `docs/EXTENSION_RUNTIME.md` mencatat desain/roadmap menuju DexClassLoader +
+  compatibility layer Tachiyomi.
+
+Catatan penting: tahap ini belum menjalankan parser Kotlin dari APK extension.
+Capability `apkClassLoading`, `tachiyomiSourceApi`, `tachiyomiSourceFactory`,
+dan `networkBridge` sengaja dilaporkan `false` sampai runtime beneran dibuat.
+
+### 2026-07-17 — Pencarian Repository + WebView fallback untuk source repo
+
+User minta isi Repository enak dicari seperti `Sumber Saya`, dan source dari
+repository/custom tidak mentok kalau parser otomatis gagal.
+
+- `repo_browse_tab.dart` sekarang stateful dan punya search field di bagian
+  atas tab Repository. Filter mencari dari nama source, nama repo, `baseUrl`,
+  dan package extension (`pkg`). Hasil tetap dikelompokkan per bahasa aktif.
+- Bookmark repository juga ikut terfilter sesuai query.
+- `SourceDetailScreen` meneruskan `fallbackSource` ke `WebViewScreen`.
+- `WebViewScreen` sekarang bisa membuka source sintetis dari Repository (yang
+  belum ada di `sourcesProvider`) memakai URL asli source. Ini memperbaiki
+  kasus tombol WebView dari source repo membuka `about:blank`.
+- URL WebView sekarang aman untuk source yang sudah menyimpan `http(s)://`
+  maupun yang hanya menyimpan domain.
+
+Catatan: ini membuat semua source punya jalur buka website asli, tapi tidak
+berarti semua website otomatis bisa di-parse native. Website yang Cloudflare,
+login-only, atau full JS tetap perlu WebView/session atau runtime extension
+yang lebih dalam.
+
+### 2026-07-17 — DexClassLoader POC untuk extension Tachiyomi/Mihon
+
+User minta lanjut supaya source dari Repository dan `Sumber Saya` makin dekat
+ke cara Tachiyomi/Tachimanga. Implementasi kali ini mulai masuk runtime native:
+
+- Menarik dan inspect APK Komiku dari Pixel. Manifest extension punya metadata
+  `tachiyomi.extension.class = .ExtensionGenerated`, jadi runtime tidak perlu
+  menebak entrypoint.
+- Tambah dependency Android:
+  - `okhttp`
+  - `jsoup`
+- Tambah compatibility stub minimal API Tachiyomi:
+  - `eu.kanade.tachiyomi.network.NetworkHelper`
+  - `Source`, `SourceFactory`
+  - `HttpSource`
+  - `SManga`, `SChapter`, `Page`, `MangasPage`, `Filter`, `FilterList`
+- `ExtensionRuntimeBridge` sekarang punya:
+  - `inspectExtension(packageName)` — load APK via `DexClassLoader`, instantiate
+    class dari metadata, lalu baca `name/baseUrl/lang/id`.
+  - `fetchPopularFromExtension(packageName, page)` — jalankan
+    `popularMangaRequest`, eksekusi OkHttp, lalu panggil `popularMangaParse`
+    dari class extension.
+- `ExtensionRuntimeBridge.runtimeInfo()` sekarang melaporkan
+  `apkClassLoading`, `tachiyomiSourceApi`, dan `networkBridge` sebagai aktif.
+- `lib/data/extension_runtime.dart` menambah model Dart untuk source info dan
+  hasil manga extension.
+- Tombol Setelan → `Extension Runtime` sekarang mencoba load extension Komiku
+  (atau extension pertama yang tersedia) dan fetch daftar populer sebagai sanity
+  check.
+
+Catatan: ini masih POC. Belum ada wrapper `MangaSource` Dart yang memakai
+runtime ini untuk semua source repository, dan belum ada method details/chapter/
+pages. Langkah berikutnya adalah membungkus method runtime ini jadi source
+Flutter sungguhan, lalu tambah `fetchSearch`, `fetchMangaDetails`,
+`fetchChapterList`, dan `fetchPageList`.
+- Diverifikasi: `flutter analyze lib test` bersih, `flutter test` 27/27 lolos.
+
+Follow-up dari tes HP: kalau Asura/Luvyaa sudah pernah disimpan ketika masih
+belum didukung, dokumen source di Firestore tetap punya status `webview`.
+Sebelumnya `SourceDetailScreen` tetap memblokir tampilan parser berdasarkan
+status lama itu, jadi perubahan parser baru tidak kelihatan di HP. Sudah
+diubah: bila URL source match parser native/generic, layar detail langsung
+memakai automatic reader meskipun status lama masih `webview`. `AddSource`
+juga sekarang menyimpan built-in source sebagai `normal` walaupun tombol test
+sempat gagal.
+
+### 2026-07-17 — Polish Jelajahi/Settings + stabilisasi Reader Asura
+
+Follow-up tes HP: Asura sudah bisa kebuka, tapi sebagian chapter gagal dan
+sebagian gambar terlihat placeholder/terpotong. Sekalian user minta edit
+sumber di Jelajahi, urut daftar sumber, Settings tidak lagi berisi demo
+state, serta History/Updates pakai cover asli.
+
+- `SourcePage` sekarang bisa membawa `width`, `height`, dan `headers`.
+  `AsuraSource.fetchPageList()` mengisi metadata ini dari props Astro dan
+  menambahkan header `Referer`/`User-Agent` untuk request image CDN.
+- `AsuraSource.fetchChapterList()` menyembunyikan chapter locked/premium
+  dari daftar native supaya tidak muncul sebagai chapter yang pasti gagal.
+  Kalau halaman Asura tidak punya pages, error-nya sekarang jelas.
+- `ReaderScreen` memakai aspect ratio asli halaman source dan menurunkan
+  `cacheWidth` untuk strip webtoon sangat panjang supaya bitmap tidak
+  melewati batas GPU Android (akar kemungkinan gambar Asura tampak
+  kepotong/placeholder di Pixel).
+- `AddSourceScreen` bisa dipakai sebagai Edit Source. Long-press sumber di
+  Jelajahi → `Edit sumber` sekarang membuka form edit dan menyimpan ke
+  Firestore lewat `SourcesNotifier.update()`.
+- Daftar `Sumber Saya` di Jelajahi diurutkan alfabetis berdasarkan nama.
+- Settings: section `Demo state (prototype)` diganti jadi `Library &
+  Sumber` dengan aksi `Periksa Update Chapter` dan `Bersihkan History`.
+- `history/{comicId}` dan `updates/{comicId}` sekarang menyimpan `coverUrl`.
+  Layar History/Updates juga fallback ke cover dari Library untuk entri lama.
+- Diverifikasi: `flutter analyze lib test` bersih, `flutter test` 22/22 lolos.

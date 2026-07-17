@@ -5,6 +5,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/extension_runtime.dart';
+import '../../data/source_session_store.dart';
 import '../../data/sources_state.dart';
 
 const _chromeBg = Color(0xFF141019);
@@ -20,9 +22,10 @@ const _chromeBg = Color(0xFF141019);
 /// "Session aktif" murni ditandai MANUAL oleh user sendiri lewat tombol di
 /// bawah, bukan dideteksi otomatis dari isi halaman.
 class WebViewScreen extends ConsumerStatefulWidget {
-  const WebViewScreen({super.key, required this.sourceId});
+  const WebViewScreen({super.key, required this.sourceId, this.fallbackSource});
 
   final String sourceId;
+  final ComicSource? fallbackSource;
 
   @override
   ConsumerState<WebViewScreen> createState() => _WebViewScreenState();
@@ -35,21 +38,26 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
   String _currentUrl = '';
   bool _canGoBack = false;
   bool _canGoForward = false;
+  bool _sessionCaptured = false;
 
   ComicSource? get _source {
     final sources = ref.watch(sourcesProvider);
     for (final s in sources) {
       if (s.id == widget.sourceId) return s;
     }
-    return null;
+    return widget.fallbackSource;
   }
 
   @override
   void initState() {
     super.initState();
     final source =
-        ref.read(sourcesProvider).where((s) => s.id == widget.sourceId).firstOrNull;
-    final startUrl = source != null ? 'https://${source.url}' : 'about:blank';
+        ref
+            .read(sourcesProvider)
+            .where((s) => s.id == widget.sourceId)
+            .firstOrNull ??
+        widget.fallbackSource;
+    final startUrl = source != null ? _webUrl(source.url) : 'about:blank';
     _currentUrl = startUrl;
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -101,17 +109,46 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
     if (await _controller.canGoForward()) await _controller.goForward();
   }
 
-  void _markSessionActive() {
+  Future<void> _markSessionActive() async {
     final source = _source;
     if (source == null) return;
+    try {
+      final session = await const ExtensionRuntimeBridge().readWebViewSession(
+        _currentUrl,
+      );
+      await SourceSessionStore.save(
+        url: _currentUrl,
+        cookie: session.cookie,
+        userAgent: session.userAgent,
+      );
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(context, 'Session browser belum bisa disimpan');
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _sessionCaptured = true);
+    if (widget.fallbackSource != null) {
+      AppToast.show(context, 'Cookie session aktif untuk ${source.name}');
+      return;
+    }
     ref.read(sourcesProvider.notifier).setSession(source.id, true);
-    AppToast.show(context, 'Session ditandai aktif untuk ${source.name}');
+    AppToast.show(context, 'Cookie session tersimpan untuk ${source.name}');
+  }
+
+  String _webUrl(String raw) {
+    final value = raw.trim();
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    return 'https://$value';
   }
 
   @override
   Widget build(BuildContext context) {
     final source = _source;
-    final sessionActive = source?.session ?? false;
+    final sessionActive = (source?.session ?? false) || _sessionCaptured;
 
     return PopScope(
       canPop: false,
@@ -128,7 +165,11 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
             Container(
               color: _chromeBg,
               padding: EdgeInsets.fromLTRB(
-                  12, MediaQuery.paddingOf(context).top + 6, 12, 10),
+                12,
+                MediaQuery.paddingOf(context).top + 6,
+                12,
+                10,
+              ),
               child: Row(
                 children: [
                   InkWell(
@@ -137,8 +178,11 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
                     child: const SizedBox(
                       width: 36,
                       height: 36,
-                      child: Icon(AppIcons.back,
-                          size: 20, color: AppColors.menuIcon),
+                      child: Icon(
+                        AppIcons.back,
+                        size: 20,
+                        color: AppColors.menuIcon,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -183,8 +227,11 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
                     child: const SizedBox(
                       width: 34,
                       height: 34,
-                      child: Icon(LucideIcons.rotateCw,
-                          size: 17, color: AppColors.menuIcon),
+                      child: Icon(
+                        LucideIcons.rotateCw,
+                        size: 17,
+                        color: AppColors.menuIcon,
+                      ),
                     ),
                   ),
                 ],
@@ -199,20 +246,24 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
               ),
             if (sessionActive && !_loading)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: const BoxDecoration(
                   color: Color(0x1A34D399),
-                  border:
-                      Border(bottom: BorderSide(color: Color(0x3334D399))),
+                  border: Border(bottom: BorderSide(color: Color(0x3334D399))),
                 ),
                 child: Row(
                   children: [
-                    const Icon(AppIcons.downloaded,
-                        size: 14, color: AppColors.success),
+                    const Icon(
+                      AppIcons.downloaded,
+                      size: 14,
+                      color: AppColors.success,
+                    ),
                     const SizedBox(width: 8),
                     Text(
-                      'Session aktif · ditandai manual untuk source ini',
+                      'Session browser aktif untuk request source ini',
                       style: AppTypography.jakarta(
                         size: 12,
                         weight: FontWeight.w700,
@@ -236,7 +287,9 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
                   _navButton(AppIcons.back, _canGoBack ? _goBack : null),
                   const SizedBox(width: 10),
                   _navButton(
-                      AppIcons.forward, _canGoForward ? _goForward : null),
+                    AppIcons.forward,
+                    _canGoForward ? _goForward : null,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: InkWell(

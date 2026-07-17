@@ -13,6 +13,7 @@ import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/reader_settings.dart';
+import '../../data/repository_state.dart';
 import '../../data/source_resolver.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
@@ -76,6 +77,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final GlobalKey _viewportKey = GlobalKey();
   final Map<int, GlobalKey> _pageKeys = {};
   bool _scrollComputeScheduled = false;
+  final Set<String> _precachedPageKeys = {};
 
   int? _sourceChapterIndex;
   List<SourcePage>? _realPages;
@@ -118,8 +120,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// menampilkan angka yang salah tiap ganti chapter.
   bool get _pageCountKnown => !_isRealSource || _realPages != null;
 
-  MangaSource? get _matchedSource =>
-      resolveMangaSource(widget.comic.src, ref.read(sourcesProvider));
+  MangaSource? get _matchedSource => resolveMangaSource(
+    widget.comic.src,
+    ref.read(sourcesProvider),
+    ref.read(repositoriesProvider),
+  );
 
   @override
   void initState() {
@@ -261,6 +266,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         _realPages = pages;
         _pagesLoading = false;
       });
+      _precacheNearbyPages();
     } catch (e) {
       if (!mounted || requestId != _pagesRequestId) return;
       setState(() {
@@ -323,10 +329,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           pages: _totalPages,
           chapterUrl: _currentChapterUrl,
           chapterLabel: _chapterLabel,
+          coverUrl: comic.coverUrl,
         )
         .catchError((Object e) => _reportSaveError('history', e));
     _libraryNotifier
-        .updateProgress(comic.id, read: _chapter)
+        .updateProgress(
+          comic.id,
+          read: _chapter,
+          page: _page + 1,
+          pages: _totalPages,
+          chapterUrl: _currentChapterUrl,
+          chapterLabel: _chapterLabel,
+        )
         .catchError((Object e) => _reportSaveError('library', e));
     // Tandai chapter ini selesai kalau sudah di halaman terakhir — terpisah
     // dari updateProgress di atas (itu cuma "sedang buka chapter berapa",
@@ -440,6 +454,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     if (best != null && best != _page) {
       setState(() => _page = best!);
       _scheduleProgressSave();
+      _precacheNearbyPages();
     }
   }
 
@@ -448,6 +463,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final settings = ref.read(readerSettingsProvider);
     setState(() => _page = idx);
     _scheduleProgressSave();
+    _precacheNearbyPages(center: idx);
     if (settings.isWebtoon && _scrollController.hasClients) {
       _suppressScroll = true;
       _scrollController.jumpTo(44 + idx * _pageExtent(context, settings));
@@ -476,6 +492,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _page = 0;
       _showChrome = true;
       _pageKeys.clear();
+      _precachedPageKeys.clear();
     });
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     AppToast.show(context, 'Chapter $next');
@@ -503,6 +520,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _page = 0;
       _showChrome = true;
       _pageKeys.clear();
+      _precachedPageKeys.clear();
     });
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     AppToast.show(context, chapters[newIndex].name);
@@ -513,11 +531,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   void _nextPage() {
     setState(() => _page = (_page + 1).clamp(0, _totalPages - 1));
     _scheduleProgressSave();
+    _precacheNearbyPages();
   }
 
   void _prevPage() {
     setState(() => _page = (_page - 1).clamp(0, _totalPages - 1));
     _scheduleProgressSave();
+    _precacheNearbyPages();
   }
 
   /// Gradient halaman placeholder (formula prototipe) — dipakai saat
@@ -666,15 +686,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         child: _mockPageBlock(i),
       );
     }
+    final page = pages[i];
     // RepaintBoundary + FilterQuality.low: raster tiap halaman diisolasi
     // (scroll tidak memicu repaint halaman lain) dan digambar lebih
     // ringan di GPU — penting untuk layar refresh rate tinggi (120Hz).
     return RepaintBoundary(
       child: Image.network(
-        pages[i].imageUrl,
+        page.imageUrl,
+        headers: page.headers.isEmpty ? null : page.headers,
         width: width,
         fit: BoxFit.fitWidth,
-        cacheWidth: (width * dpr).round(),
+        cacheWidth: _webtoonCacheWidth(page, width, dpr),
         filterQuality: FilterQuality.low,
         gaplessPlayback: true,
         loadingBuilder: (context, child, progress) => progress == null
@@ -692,10 +714,63 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   ),
                 ),
               ),
-        errorBuilder: (_, _, _) =>
-            AspectRatio(aspectRatio: 0.7, child: _mockPageBlock(i)),
+        errorBuilder: (_, error, _) {
+          debugPrint(
+            'Gagal memuat gambar reader: ${page.imageUrl} '
+            'headers=${page.headers} error=$error',
+          );
+          return AspectRatio(aspectRatio: 0.7, child: _mockPageBlock(i));
+        },
       ),
     );
+  }
+
+  int _webtoonCacheWidth(SourcePage page, double width, double dpr) {
+    final imageWidth = page.width;
+    final imageHeight = page.height;
+    final target = width * dpr;
+    if (imageWidth == null ||
+        imageHeight == null ||
+        imageWidth <= 0 ||
+        imageHeight <= 0) {
+      return target.round();
+    }
+    final aspectRatio = imageWidth / imageHeight;
+    const maxDecodedHeight = 12000.0;
+    final cappedByHeight = maxDecodedHeight * aspectRatio;
+    // Strip webtoon yang sangat panjang bisa jadi bitmap >16k px kalau
+    // didecode sesuai DPR penuh. Pakai DPR selama aman, tapi cap tinggi
+    // bitmap supaya tidak kepotong/berubah placeholder di GPU Android.
+    return target.clamp(width, cappedByHeight).round();
+  }
+
+  void _precacheNearbyPages({int? center}) {
+    if (!mounted) return;
+    final pages = _realPages;
+    if (pages == null || pages.isEmpty) return;
+    final width = MediaQuery.sizeOf(context).width;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final current = (center ?? _page).clamp(0, pages.length - 1);
+    final start = (current - 1).clamp(0, pages.length - 1);
+    final end = (current + 2).clamp(0, pages.length - 1);
+    for (var i = start; i <= end; i++) {
+      final page = pages[i];
+      final cacheWidth = _webtoonCacheWidth(page, width, dpr);
+      final key = '${page.imageUrl}@$cacheWidth';
+      if (!_precachedPageKeys.add(key)) continue;
+      final provider = ResizeImage.resizeIfNeeded(
+        cacheWidth,
+        null,
+        NetworkImage(
+          page.imageUrl,
+          headers: page.headers.isEmpty ? null : page.headers,
+        ),
+      );
+      precacheImage(provider, context).catchError((Object e) {
+        _precachedPageKeys.remove(key);
+        debugPrint('Precache gambar reader gagal: $e');
+      });
+    }
   }
 
   Widget _buildWebtoon(ReaderSettings settings) {
@@ -763,6 +838,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               ? RepaintBoundary(
                   child: Image.network(
                     pages[_page].imageUrl,
+                    headers: pages[_page].headers.isEmpty
+                        ? null
+                        : pages[_page].headers,
                     fit: BoxFit.contain,
                     cacheWidth:
                         (MediaQuery.sizeOf(context).width *
@@ -788,10 +866,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                               ),
                             ),
                           ),
-                    errorBuilder: (_, _, _) => AspectRatio(
-                      aspectRatio: AppDimens.coverAspectRatio,
-                      child: _mockPageBlock(_page, large: true),
-                    ),
+                    errorBuilder: (_, error, _) {
+                      debugPrint(
+                        'Gagal memuat gambar reader: '
+                        '${pages[_page].imageUrl} '
+                        'headers=${pages[_page].headers} error=$error',
+                      );
+                      return AspectRatio(
+                        aspectRatio: AppDimens.coverAspectRatio,
+                        child: _mockPageBlock(_page, large: true),
+                      );
+                    },
                   ),
                 )
               : AspectRatio(

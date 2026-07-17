@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
 /// Parser native untuk Shinigami (https://g.shinigami.asia) — API JSON
@@ -22,12 +23,13 @@ class ShinigamiSource implements MangaSource {
   String get baseUrl => 'https://g.shinigami.asia';
 
   Map<String, String> get _headers => {
-        'Accept': 'application/json',
-        'Origin': baseUrl,
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      };
+    'Accept': 'application/json',
+    'Origin': baseUrl,
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    ...SourceSessionStore.headersFor(baseUrl),
+  };
 
   Future<Map<String, dynamic>> _getJson(Uri url) async {
     late final http.Response response;
@@ -48,22 +50,30 @@ class ShinigamiSource implements MangaSource {
     }
   }
 
-  Future<SourceMangaPage> _list({required int page, String? sort, String? query}) async {
-    final url = Uri.parse('$_apiUrl/v1/manga/list').replace(queryParameters: {
-      'page': '$page',
-      'page_size': '30',
-      'sort': ?sort,
-      if (query != null && query.isNotEmpty) 'q': query,
-    });
+  Future<SourceMangaPage> _list({
+    required int page,
+    String? sort,
+    String? query,
+  }) async {
+    final url = Uri.parse('$_apiUrl/v1/manga/list').replace(
+      queryParameters: {
+        'page': '$page',
+        'page_size': '30',
+        'sort': ?sort,
+        if (query != null && query.isNotEmpty) 'q': query,
+      },
+    );
     final json = await _getJson(url);
     final data = (json['data'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
     final mangas = data
-        .map((m) => SourceManga(
-              url: m['manga_id'] as String? ?? '',
-              title: m['title'] as String? ?? '',
-              thumbnailUrl: m['cover_image_url'] as String?,
-            ))
+        .map(
+          (m) => SourceManga(
+            url: m['manga_id'] as String? ?? '',
+            title: m['title'] as String? ?? '',
+            thumbnailUrl: m['cover_image_url'] as String?,
+          ),
+        )
         .toList();
     final meta = json['meta'] as Map<String, dynamic>? ?? {};
     final currentPage = (meta['page'] as num?)?.toInt() ?? page;
@@ -86,8 +96,9 @@ class ShinigamiSource implements MangaSource {
 
   @override
   Future<SourceMangaDetails> fetchMangaDetails(String mangaUrl) async {
-    final json =
-        await _getJson(Uri.parse('$_apiUrl/v1/manga/detail/$mangaUrl'));
+    final json = await _getJson(
+      Uri.parse('$_apiUrl/v1/manga/detail/$mangaUrl'),
+    );
     final data = json['data'] as Map<String, dynamic>? ?? {};
     final taxonomy = data['taxonomy'] as Map<String, dynamic>? ?? {};
 
@@ -107,20 +118,21 @@ class ShinigamiSource implements MangaSource {
   }
 
   SourceMangaStatus _statusOf(int? status) => switch (status) {
-        1 => SourceMangaStatus.ongoing,
-        2 => SourceMangaStatus.completed,
-        3 => SourceMangaStatus.hiatus,
-        _ => SourceMangaStatus.unknown,
-      };
+    1 => SourceMangaStatus.ongoing,
+    2 => SourceMangaStatus.completed,
+    3 => SourceMangaStatus.hiatus,
+    _ => SourceMangaStatus.unknown,
+  };
 
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
     final json = await _getJson(
-      Uri.parse('$_apiUrl/v1/chapter/$mangaUrl/list')
-          .replace(queryParameters: {'page_size': '3000'}),
+      Uri.parse(
+        '$_apiUrl/v1/chapter/$mangaUrl/list',
+      ).replace(queryParameters: {'page_size': '3000'}),
     );
-    final list =
-        (json['data'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final list = (json['data'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
     return list.map((c) {
       final number = (c['chapter_number'] as num?)?.toDouble() ?? 0;
       final numberLabel = number == number.roundToDouble()
@@ -138,8 +150,9 @@ class ShinigamiSource implements MangaSource {
 
   @override
   Future<List<SourcePage>> fetchPageList(String chapterUrl) async {
-    final json =
-        await _getJson(Uri.parse('$_apiUrl/v1/chapter/detail/$chapterUrl'));
+    final json = await _getJson(
+      Uri.parse('$_apiUrl/v1/chapter/detail/$chapterUrl'),
+    );
     final data = json['data'] as Map<String, dynamic>? ?? {};
     final chapterBaseUrl = data['base_url'] as String? ?? '';
     final chapter = data['chapter'] as Map<String, dynamic>? ?? {};

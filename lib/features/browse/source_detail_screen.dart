@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
+import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
 import '../../sources/source_catalog.dart';
@@ -73,15 +74,39 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       // fallback ke WebView.
       _matchedSource =
           SourceCatalog.matchByUrl(source.url) ??
+          _repoMatchedSource(source) ??
           (source.parserKind != null
               ? SourceCatalog.buildGeneric(
                   source.parserKind!,
                   source.name,
-                  'https://${source.url}',
+                  source.url.startsWith('http')
+                      ? source.url
+                      : 'https://${source.url}',
                 )
               : null);
       if (_matchedSource != null) _loadDiscover(source);
     }
+  }
+
+  MangaSource? _repoMatchedSource(ComicSource source) {
+    final baseUrl = source.url.startsWith('http')
+        ? source.url
+        : 'https://${source.url}';
+    final match = findRepoSource(
+      repositories: ref.read(repositoriesProvider),
+      rawUrl: baseUrl,
+      packageName: source.repoPackage,
+      sourceId: source.repoSourceId,
+    );
+    final packageName = match?.source.pkg;
+    if (packageName == null) return null;
+    final currentBaseUrl = match?.source.baseUrl ?? baseUrl;
+    return SourceCatalog.buildGeneric(
+      'extension-runtime:$packageName',
+      source.name,
+      currentBaseUrl,
+      lang: match?.source.lang,
+    );
   }
 
   @override
@@ -149,6 +174,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     hue: source.hue,
     ch: 0,
     coverUrl: m.thumbnailUrl,
+    coverHeaders: m.headers,
     sourceMangaUrl: m.url,
   );
 
@@ -245,7 +271,10 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   void _openWebView(ComicSource source) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => WebViewScreen(sourceId: source.id),
+        builder: (_) => WebViewScreen(
+          sourceId: source.id,
+          fallbackSource: widget.fallbackSource,
+        ),
       ),
     );
   }
@@ -335,7 +364,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
               ),
             ),
             Expanded(
-              child: source.readable
+              child: _canUseAutomaticReader(source)
                   ? _buildParsable(source)
                   : _buildErrorState(source),
             ),
@@ -346,6 +375,11 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   }
 
   // --- State A: parsable ---
+
+  bool _canUseAutomaticReader(ComicSource source) {
+    if (!source.active) return false;
+    return _matchedSource != null;
+  }
 
   Widget _buildParsable(ComicSource source) {
     final libraryIds = ref.watch(libraryProvider).map((c) => c.id).toSet();
@@ -921,6 +955,7 @@ class _DiscoverCard extends StatelessWidget {
                   children: [
                     comicCoverContent(
                       coverUrl: comic.coverUrl,
+                      headers: comic.coverHeaders,
                       initial: comic.initial,
                       fontSize: 48,
                       cacheWidth: cacheWidth,

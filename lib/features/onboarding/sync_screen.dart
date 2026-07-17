@@ -3,6 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_spinner.dart';
+import '../../data/bookmarks_state.dart';
+import '../../data/history_state.dart';
+import '../../data/library_state.dart';
+import '../../data/repository_state.dart';
+import '../../data/sources_state.dart';
+import '../../data/updates_state.dart';
 import '../home/home_shell.dart';
 import '../sync/sync_service.dart';
 
@@ -28,6 +34,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
 
   Future<void> _sync() async {
     setState(() => _failed = false);
+    _resetUserState();
     try {
       await ref.read(syncServiceProvider).syncAll();
       if (!mounted) return;
@@ -36,6 +43,18 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
       if (!mounted) return;
       setState(() => _failed = true);
     }
+  }
+
+  void _resetUserState() {
+    ref
+      ..invalidate(libraryProvider)
+      ..invalidate(collectionsProvider)
+      ..invalidate(bookmarksProvider)
+      ..invalidate(historyProvider)
+      ..invalidate(updatesProvider)
+      ..invalidate(sourcesProvider)
+      ..invalidate(repositoriesProvider)
+      ..invalidate(activeLangsProvider);
   }
 
   void _goHome() {
@@ -67,8 +86,11 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                     ),
                   ),
                   if (_failed)
-                    const Icon(AppIcons.errorTriangle,
-                        size: 24, color: AppColors.danger)
+                    const Icon(
+                      AppIcons.errorTriangle,
+                      size: 24,
+                      color: AppColors.danger,
+                    )
                   else
                     const CustomPaint(
                       size: Size.square(24),
@@ -160,12 +182,20 @@ class _SyncArrowsPainter extends CustomPainter {
 
     // M12 3l3 3-3 3
     canvas.drawPath(
-      polyline([Offset(12 * s, 3 * s), Offset(15 * s, 6 * s), Offset(12 * s, 9 * s)]),
+      polyline([
+        Offset(12 * s, 3 * s),
+        Offset(15 * s, 6 * s),
+        Offset(12 * s, 9 * s),
+      ]),
       paint,
     );
     // M12 21l-3-3 3-3
     canvas.drawPath(
-      polyline([Offset(12 * s, 21 * s), Offset(9 * s, 18 * s), Offset(12 * s, 15 * s)]),
+      polyline([
+        Offset(12 * s, 21 * s),
+        Offset(9 * s, 18 * s),
+        Offset(12 * s, 15 * s),
+      ]),
       paint,
     );
   }

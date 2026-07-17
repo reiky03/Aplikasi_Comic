@@ -10,6 +10,7 @@ import '../../data/downloads_state.dart';
 import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
+import '../../data/repository_state.dart';
 import '../../data/source_resolver.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
@@ -45,8 +46,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   /// true = chapter terbaru (nomor besar) di atas, seperti sebelumnya.
   bool _sortDescending = true;
 
-  MangaSource? get _matchedSource =>
-      resolveMangaSource(widget.comic.src, ref.read(sourcesProvider));
+  MangaSource? get _matchedSource => resolveMangaSource(
+    widget.comic.src,
+    ref.read(sourcesProvider),
+    ref.read(repositoriesProvider),
+  );
 
   @override
   void initState() {
@@ -440,6 +444,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                       ),
                       child: comicCoverContent(
                         coverUrl: current.coverUrl,
+                        headers: current.coverHeaders,
                         initial: current.initial,
                         fontSize: 46,
                         cacheWidth:
@@ -553,8 +558,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   /// Chapter list top-down dari total ke 1. Pakai data asli kalau ada
   /// (lihat [_realChapters]), kalau tidak pakai demo prototipe. Progres
   /// baca per-chapter (lihat [_Chapter.progressLabel]) diambil dari
-  /// `history` (posisi baca terakhir) — bukan cuma tanda "Dibaca"/belum,
-  /// tapi "baru sampai halaman berapa" untuk chapter yang sedang dibaca.
+  /// `Comic.chapterProgress`; `history` tetap dipakai sebagai fallback/
+  /// posisi terakhir biar "Lanjut Baca" tetap cepat.
   List<_Chapter> _chaptersToShow(Comic comic) {
     final progress = _inProgressEntry(comic);
     final bookmarked = ref
@@ -595,6 +600,15 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     required Set<int> bookmarked,
   }) {
     final isCurrent = progress != null && progress.chNum == num;
+    final savedProgress = comic.chapterProgress[num];
+    final effectiveProgress = isCurrent
+        ? ChapterProgress(
+            page: progress.page,
+            pages: progress.pages,
+            chapterUrl: progress.chapterUrl,
+            chapterLabel: progress.chapterLabel,
+          )
+        : savedProgress;
     // Bukan `num < comic.read` (chapter terjauh yang pernah dibuka) — itu
     // salah nandain chapter LAMA sebagai "sudah dibaca" kalau user baru
     // baca satu chapter TERBARU (nomor besar) duluan, padahal belum pernah
@@ -602,14 +616,20 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     // ditandai saat halaman terakhirnya benar-benar tercapai).
     final fullyRead =
         comic.readChapters.contains(num) ||
-        (isCurrent && progress.page >= progress.pages);
+        (effectiveProgress != null &&
+            effectiveProgress.pages > 0 &&
+            effectiveProgress.page >= effectiveProgress.pages);
     return _Chapter(
       num: num,
       title: title,
       date: date,
       read: fullyRead,
-      progressLabel: (isCurrent && !fullyRead)
-          ? 'Hal ${progress.page}/${progress.pages}'
+      progressLabel:
+          (effectiveProgress != null &&
+              !fullyRead &&
+              effectiveProgress.page > 0 &&
+              effectiveProgress.pages > 0)
+          ? 'Hal ${effectiveProgress.page}/${effectiveProgress.pages}'
           : null,
       hasBookmark: bookmarked.contains(num),
     );

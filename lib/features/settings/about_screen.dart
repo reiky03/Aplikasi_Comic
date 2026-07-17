@@ -9,13 +9,9 @@ import '../../data/app_update_checker.dart';
 const _appVersion = '1.0.0';
 const _appBuild = '1';
 const _repoOwner = 'reiky03';
-const _repoName = 'Aplikasi_Comic';
-const _developerName = 'Reiky Aryanando Pratama';
 const _developerHandle = '@reiky03';
 
-/// "Tentang" — spek Setelan, gaya Tachiyomi/Mihon: identitas app, kredit
-/// developer, link kode sumber, dan "Periksa pembaruan" (cek rilis GitHub
-/// asli, bukan simulasi).
+/// Identitas aplikasi, pengembang, pembaruan, dan lisensi.
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
 
@@ -28,7 +24,10 @@ class _AboutScreenState extends State<AboutScreen> {
 
   Future<void> _openUrl(String url) async {
     try {
-      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final ok = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
       if (!ok && mounted) AppToast.show(context, 'Gagal membuka link');
     } catch (_) {
       // Tidak ada browser/app yang bisa handle link ini, atau (di web
@@ -104,9 +103,13 @@ class _AboutScreenState extends State<AboutScreen> {
                 children: [
                   _BackButton(onTap: () => Navigator.of(context).pop()),
                   const SizedBox(width: 8),
-                  Text('Tentang',
-                      style:
-                          AppTypography.jakarta(size: 19, weight: FontWeight.w800)),
+                  Text(
+                    'Tentang',
+                    style: AppTypography.jakarta(
+                      size: 19,
+                      weight: FontWeight.w800,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -126,9 +129,13 @@ class _AboutScreenState extends State<AboutScreen> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        Text('Kizen',
-                            style: AppTypography.jakarta(
-                                size: 20, weight: FontWeight.w800)),
+                        Text(
+                          'Kizen',
+                          style: AppTypography.jakarta(
+                            size: 20,
+                            weight: FontWeight.w800,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           'v$_appVersion (build $_appBuild)',
@@ -136,6 +143,15 @@ class _AboutScreenState extends State<AboutScreen> {
                             size: 12.5,
                             weight: FontWeight.w400,
                             color: AppColors.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'Pembaca komik lintas sumber',
+                          style: AppTypography.jakarta(
+                            size: 12,
+                            weight: FontWeight.w500,
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -160,13 +176,19 @@ class _AboutScreenState extends State<AboutScreen> {
                         child: Text(
                           'R',
                           style: AppTypography.jakarta(
-                              size: 16, weight: FontWeight.w800, color: Colors.white),
+                            size: 16,
+                            weight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                      title: _developerName,
-                      subtitle: _developerHandle,
-                      trailing: const Icon(AppIcons.forward,
-                          size: 16, color: AppColors.textFaint),
+                      title: _developerHandle,
+                      subtitle: 'GitHub',
+                      trailing: const Icon(
+                        AppIcons.forward,
+                        size: 16,
+                        color: AppColors.textFaint,
+                      ),
                       onTap: () => _openUrl('https://github.com/$_repoOwner'),
                       showDivider: false,
                     ),
@@ -174,35 +196,41 @@ class _AboutScreenState extends State<AboutScreen> {
                   _eyebrow('Aplikasi'),
                   _card([
                     _menuRow(
-                      icon: LucideIcons.folderGit2,
-                      label: 'Kode sumber',
-                      trailing: const Icon(AppIcons.forward,
-                          size: 16, color: AppColors.textFaint),
-                      onTap: () => _openUrl(
-                          'https://github.com/$_repoOwner/$_repoName'),
-                    ),
-                    _menuRow(
                       icon: LucideIcons.refreshCw,
                       label: 'Periksa pembaruan',
                       trailing: _checking
                           ? const AppSpinner(size: 18, strokeWidth: 2)
-                          : const Icon(AppIcons.forward,
-                              size: 16, color: AppColors.textFaint),
+                          : const Icon(
+                              AppIcons.forward,
+                              size: 16,
+                              color: AppColors.textFaint,
+                            ),
                       onTap: _checking ? null : _checkForUpdate,
+                    ),
+                    _menuRow(
+                      icon: LucideIcons.fileText,
+                      label: 'Lisensi open source',
+                      trailing: const Icon(
+                        AppIcons.forward,
+                        size: 16,
+                        color: AppColors.textFaint,
+                      ),
+                      onTap: () => showLicensePage(
+                        context: context,
+                        applicationName: 'Kizen',
+                        applicationVersion: 'v$_appVersion ($_appBuild)',
+                        applicationIcon: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Image.asset(
+                            'assets/branding/kizen_mark.png',
+                            width: 56,
+                            height: 56,
+                          ),
+                        ),
+                      ),
                       showDivider: false,
                     ),
                   ]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Kizen dibuat buat kebutuhan baca komik pribadi — bukan '
-                    'produk komersial.',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.jakarta(
-                      size: 11,
-                      weight: FontWeight.w400,
-                      color: AppColors.textFaintest,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -213,20 +241,20 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Widget _eyebrow(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
-        child: Text(text.toUpperCase(), style: AppTypography.eyebrow),
-      );
+    padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+    child: Text(text.toUpperCase(), style: AppTypography.eyebrow),
+  );
 
   Widget _card(List<Widget> children) => Container(
-        margin: const EdgeInsets.only(bottom: 22),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(children: children),
-      );
+    margin: const EdgeInsets.only(bottom: 22),
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
+    ),
+    child: Column(children: children),
+  );
 
   Widget _row({
     required Widget leading,
@@ -242,8 +270,9 @@ class _AboutScreenState extends State<AboutScreen> {
         padding: const EdgeInsets.all(14),
         decoration: showDivider
             ? const BoxDecoration(
-                border:
-                    Border(bottom: BorderSide(color: AppColors.sheetRowDivider)),
+                border: Border(
+                  bottom: BorderSide(color: AppColors.sheetRowDivider),
+                ),
               )
             : null,
         child: Row(
@@ -254,8 +283,13 @@ class _AboutScreenState extends State<AboutScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: AppTypography.jakarta(size: 14, weight: FontWeight.w700)),
+                  Text(
+                    title,
+                    style: AppTypography.jakarta(
+                      size: 14,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
                   Text(
                     subtitle,
                     style: AppTypography.jakarta(
@@ -287,8 +321,9 @@ class _AboutScreenState extends State<AboutScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         decoration: showDivider
             ? const BoxDecoration(
-                border:
-                    Border(bottom: BorderSide(color: AppColors.sheetRowDivider)),
+                border: Border(
+                  bottom: BorderSide(color: AppColors.sheetRowDivider),
+                ),
               )
             : null,
         child: Row(
@@ -296,8 +331,10 @@ class _AboutScreenState extends State<AboutScreen> {
             Icon(icon, size: 18, color: AppColors.accentText),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label,
-                  style: AppTypography.jakarta(size: 14, weight: FontWeight.w600)),
+              child: Text(
+                label,
+                style: AppTypography.jakarta(size: 14, weight: FontWeight.w600),
+              ),
             ),
             trailing,
           ],

@@ -18,8 +18,12 @@ class HistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final demoEmpty = ref.watch(demoHistEmptyProvider);
-    final history =
-        demoEmpty ? const <HistoryEntry>[] : ref.watch(historyProvider);
+    final history = demoEmpty
+        ? const <HistoryEntry>[]
+        : ref.watch(historyProvider);
+    final libraryById = {
+      for (final comic in ref.watch(libraryProvider)) comic.id: comic,
+    };
 
     return SafeArea(
       bottom: false,
@@ -48,7 +52,8 @@ class HistoryScreen extends ConsumerWidget {
                     icon: Icon(LucideIcons.clock),
                     title: 'Belum ada riwayat baca',
                     description: TextSpan(
-                      text: 'Komik yang kamu baca akan muncul di sini agar '
+                      text:
+                          'Komik yang kamu baca akan muncul di sini agar '
                           'mudah dilanjutkan.',
                     ),
                   )
@@ -58,6 +63,9 @@ class HistoryScreen extends ConsumerWidget {
                     itemBuilder: (context, i) => _HistoryRow(
                       key: ValueKey(history[i].comicId),
                       entry: history[i],
+                      coverUrl:
+                          history[i].coverUrl ??
+                          libraryById[history[i].comicId]?.coverUrl,
                       onTap: () => _openDetail(context, ref, history[i]),
                       onPlay: () => _resumeReading(context, ref, history[i]),
                     ),
@@ -91,8 +99,7 @@ class HistoryScreen extends ConsumerWidget {
     );
   }
 
-  void _resumeReading(
-      BuildContext context, WidgetRef ref, HistoryEntry entry) {
+  void _resumeReading(BuildContext context, WidgetRef ref, HistoryEntry entry) {
     final comic = _resolveComic(ref, entry);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -147,11 +154,13 @@ class _HistoryRow extends StatelessWidget {
   const _HistoryRow({
     super.key,
     required this.entry,
+    required this.coverUrl,
     required this.onTap,
     required this.onPlay,
   });
 
   final HistoryEntry entry;
+  final String? coverUrl;
   final VoidCallback onTap;
   final VoidCallback onPlay;
 
@@ -170,18 +179,17 @@ class _HistoryRow extends StatelessWidget {
               Container(
                 width: 48,
                 height: 64,
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   gradient: comicCover(entry.hue),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  entry.initial,
-                  style: AppTypography.jakarta(
-                    size: 22,
-                    weight: FontWeight.w800,
-                    color: Colors.white.withValues(alpha: 0.16),
-                  ),
+                child: comicCoverContent(
+                  coverUrl: coverUrl,
+                  initial: entry.initial,
+                  fontSize: 22,
+                  cacheWidth: (48 * MediaQuery.devicePixelRatioOf(context))
+                      .round(),
                 ),
               ),
               const SizedBox(width: 13),
@@ -194,7 +202,9 @@ class _HistoryRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.jakarta(
-                          size: 14.5, weight: FontWeight.w700),
+                        size: 14.5,
+                        weight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(

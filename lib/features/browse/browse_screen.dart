@@ -16,9 +16,11 @@ import 'source_detail_screen.dart';
 enum BrowseSubTab { own, repo }
 
 /// Entry point Add Source — dipakai FAB (HomeShell) & CTA empty state.
-void openAddSource(BuildContext context) {
+void openAddSource(BuildContext context, {ComicSource? initialSource}) {
   Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => const AddSourceScreen()),
+    MaterialPageRoute<void>(
+      builder: (_) => AddSourceScreen(initialSource: initialSource),
+    ),
   );
 }
 
@@ -32,7 +34,8 @@ class BrowseSubTabNotifier extends Notifier<BrowseSubTab> {
 
 final browseSubTabProvider =
     NotifierProvider<BrowseSubTabNotifier, BrowseSubTab>(
-        BrowseSubTabNotifier.new);
+      BrowseSubTabNotifier.new,
+    );
 
 /// Tab Jelajahi — spek 07 (Sumber Saya) & 08 (Repository).
 class BrowseScreen extends ConsumerStatefulWidget {
@@ -87,8 +90,11 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                 _AccentIconButton(
                   onTap: _openLanguageSheet,
                   badgeCount: activeLangs.isEmpty ? null : activeLangs.length,
-                  child: const Icon(LucideIcons.globe,
-                      size: 20, color: AppColors.accentText),
+                  child: const Icon(
+                    LucideIcons.globe,
+                    size: 20,
+                    color: AppColors.accentText,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 _AccentIconButton(
@@ -154,15 +160,24 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
 
   Widget _buildOwnTab() {
     final demoEmpty = ref.watch(demoBrowseEmptyProvider);
-    final sources =
-        demoEmpty ? const <ComicSource>[] : ref.watch(sourcesProvider);
+    final sources = demoEmpty
+        ? const <ComicSource>[]
+        : ref.watch(sourcesProvider);
     final q = _search.trim().toLowerCase();
-    final visible = sources
-        .where((s) =>
-            q.isEmpty ||
-            s.name.toLowerCase().contains(q) ||
-            s.url.toLowerCase().contains(q))
-        .toList();
+    final visible =
+        sources
+            .where(
+              (s) =>
+                  q.isEmpty ||
+                  s.name.toLowerCase().contains(q) ||
+                  s.url.toLowerCase().contains(q),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+            if (byName != 0) return byName;
+            return a.url.toLowerCase().compareTo(b.url.toLowerCase());
+          });
 
     if (sources.isEmpty) {
       return AppEmptyState(
@@ -180,8 +195,9 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
               ),
             ),
             const TextSpan(
-                text:
-                    ' untuk menambahkan sumber dari URL website komik favoritmu.'),
+              text:
+                  ' untuk menambahkan sumber dari URL website komik favoritmu.',
+            ),
           ],
         ),
         ctaLabel: 'Tambah Sumber',
@@ -204,8 +220,11 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
             ),
             child: Row(
               children: [
-                const Icon(AppIcons.search,
-                    size: 18, color: AppColors.textFaint),
+                const Icon(
+                  AppIcons.search,
+                  size: 18,
+                  color: AppColors.textFaint,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
@@ -213,7 +232,9 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                     onChanged: (v) => setState(() => _search = v),
                     cursorColor: AppColors.accent,
                     style: AppTypography.jakarta(
-                        size: 14, weight: FontWeight.w400),
+                      size: 14,
+                      weight: FontWeight.w400,
+                    ),
                     decoration: InputDecoration(
                       isCollapsed: true,
                       border: InputBorder.none,
@@ -280,6 +301,10 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
 
   void _openAddSource() => openAddSource(context);
 
+  void _openEditSource(ComicSource source) {
+    openAddSource(context, initialSource: source);
+  }
+
   void _openSource(ComicSource source) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -304,7 +329,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
       subtitle: source.url,
       sourceActive: source.active,
       onOpenSource: () => _openSource(source),
-      onEditSource: () => AppToast.show(context, 'Edit sumber (segera hadir)'),
+      onEditSource: () => _openEditSource(source),
       onToggleSource: () {
         ref.read(sourcesProvider.notifier).toggleActive(source.id);
         AppToast.show(
@@ -359,22 +384,11 @@ class SourceRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  gradient: comicCover(source.hue),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  source.initial,
-                  style: AppTypography.jakarta(
-                    size: 20,
-                    weight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
+              SourceSiteIcon(
+                websiteUrl: source.url,
+                initial: source.initial,
+                hue: source.hue,
+                size: 46,
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -384,7 +398,9 @@ class SourceRow extends StatelessWidget {
                     Text(
                       source.name,
                       style: AppTypography.jakarta(
-                          size: 14.5, weight: FontWeight.w700),
+                        size: 14.5,
+                        weight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -420,7 +436,9 @@ class SourceRow extends StatelessWidget {
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.surfaceSunken,
                             borderRadius: BorderRadius.circular(6),
@@ -430,7 +448,7 @@ class SourceRow extends StatelessWidget {
                             style: AppTypography.jakarta(
                               size: 10.5,
                               weight: FontWeight.w400,
-                              color: AppColors.textFaintest,
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ),
@@ -439,8 +457,11 @@ class SourceRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(AppIcons.forward,
-                  size: 18, color: AppColors.textFaintest),
+              const Icon(
+                AppIcons.forward,
+                size: 18,
+                color: AppColors.textFaintest,
+              ),
             ],
           ),
         ),
@@ -530,14 +551,23 @@ class RepoGlyphPainter extends CustomPainter {
     final book = Path()
       ..moveTo(21 * s, 8 * s)
       ..lineTo(21 * s, 6 * s)
-      ..arcToPoint(Offset(19 * s, 4 * s),
-          radius: Radius.circular(2 * s), clockwise: false)
+      ..arcToPoint(
+        Offset(19 * s, 4 * s),
+        radius: Radius.circular(2 * s),
+        clockwise: false,
+      )
       ..lineTo(7 * s, 4 * s)
-      ..arcToPoint(Offset(5 * s, 6 * s),
-          radius: Radius.circular(2 * s), clockwise: false)
+      ..arcToPoint(
+        Offset(5 * s, 6 * s),
+        radius: Radius.circular(2 * s),
+        clockwise: false,
+      )
       ..lineTo(5 * s, 18 * s)
-      ..arcToPoint(Offset(7 * s, 20 * s),
-          radius: Radius.circular(2 * s), clockwise: false)
+      ..arcToPoint(
+        Offset(7 * s, 20 * s),
+        radius: Radius.circular(2 * s),
+        clockwise: false,
+      )
       ..lineTo(13 * s, 20 * s);
     canvas.drawPath(book, paint);
 
@@ -545,10 +575,8 @@ class RepoGlyphPainter extends CustomPainter {
     canvas.drawLine(Offset(8 * s, 11 * s), Offset(13 * s, 11 * s), paint);
 
     canvas.drawCircle(Offset(18 * s, 17 * s), 4 * s, paint);
-    canvas.drawLine(
-        Offset(18 * s, 15.5 * s), Offset(18 * s, 18.5 * s), paint);
-    canvas.drawLine(
-        Offset(16.5 * s, 17 * s), Offset(19.5 * s, 17 * s), paint);
+    canvas.drawLine(Offset(18 * s, 15.5 * s), Offset(18 * s, 18.5 * s), paint);
+    canvas.drawLine(Offset(16.5 * s, 17 * s), Offset(19.5 * s, 17 * s), paint);
   }
 
   @override

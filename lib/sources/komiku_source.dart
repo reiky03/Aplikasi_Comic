@@ -2,6 +2,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
+import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
 /// Parser native untuk Komiku (https://komiku.org) — diporting dari
@@ -24,12 +25,13 @@ class KomikuSource implements MangaSource {
   @override
   String get baseUrl => 'https://komiku.org';
 
-  Map<String, String> get _headers => const {
-        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      };
+  Map<String, String> get _headers => {
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    ...SourceSessionStore.headersFor(baseUrl),
+  };
 
   Future<Document> _getHtml(Uri url) async {
     late final http.Response response;
@@ -56,8 +58,32 @@ class KomikuSource implements MangaSource {
     return i == -1 ? url : url.substring(0, i);
   }
 
-  Future<SourceMangaPage> _list({required int page, String? orderby, String? query}) async {
-    final segments = ['manga', if (page > 1) ...['page', '$page']];
+  Map<String, String> _imageHeaders(String imageUrl, String referer) => {
+    ..._headers,
+    'Accept':
+        'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'Referer': referer,
+    'Sec-Fetch-Dest': 'image',
+    'Sec-Fetch-Mode': 'no-cors',
+    'Sec-Fetch-Site': _sameSite(imageUrl) ? 'same-site' : 'cross-site',
+  };
+
+  bool _sameSite(String imageUrl) {
+    final imageHost = Uri.tryParse(imageUrl)?.host;
+    final baseHost = Uri.tryParse(baseUrl)?.host;
+    if (imageHost == null || baseHost == null) return false;
+    return imageHost == baseHost || imageHost.endsWith('.$baseHost');
+  }
+
+  Future<SourceMangaPage> _list({
+    required int page,
+    String? orderby,
+    String? query,
+  }) async {
+    final segments = [
+      'manga',
+      if (page > 1) ...['page', '$page'],
+    ];
     final url = Uri.parse(_apiUrl).replace(
       pathSegments: segments,
       queryParameters: {
@@ -202,7 +228,14 @@ class KomikuSource implements MangaSource {
     final imgs = document.querySelectorAll('#Baca_Komik img');
     return [
       for (var i = 0; i < imgs.length; i++)
-        SourcePage(index: i, imageUrl: _absUrl(imgs[i].attributes['src'] ?? '')),
+        SourcePage(
+          index: i,
+          imageUrl: _absUrl(imgs[i].attributes['src'] ?? ''),
+          headers: _imageHeaders(
+            _absUrl(imgs[i].attributes['src'] ?? ''),
+            chapterUrl,
+          ),
+        ),
     ];
   }
 }

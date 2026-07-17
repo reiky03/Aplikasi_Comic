@@ -19,30 +19,42 @@ class UpdatesScreen extends ConsumerStatefulWidget {
 
 class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
   bool _refreshing = false;
+  bool _autoRefreshScheduled = false;
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool silent = false}) async {
     if (_refreshing) return;
     setState(() => _refreshing = true);
     final result = await ref.read(updatesProvider.notifier).refresh();
     if (!mounted) return;
     setState(() => _refreshing = false);
-    AppToast.show(
-      context,
-      switch (result) {
-        UpdateCheckResult(checked: 0) =>
-          'Belum ada komik dari sumber asli di Library buat dicek',
-        UpdateCheckResult(updated: 0, failed: 0) => 'Tidak ada chapter baru',
-        UpdateCheckResult(updated: 0) =>
-          '${result.failed} sumber gagal diperiksa, tidak ada chapter baru',
-        _ => '${result.updated} komik ada chapter baru'
+    if (silent) return;
+    AppToast.show(context, switch (result) {
+      UpdateCheckResult(checked: 0) =>
+        'Belum ada komik dari sumber asli di Library buat dicek',
+      UpdateCheckResult(updated: 0, failed: 0) => 'Tidak ada chapter baru',
+      UpdateCheckResult(updated: 0) =>
+        '${result.failed} sumber gagal diperiksa, tidak ada chapter baru',
+      _ =>
+        '${result.updated} komik ada chapter baru'
             '${result.failed > 0 ? ' · ${result.failed} sumber gagal diperiksa' : ''}',
-      },
-    );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = ref.watch(updatesProvider);
+    final library = ref.watch(libraryProvider);
+    final libraryById = {for (final comic in library) comic.id: comic};
+    final entries = ref
+        .watch(updatesProvider)
+        .where((entry) => libraryById.containsKey(entry.comicId))
+        .toList();
+
+    if (!_autoRefreshScheduled && library.isNotEmpty) {
+      _autoRefreshScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refresh(silent: true);
+      });
+    }
 
     return SafeArea(
       bottom: false,
@@ -80,7 +92,9 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
             ),
           ),
           Expanded(
-            child: entries.isEmpty ? _buildEmptyState() : _buildFeed(entries),
+            child: entries.isEmpty
+                ? _buildEmptyState()
+                : _buildFeed(entries, libraryById),
           ),
         ],
       ),
@@ -92,7 +106,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
   /// banyak komik, numpuk seiring waktu) tidak nge-lag, sama seperti fix
   /// daftar chapter di Comic Detail sebelumnya. Header grup tanggal
   /// diselipkan sebagai baris tersendiri di antara baris entri.
-  Widget _buildFeed(List<UpdateEntry> entries) {
+  Widget _buildFeed(List<UpdateEntry> entries, Map<String, Comic> libraryById) {
     final rows = <Object>[];
     String? currentGroup;
     for (final entry in entries) {
@@ -126,6 +140,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
         return _UpdateRow(
           key: ValueKey(entry.comicId),
           entry: entry,
+          coverUrl: entry.coverUrl ?? libraryById[entry.comicId]?.coverUrl,
           onTap: () => _openDetail(entry),
         );
       },
@@ -162,19 +177,23 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     final comic = _resolveComic(entry);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ComicDetailScreen(
-          comic: comic,
-          initialChapter: entry.ch,
-        ),
+        builder: (_) =>
+            ComicDetailScreen(comic: comic, initialChapter: entry.ch),
       ),
     );
   }
 }
 
 class _UpdateRow extends StatelessWidget {
-  const _UpdateRow({super.key, required this.entry, required this.onTap});
+  const _UpdateRow({
+    super.key,
+    required this.entry,
+    required this.coverUrl,
+    required this.onTap,
+  });
 
   final UpdateEntry entry;
+  final String? coverUrl;
   final VoidCallback onTap;
 
   @override
@@ -190,18 +209,17 @@ class _UpdateRow extends StatelessWidget {
             Container(
               width: 44,
               height: 58,
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 gradient: comicCover(entry.hue),
                 borderRadius: BorderRadius.circular(9),
               ),
-              alignment: Alignment.center,
-              child: Text(
-                entry.initial,
-                style: AppTypography.jakarta(
-                  size: 20,
-                  weight: FontWeight.w800,
-                  color: Colors.white.withValues(alpha: 0.16),
-                ),
+              child: comicCoverContent(
+                coverUrl: coverUrl,
+                initial: entry.initial,
+                fontSize: 20,
+                cacheWidth: (44 * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
               ),
             ),
             const SizedBox(width: 13),
@@ -213,8 +231,10 @@ class _UpdateRow extends StatelessWidget {
                     entry.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style:
-                        AppTypography.jakarta(size: 14, weight: FontWeight.w700),
+                    style: AppTypography.jakarta(
+                      size: 14,
+                      weight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(

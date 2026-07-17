@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_scope.dart';
 import 'library_state.dart';
+import 'repository_state.dart';
 import 'source_resolver.dart';
 import 'sources_state.dart';
 
@@ -20,6 +21,8 @@ class UpdateEntry {
     required this.ch,
     required this.detectedAt,
     this.chapterLabel,
+    this.chapterUrl,
+    this.coverUrl,
   });
 
   final String comicId;
@@ -36,6 +39,8 @@ class UpdateEntry {
   /// Label chapter ASLI dari situs (mis. "Chapter 43.5 Extra") — dipakai
   /// buat tampilan kalau ada, biar konsisten dengan yang Reader tampilkan.
   final String? chapterLabel;
+  final String? chapterUrl;
+  final String? coverUrl;
 
   String get initial => title.isEmpty ? '?' : title[0];
   String get chLabel => chapterLabel ?? 'Chapter $ch';
@@ -64,13 +69,15 @@ class UpdateEntry {
   }
 
   Map<String, dynamic> toMap() => {
-        'comicId': comicId,
-        'title': title,
-        'sourceName': src,
-        'hue': hue,
-        'chapter': ch,
-        'chapterLabel': ?chapterLabel,
-      };
+    'comicId': comicId,
+    'title': title,
+    'sourceName': src,
+    'hue': hue,
+    'chapter': ch,
+    'chapterLabel': ?chapterLabel,
+    'chapterUrl': ?chapterUrl,
+    'coverUrl': ?coverUrl,
+  };
 
   factory UpdateEntry.fromMap(String docId, Map<String, dynamic> map) {
     final ts = map['detectedAt'];
@@ -82,6 +89,8 @@ class UpdateEntry {
       ch: (map['chapter'] as num?)?.toInt() ?? 0,
       detectedAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
       chapterLabel: map['chapterLabel'] as String?,
+      chapterUrl: map['chapterUrl'] as String?,
+      coverUrl: map['coverUrl'] as String?,
     );
   }
 }
@@ -100,12 +109,73 @@ class UpdateCheckResult {
   final int failed;
 }
 
+typedef LatestChapterDecision = ({
+  bool hasNew,
+  bool latestChanged,
+  int deltaUnread,
+});
+
+@visibleForTesting
+LatestChapterDecision decideLatestChapterUpdate({
+  required String? knownLatestUrl,
+  required int knownTotal,
+  required UpdateEntry? currentEntry,
+  required int fetchedTotal,
+  required String fetchedLatestUrl,
+  required String fetchedLatestName,
+  required String? coverUrl,
+}) {
+  final hasNew = knownLatestUrl == null
+      ? fetchedTotal > knownTotal
+      : fetchedLatestUrl != knownLatestUrl;
+  return (
+    hasNew: hasNew,
+    latestChanged:
+        currentEntry == null ||
+        currentEntry.chapterUrl != fetchedLatestUrl ||
+        currentEntry.ch != fetchedTotal ||
+        currentEntry.chapterLabel != fetchedLatestName ||
+        currentEntry.coverUrl != coverUrl,
+    deltaUnread: hasNew
+        ? (fetchedTotal - knownTotal).clamp(1, fetchedTotal)
+        : 0,
+  );
+}
+
 /// Data demo — dipakai saat belum login/Firebase tak tersedia.
 final _seedUpdates = [
-  UpdateEntry(comicId: 'c3', title: 'Neon Samurai', src: 'MangaVerse', hue: 190, ch: 78, detectedAt: DateTime.now().subtract(const Duration(hours: 1))),
-  UpdateEntry(comicId: 'c1', title: 'Echoes of the Void', src: 'MangaVerse', hue: 265, ch: 42, detectedAt: DateTime.now().subtract(const Duration(hours: 4))),
-  UpdateEntry(comicId: 'c6', title: 'Starlight Requiem', src: 'AsuraToons', hue: 300, ch: 23, detectedAt: DateTime.now().subtract(const Duration(hours: 18))),
-  UpdateEntry(comicId: 'c4', title: 'Garden of Ashes', src: 'KomikStation', hue: 130, ch: 5, detectedAt: DateTime.now().subtract(const Duration(hours: 22))),
+  UpdateEntry(
+    comicId: 'c3',
+    title: 'Neon Samurai',
+    src: 'MangaVerse',
+    hue: 190,
+    ch: 78,
+    detectedAt: DateTime.now().subtract(const Duration(hours: 1)),
+  ),
+  UpdateEntry(
+    comicId: 'c1',
+    title: 'Echoes of the Void',
+    src: 'MangaVerse',
+    hue: 265,
+    ch: 42,
+    detectedAt: DateTime.now().subtract(const Duration(hours: 4)),
+  ),
+  UpdateEntry(
+    comicId: 'c6',
+    title: 'Starlight Requiem',
+    src: 'AsuraToons',
+    hue: 300,
+    ch: 23,
+    detectedAt: DateTime.now().subtract(const Duration(hours: 18)),
+  ),
+  UpdateEntry(
+    comicId: 'c4',
+    title: 'Garden of Ashes',
+    src: 'KomikStation',
+    hue: 130,
+    ch: 5,
+    detectedAt: DateTime.now().subtract(const Duration(hours: 22)),
+  ),
 ];
 
 /// `users/{uid}/updates/{comicId}` — hasil pengecekan chapter baru
@@ -128,16 +198,12 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
     // Tanpa `orderBy` di query — sort manual di client, lihat catatan
     // yang sama di history_state.dart (orderBy + serverTimestamp bisa
     // bikin dokumen hilang dari hasil selama tulisan masih pending).
-    _sub = col.snapshots().listen(
-      (snap) {
-        final list = snap.docs
-            .map((d) => UpdateEntry.fromMap(d.id, d.data()))
-            .toList()
-          ..sort((a, b) => b.detectedAt.compareTo(a.detectedAt));
-        state = list;
-      },
-      onError: (Object e) => debugPrint('updates stream error: $e'),
-    );
+    _sub = col.snapshots().listen((snap) {
+      final list =
+          snap.docs.map((d) => UpdateEntry.fromMap(d.id, d.data())).toList()
+            ..sort((a, b) => b.detectedAt.compareTo(a.detectedAt));
+      state = list;
+    }, onError: (Object e) => debugPrint('updates stream error: $e'));
     return const [];
   }
 
@@ -159,55 +225,78 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
     final library = ref.read(libraryProvider);
     final libraryNotifier = ref.read(libraryProvider.notifier);
     final customSources = ref.read(sourcesProvider);
+    final repositories = ref.read(repositoriesProvider);
     var checked = 0;
     var updated = 0;
     var failed = 0;
     for (final comic in library) {
       final mangaUrl = comic.sourceMangaUrl;
       if (mangaUrl == null) continue;
-      final source = resolveMangaSource(comic.src, customSources);
+      final source = resolveMangaSource(comic.src, customSources, repositories);
       if (source == null) continue;
       checked++;
       try {
         final chapters = await source.fetchChapterList(mangaUrl);
         if (chapters.isEmpty) continue;
         final newest = chapters.first;
-        final hasNew = comic.lastChapterUrl == null
-            // Komik lama sebelum lastChapterUrl ada — fallback ke
-            // perbandingan jumlah sekali ini saja, sampai field-nya
-            // ke-isi dari pengecekan ini.
-            ? chapters.length > comic.ch
-            : newest.url != comic.lastChapterUrl;
-        if (hasNew) {
+        final currentEntry = state
+            .where((entry) => entry.comicId == comic.id)
+            .firstOrNull;
+        final decision = decideLatestChapterUpdate(
+          knownLatestUrl: comic.lastChapterUrl,
+          knownTotal: comic.ch,
+          currentEntry: currentEntry,
+          fetchedTotal: chapters.length,
+          fetchedLatestUrl: newest.url,
+          fetchedLatestName: newest.name,
+          coverUrl: comic.coverUrl,
+        );
+        if (decision.hasNew) {
           final newTotal = chapters.length;
           // Jumlah chapter baru yang sebenarnya tetap dihitung dari
           // selisih total (buat badge unread) — clamp minimal 1 supaya
           // tidak pernah 0/negatif kalau hitungannya kebetulan turun
           // (mis. situsnya gabung/hapus chapter lama) padahal jelas ada
           // yang baru (chapter terbaru berbeda).
-          final delta = (newTotal - comic.ch).clamp(1, newTotal);
           await libraryNotifier.applyNewChapters(
             comic.id,
             newTotal: newTotal,
-            deltaUnread: delta,
+            deltaUnread: decision.deltaUnread,
             lastChapterUrl: newest.url,
           );
+          updated++;
+        } else if (comic.lastChapterUrl == null) {
+          // Komik lama belum punya baseline URL chapter terbaru. Isi sekali
+          // tanpa menambah unread agar pengecekan berikutnya stabil.
+          await libraryNotifier.applyNewChapters(
+            comic.id,
+            newTotal: comic.ch,
+            deltaUnread: 0,
+            lastChapterUrl: newest.url,
+          );
+        }
+        if (decision.hasNew || decision.latestChanged) {
           await _recordUpdate(
             comic.id,
             comic.title,
             comic.src,
             comic.hue,
-            newTotal,
+            comic.coverUrl,
+            chapters.length,
             newest.name,
+            newest.url,
           );
-          updated++;
         }
       } catch (e) {
         debugPrint('Gagal cek chapter baru untuk ${comic.title}: $e');
         failed++;
       }
     }
-    return UpdateCheckResult(checked: checked, updated: updated, failed: failed);
+    return UpdateCheckResult(
+      checked: checked,
+      updated: updated,
+      failed: failed,
+    );
   }
 
   Future<void> _recordUpdate(
@@ -215,8 +304,10 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
     String title,
     String src,
     int hue,
+    String? coverUrl,
     int newCh,
     String chapterLabel,
+    String chapterUrl,
   ) async {
     final col = _col;
     if (col == null) {
@@ -226,9 +317,11 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
           title: title,
           src: src,
           hue: hue,
+          coverUrl: coverUrl,
           ch: newCh,
           detectedAt: DateTime.now(),
           chapterLabel: chapterLabel,
+          chapterUrl: chapterUrl,
         ),
         ...state.where((e) => e.comicId != comicId),
       ];
@@ -239,12 +332,15 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
       'title': title,
       'sourceName': src,
       'hue': hue,
+      'coverUrl': ?coverUrl,
       'chapter': newCh,
       'chapterLabel': chapterLabel,
+      'chapterUrl': chapterUrl,
       'detectedAt': FieldValue.serverTimestamp(),
     });
   }
 }
 
-final updatesProvider =
-    NotifierProvider<UpdatesNotifier, List<UpdateEntry>>(UpdatesNotifier.new);
+final updatesProvider = NotifierProvider<UpdatesNotifier, List<UpdateEntry>>(
+  UpdatesNotifier.new,
+);

@@ -1,11 +1,17 @@
 /// Komik dari sumber eksternal (belum tersimpan ke library).
 class SourceManga {
-  const SourceManga({required this.url, required this.title, this.thumbnailUrl});
+  const SourceManga({
+    required this.url,
+    required this.title,
+    this.thumbnailUrl,
+    this.headers = const {},
+  });
 
   /// Path/id relatif di situs sumber (bukan judul) — dipakai untuk fetch detail.
   final String url;
   final String title;
   final String? thumbnailUrl;
+  final Map<String, String> headers;
 }
 
 class SourceMangaPage {
@@ -44,10 +50,19 @@ class SourceChapter {
 }
 
 class SourcePage {
-  const SourcePage({required this.index, required this.imageUrl});
+  const SourcePage({
+    required this.index,
+    required this.imageUrl,
+    this.width,
+    this.height,
+    this.headers = const {},
+  });
 
   final int index;
   final String imageUrl;
+  final int? width;
+  final int? height;
+  final Map<String, String> headers;
 }
 
 /// Dilempar saat fetch/parsing dari sumber gagal (network, HTML/JSON tak

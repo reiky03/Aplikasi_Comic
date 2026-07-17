@@ -71,6 +71,7 @@ users/{uid}                          ← profil + meta sync
 | `read` | number | nomor chapter TERJAUH yang pernah dibuka (drive label "Ch. N", "Lanjut Baca") — bukan hitungan chapter selesai, lihat `readChapters` |
 | `unread` | number | badge grid |
 | `readChapters` | array<number> | nomor chapter yang halaman terakhirnya BENAR-BENAR tercapai (per-chapter, dipakai tanda "Dibaca" di Comic Detail) — sengaja terpisah dari `read` karena user bisa baca lompat-lompat, bukan urut dari chapter 1 |
+| `chapterProgress` | map<string,map> | progres parsial per chapter, key = nomor chapter sintetis sebagai string (`"300"`, `"298"`), value = `{page, pages, chapterUrl?, chapterLabel?}`. Dipakai Comic Detail untuk menampilkan beberapa label "Hal X/Y" sekaligus. Ini sengaja terpisah dari `history`, karena `history/{comicId}` cuma posisi TERAKHIR untuk tombol "Lanjut Baca"; tanpa field ini, progress chapter 300 akan hilang begitu user lanjut baca chapter 298 |
 | `lastChapterUrl` | string? | URL chapter TERBARU yang diketahui saat komik ditambah/di-cek terakhir kali — identifier stabil dipakai [`UpdatesNotifier.refresh`] buat deteksi "ada chapter baru": bandingkan URL chapter terbaru hasil fetch vs field ini, bukan `totalChapters > ch` (jumlah mentah bisa tidak stabil kalau situs punya chapter spesial/bonus). Null untuk komik lama sebelum field ini ada ⇒ fallback sekali ke perbandingan jumlah |
 | `collectionId` | string? | null = hanya di "Semua" |
 | `addedAt`, `updatedAt` | timestamp | urutan "Terakhir dibaca" pakai `updatedAt` desc |
@@ -89,7 +90,7 @@ Satu dokumen **per komik** (posisi terakhir), bukan per event — karena UI-nya
 "lanjut baca", bukan log. Doc id = comicId ⇒ update posisi = 1 write, tanpa dedup.
 | Field | Tipe | Catatan |
 |---|---|---|
-| `title`, `sourceName`, `hue` | | denormalized untuk render row tanpa join |
+| `title`, `sourceName`, `hue`, `coverUrl` | | denormalized untuk render row tanpa join. `coverUrl` opsional; entri lama fallback ambil dari `library/{comicId}` kalau masih ada |
 | `chapter` | number | `chNum` — POSISI relatif ke total chapter saat di-fetch, BUKAN identifier stabil, lihat `chapterUrl`/`chapterLabel` |
 | `chapterUrl` | string? | URL chapter asli — identifier stabil dipakai Reader buat lompat balik lewat "Lanjut Baca". `chapter` doang bisa salah kalau daftar chapter situsnya sudah berubah panjang sejak disimpan (chapter baru terbit) — null untuk komik demo atau entri lama sebelum field ini ada |
 | `chapterLabel` | string? | label chapter ASLI dari situs (mis. "Chapter 43.5 Extra"), sama seperti yang ditampilkan Reader — ditampilkan apa adanya di History (bukan "Ch. `chapter`") karena `chapter` cuma posisi hasil hitungan sendiri (`total - index`), bisa beda dari nomor asli situs kalau ada chapter spesial/bonus/non-sekuensial di daftarnya. Fallback ke "Ch. `chapter`" kalau null (entri lama) |
@@ -112,7 +113,7 @@ set/delete dokumen yang sama, tidak ada duplikat untuk halaman yang sama.
 | Field | Tipe | Catatan |
 |---|---|---|
 | `comicId` | string | buat query/filter per komik di client |
-| `title`, `sourceName`, `hue` | | denormalized untuk render row tanpa join |
+| `title`, `sourceName`, `hue`, `coverUrl` | | denormalized untuk render row tanpa join. `coverUrl` opsional; entri lama fallback ambil dari `library/{comicId}` kalau masih ada |
 | `chapter` | number | `chNum` — posisi relatif, sama catatan seperti `history.chapter` |
 | `chapterUrl` | string? | identifier stabil, sama catatan seperti `history.chapterUrl` |
 | `chapterLabel` | string | nama chapter asli, atau "Chapter N" untuk komik demo |
@@ -196,7 +197,9 @@ User hanya bisa baca/tulis datanya sendiri. Tidak ada data publik/shared.
    (`snapshots()`); mutasi UI = write dokumen; Firestore yang urus offline queue
    & propagasi antar device. UI tidak berubah sama sekali.
 4. **Reader** — tiap pindah halaman/chapter: update `history/{comicId}` +
-   `library/{comicId}.read/unread` (debounce ~2–3 detik biar hemat write).
+   `library/{comicId}.read/unread/chapterProgress` (debounce ~2–3 detik
+   biar hemat write). `history` tetap satu posisi terakhir; progress
+   parsial per-chapter disimpan di `library.chapterProgress`.
 
 ## Estimasi kuota (Spark free tier)
 

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
+import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
 /// Parser native untuk situs bertema WordPress "NatsuId" (dipakai Ikiru) —
@@ -32,11 +33,12 @@ class NatsuIdSource implements MangaSource {
   final _random = Random();
 
   Map<String, String> get _headers => {
-        'Referer': '$baseUrl/',
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      };
+    'Referer': '$baseUrl/',
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    ...SourceSessionStore.headersFor(baseUrl),
+  };
 
   Future<http.Response> _get(Uri url) async {
     try {
@@ -72,14 +74,14 @@ class NatsuIdSource implements MangaSource {
   SourceManga _mangaFromJson(Map<String, dynamic> json) {
     final id = json['id'];
     final slug = json['slug'] as String? ?? '';
-    final title = (json['title'] as Map<String, dynamic>?)?['rendered']
-            as String? ??
-        '';
+    final title =
+        (json['title'] as Map<String, dynamic>?)?['rendered'] as String? ?? '';
     final embedded = json['_embedded'] as Map<String, dynamic>? ?? {};
-    final media =
-        (embedded['wp:featuredmedia'] as List<dynamic>? ?? []).cast<Map>();
-    final thumbnail =
-        media.isEmpty ? null : media.first['source_url'] as String?;
+    final media = (embedded['wp:featuredmedia'] as List<dynamic>? ?? [])
+        .cast<Map>();
+    final thumbnail = media.isEmpty
+        ? null
+        : media.first['source_url'] as String?;
     return SourceManga(
       url: jsonEncode({'id': id, 'slug': slug}),
       title: title,
@@ -101,8 +103,8 @@ class NatsuIdSource implements MangaSource {
       (jsonDecode(mangaUrl) as Map<String, dynamic>)['id'] as int;
 
   List<String> _termsOf(Map<String, dynamic> embedded, String taxonomy) {
-    final termGroups =
-        (embedded['wp:term'] as List<dynamic>? ?? []).cast<List<dynamic>>();
+    final termGroups = (embedded['wp:term'] as List<dynamic>? ?? [])
+        .cast<List<dynamic>>();
     for (final group in termGroups) {
       final items = group.cast<Map<String, dynamic>>();
       if (items.isNotEmpty && items.first['taxonomy'] == taxonomy) {
@@ -115,8 +117,9 @@ class NatsuIdSource implements MangaSource {
   @override
   Future<SourceMangaDetails> fetchMangaDetails(String mangaUrl) async {
     final id = _mangaId(mangaUrl);
-    final url = Uri.parse('$baseUrl/wp-json/wp/v2/manga/$id')
-        .replace(queryParameters: {'_embed': ''});
+    final url = Uri.parse(
+      '$baseUrl/wp-json/wp/v2/manga/$id',
+    ).replace(queryParameters: {'_embed': ''});
     final response = await _get(url);
     if (response.statusCode != 200) {
       throw MangaSourceException(
@@ -127,8 +130,9 @@ class NatsuIdSource implements MangaSource {
     final embedded = json['_embedded'] as Map<String, dynamic>? ?? {};
     final content =
         (json['content'] as Map<String, dynamic>?)?['rendered'] as String?;
-    final description =
-        content == null ? null : html_parser.parse(content).body?.text.trim();
+    final description = content == null
+        ? null
+        : html_parser.parse(content).body?.text.trim();
 
     final status = _termsOf(embedded, 'status');
     return SourceMangaDetails(
@@ -168,11 +172,15 @@ class NatsuIdSource implements MangaSource {
       final time = a.querySelector('time');
       if (time == null) continue;
       final span = a.querySelector('span');
-      chapters.add(SourceChapter(
-        url: Uri.parse(baseUrl).resolve(a.attributes['href'] ?? '').toString(),
-        name: span?.text.trim() ?? '',
-        dateUpload: DateTime.tryParse(time.attributes['datetime'] ?? ''),
-      ));
+      chapters.add(
+        SourceChapter(
+          url: Uri.parse(
+            baseUrl,
+          ).resolve(a.attributes['href'] ?? '').toString(),
+          name: span?.text.trim() ?? '',
+          dateUpload: DateTime.tryParse(time.attributes['datetime'] ?? ''),
+        ),
+      );
     }
     return chapters;
   }
@@ -191,8 +199,9 @@ class NatsuIdSource implements MangaSource {
       for (var i = 0; i < imgs.length; i++)
         SourcePage(
           index: i,
-          imageUrl:
-              Uri.parse(baseUrl).resolve(imgs[i].attributes['src'] ?? '').toString(),
+          imageUrl: Uri.parse(
+            baseUrl,
+          ).resolve(imgs[i].attributes['src'] ?? '').toString(),
         ),
     ];
   }

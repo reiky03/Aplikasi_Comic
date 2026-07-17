@@ -51,7 +51,7 @@ void main() {
 </div>
 <div id="chapterlist">
   <li><a href="/manga/solo-leveling/chapter-1/"><span class="chapternum">Chapter 1</span><span class="chapterdate">January 15, 2024</span></a></li>
-  <li><a href="/manga/solo-leveling/chapter-2/"><span class="chapternum">Chapter 2</span><span class="chapterdate">January 20, 2024</span></a></li>
+  <li><a href="/manga/solo-leveling/chapter-2/"><span class="chapternum">Chapter 2</span><span class="chapterdate">20/01/2024</span></a></li>
 </div>
 </body></html>
 ''';
@@ -80,31 +80,42 @@ void main() {
     );
   });
 
-  test('fetchPopular mengurai kartu manga (dengan fallback lazy-src) & hasNextPage',
-      () async {
-    final result = await source.fetchPopular(1);
-    expect(result.mangas, hasLength(2));
-    expect(result.mangas.first.title, 'Solo Leveling');
-    expect(result.mangas.first.url,
-        'https://komikindo.example/manga/solo-leveling/');
-    expect(result.mangas.first.thumbnailUrl, 'https://cdn.example/cover1.jpg');
-    expect(result.hasNextPage, isTrue);
-  });
+  test(
+    'fetchPopular mengurai kartu manga (dengan fallback lazy-src) & hasNextPage',
+    () async {
+      final result = await source.fetchPopular(1);
+      expect(result.mangas, hasLength(2));
+      expect(result.mangas.first.title, 'Solo Leveling');
+      expect(
+        result.mangas.first.url,
+        'https://komikindo.example/manga/solo-leveling/',
+      );
+      expect(
+        result.mangas.first.thumbnailUrl,
+        'https://cdn.example/cover1.jpg',
+      );
+      expect(result.hasNextPage, isTrue);
+    },
+  );
 
-  test('fetchMangaDetails mengurai desc/genre/author/status/thumbnail',
-      () async {
-    final details = await source
-        .fetchMangaDetails('https://komikindo.example/manga/solo-leveling/');
-    expect(details.description, 'Cerita tentang pemburu terlemah.');
-    expect(details.genres, ['Action', 'Fantasy']);
-    expect(details.author, 'Chugong');
-    expect(details.status, SourceMangaStatus.ongoing);
-    expect(details.thumbnailUrl, 'https://cdn.example/thumb.jpg');
-  });
+  test(
+    'fetchMangaDetails mengurai desc/genre/author/status/thumbnail',
+    () async {
+      final details = await source.fetchMangaDetails(
+        'https://komikindo.example/manga/solo-leveling/',
+      );
+      expect(details.description, 'Cerita tentang pemburu terlemah.');
+      expect(details.genres, ['Action', 'Fantasy']);
+      expect(details.author, 'Chugong');
+      expect(details.status, SourceMangaStatus.ongoing);
+      expect(details.thumbnailUrl, 'https://cdn.example/thumb.jpg');
+    },
+  );
 
-  test('fetchChapterList mengurai nama & tanggal "MMMM dd, yyyy"', () async {
-    final chapters = await source
-        .fetchChapterList('https://komikindo.example/manga/solo-leveling/');
+  test('fetchChapterList mengurai nama & tanggal umum', () async {
+    final chapters = await source.fetchChapterList(
+      'https://komikindo.example/manga/solo-leveling/',
+    );
     expect(chapters, hasLength(2));
     expect(chapters[0].name, 'Chapter 1');
     expect(chapters[0].dateUpload, DateTime(2024, 1, 15));
@@ -113,7 +124,8 @@ void main() {
 
   test('fetchPageList mengambil gambar dengan fallback data-src', () async {
     final pages = await source.fetchPageList(
-        'https://komikindo.example/manga/solo-leveling/chapter-1/');
+      'https://komikindo.example/manga/solo-leveling/chapter-1/',
+    );
     expect(pages, hasLength(2));
     expect(pages[0].imageUrl, 'https://cdn.example/pages/001.jpg');
     expect(pages[1].imageUrl, 'https://cdn.example/pages/002.jpg');

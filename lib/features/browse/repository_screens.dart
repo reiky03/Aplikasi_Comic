@@ -1,11 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/models.dart';
 import '../../data/repository_state.dart';
 import 'add_source_screen.dart';
 import 'browse_screen.dart';
@@ -43,7 +40,9 @@ class RepositoryListScreen extends ConsumerWidget {
                     child: Text(
                       'Repository Saya',
                       style: AppTypography.jakarta(
-                          size: 19, weight: FontWeight.w800),
+                        size: 19,
+                        weight: FontWeight.w800,
+                      ),
                     ),
                   ),
                   Material(
@@ -55,8 +54,11 @@ class RepositoryListScreen extends ConsumerWidget {
                       child: const SizedBox(
                         width: 40,
                         height: 40,
-                        child: Icon(AppIcons.add,
-                            size: 19, color: Colors.white),
+                        child: Icon(
+                          AppIcons.add,
+                          size: 19,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -69,7 +71,9 @@ class RepositoryListScreen extends ConsumerWidget {
                       icon: const CustomPaint(
                         size: Size.square(42),
                         painter: RepoGlyphPainter(
-                            color: AppColors.emptyIcon, strokeWidth: 1.7),
+                          color: AppColors.emptyIcon,
+                          strokeWidth: 1.7,
+                        ),
                       ),
                       title: 'Belum ada repository',
                       description: TextSpan(
@@ -84,8 +88,9 @@ class RepositoryListScreen extends ConsumerWidget {
                             ),
                           ),
                           const TextSpan(
-                              text:
-                                  ' di pojok kanan untuk menambah repository baru.'),
+                            text:
+                                ' di pojok kanan untuk menambah repository baru.',
+                          ),
                         ],
                       ),
                       ctaLabel: 'Tambah Repository',
@@ -148,18 +153,10 @@ class _RepoRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0x241E88C8),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.center,
-            child: const CustomPaint(
-              size: Size.square(20),
-              painter: RepoGlyphPainter(color: AppColors.accentText),
-            ),
+          SourceSiteIcon(
+            websiteUrl: repo.url,
+            initial: repo.name.isEmpty ? '?' : repo.name[0],
+            hue: repo.id.hashCode,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -168,8 +165,10 @@ class _RepoRow extends StatelessWidget {
               children: [
                 Text(
                   repo.name,
-                  style:
-                      AppTypography.jakarta(size: 14.5, weight: FontWeight.w700),
+                  style: AppTypography.jakarta(
+                    size: 14.5,
+                    weight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -249,10 +248,12 @@ class AddRepositoryScreen extends ConsumerStatefulWidget {
 }
 
 class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
-  late final _nameController =
-      TextEditingController(text: widget.editing?.name ?? '');
-  late final _urlController =
-      TextEditingController(text: widget.editing?.url ?? '');
+  late final _nameController = TextEditingController(
+    text: widget.editing?.name ?? '',
+  );
+  late final _urlController = TextEditingController(
+    text: widget.editing?.url ?? '',
+  );
   _RepoTestState _testState = _RepoTestState.idle;
   List<RepoSource> _preview = const [];
 
@@ -276,81 +277,73 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
       _nameController.text.trim().isNotEmpty &&
       _urlController.text.trim().isNotEmpty;
 
-  /// Cek reachability + isi repository. Timing prototipe ~1.3s.
-  /// TODO(backend): fetch & parse index repository sungguhan.
   Future<void> _testRepo() async {
     if (_testState == _RepoTestState.loading) return;
     if (_urlController.text.trim().isEmpty) return;
     setState(() => _testState = _RepoTestState.loading);
-    await Future<void>.delayed(const Duration(milliseconds: 1300));
-    if (!mounted) return;
-    final bad = RegExp('error|fail|xxx', caseSensitive: false)
-        .hasMatch(_urlController.text);
-    if (bad) {
+    try {
+      final result = await fetchRepositoryIndex(_urlController.text.trim());
+      if (!mounted) return;
+      setState(() {
+        if (_nameController.text.trim().isEmpty) {
+          _nameController.text = result.name;
+        }
+        _testState = _RepoTestState.ok;
+        _preview = result.sources;
+      });
+    } catch (_) {
+      if (!mounted) return;
       setState(() {
         _testState = _RepoTestState.error;
         _preview = const [];
       });
-      return;
     }
-    const names = [
-      'NusaScans', 'KomikRaya', 'MangaLintang', 'InkVerse', 'Duniakomik',
-    ];
-    final count = 3 + math.Random().nextInt(2);
-    setState(() {
-      _testState = _RepoTestState.ok;
-      _preview = [
-        for (var i = 0; i < count; i++)
-          RepoSource(
-              id: 'prev$i', name: names[i], hue: (i * 70 + 40) % 360, lang: ''),
-      ];
-    });
   }
 
-  void _saveRepo() {
+  Future<void> _saveRepo() async {
     if (!_canSave) return;
-    final cleanUrl =
-        _urlController.text.trim().replaceFirst(RegExp(r'^https?://'), '');
+    final cleanUrl = normalizeRepositoryUrl(_urlController.text.trim());
     final name = _nameController.text.trim();
+    var preview = _preview;
+    if (preview.isEmpty) {
+      try {
+        final result = await fetchRepositoryIndex(cleanUrl);
+        preview = result.sources;
+      } catch (_) {
+        if (!mounted) return;
+        AppToast.show(context, 'Repository belum bisa dibaca');
+        return;
+      }
+    }
+    if (!mounted) return;
 
     if (_isEdit) {
-      ref
+      await ref
           .read(repositoriesProvider.notifier)
-          .update(widget.editing!.id, name: name, url: cleanUrl);
+          .update(
+            widget.editing!.id,
+            name: name,
+            url: cleanUrl,
+            sources: preview,
+          );
+      if (!mounted) return;
       Navigator.of(context).pop();
       AppToast.show(context, 'Repository diperbarui');
       return;
     }
 
-    // Round-robin bahasa dari pool — placeholder sampai format index
-    // repository asli mendefinisikan metadata bahasa per sumber.
-    const langPool = ['ID', 'EN', 'JP', 'KR', 'CN'];
-    final preview = _preview.isNotEmpty
-        ? _preview
-        : [
-            for (var i = 0; i < 3; i++)
-              RepoSource(
-                id: 'prev$i',
-                name: const ['NusaScans', 'KomikRaya', 'MangaLintang'][i],
-                hue: (i * 70 + 40) % 360,
-                lang: '',
-              ),
-          ];
     final now = DateTime.now().millisecondsSinceEpoch;
-    ref.read(repositoriesProvider.notifier).add(ComicRepository(
-          id: 'rp$now',
-          name: name,
-          url: cleanUrl,
-          sources: [
-            for (var i = 0; i < preview.length; i++)
-              RepoSource(
-                id: 'rps$now${preview[i].id}',
-                name: preview[i].name,
-                hue: preview[i].hue,
-                lang: langPool[i % langPool.length],
-              ),
-          ],
-        ));
+    await ref
+        .read(repositoriesProvider.notifier)
+        .add(
+          ComicRepository(
+            id: 'rp$now',
+            name: name,
+            url: cleanUrl,
+            sources: preview,
+          ),
+        );
+    if (!mounted) return;
     Navigator.of(context).pop();
     AppToast.show(context, 'Repository ditambahkan');
   }
@@ -372,8 +365,10 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
                   const SizedBox(width: 8),
                   Text(
                     _isEdit ? 'Edit Repository' : 'Tambah Repository',
-                    style:
-                        AppTypography.jakarta(size: 19, weight: FontWeight.w800),
+                    style: AppTypography.jakarta(
+                      size: 19,
+                      weight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
@@ -397,8 +392,9 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
                   _label('Nama Repository'),
                   const SizedBox(height: 8),
                   _input(
-                      controller: _nameController,
-                      hint: 'cth. Komunitas ID Repo'),
+                    controller: _nameController,
+                    hint: 'cth. Komunitas ID Repo',
+                  ),
                   const SizedBox(height: 18),
                   _label('URL Index Repository'),
                   const SizedBox(height: 8),
@@ -421,42 +417,52 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
                       ),
                       child: Column(
                         children: [
-                          for (final ps in _preview)
+                          for (final ps in _preview.take(25))
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 13, vertical: 11),
+                                horizontal: 13,
+                                vertical: 11,
+                              ),
                               decoration: const BoxDecoration(
                                 border: Border(
                                   bottom: BorderSide(
-                                      color: AppColors.sheetRowDivider),
+                                    color: AppColors.sheetRowDivider,
+                                  ),
                                 ),
                               ),
                               child: Row(
                                 children: [
-                                  Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      gradient: comicCover(ps.hue),
-                                      borderRadius: BorderRadius.circular(9),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      ps.initial,
-                                      style: AppTypography.jakarta(
-                                        size: 13,
-                                        weight: FontWeight.w800,
-                                        color: Colors.white,
-                                      ),
-                                    ),
+                                  SourceSiteIcon(
+                                    websiteUrl:
+                                        ps.baseUrl ?? _urlController.text,
+                                    initial: ps.initial,
+                                    hue: ps.hue,
+                                    size: 32,
                                   ),
                                   const SizedBox(width: 11),
                                   Text(
                                     ps.name,
                                     style: AppTypography.jakarta(
-                                        size: 13, weight: FontWeight.w600),
+                                      size: 13,
+                                      weight: FontWeight.w600,
+                                    ),
                                   ),
                                 ],
+                              ),
+                            ),
+                          if (_preview.length > 25)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 13,
+                                vertical: 11,
+                              ),
+                              child: Text(
+                                '+ ${_preview.length - 25} sumber lain',
+                                style: AppTypography.jakarta(
+                                  size: 12,
+                                  weight: FontWeight.w600,
+                                  color: AppColors.textMuted,
+                                ),
                               ),
                             ),
                         ],
@@ -555,8 +561,11 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
           padding: const EdgeInsets.only(bottom: 14),
           child: Row(
             children: [
-              const Icon(AppIcons.downloaded,
-                  size: 15, color: AppColors.success),
+              const Icon(
+                AppIcons.downloaded,
+                size: 15,
+                color: AppColors.success,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -579,8 +588,11 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
             children: [
               const Padding(
                 padding: EdgeInsets.only(top: 1),
-                child: Icon(AppIcons.errorCircle,
-                    size: 15, color: AppColors.danger),
+                child: Icon(
+                  AppIcons.errorCircle,
+                  size: 15,
+                  color: AppColors.danger,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -603,13 +615,13 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
   }
 
   Widget _label(String text) => Text(
-        text,
-        style: AppTypography.jakarta(
-          size: 12.5,
-          weight: FontWeight.w700,
-          color: AppColors.menuIcon,
-        ),
-      );
+    text,
+    style: AppTypography.jakarta(
+      size: 12.5,
+      weight: FontWeight.w700,
+      color: AppColors.menuIcon,
+    ),
+  );
 
   Widget _input({
     required TextEditingController controller,
@@ -636,10 +648,14 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
           isCollapsed: true,
           border: InputBorder.none,
           hintText: hint,
-          hintStyle: (mono
-                  ? AppTypography.mono(size: 13.5)
-                  : AppTypography.jakarta(size: 14.5, weight: FontWeight.w400))
-              .copyWith(color: AppColors.textFaint),
+          hintStyle:
+              (mono
+                      ? AppTypography.mono(size: 13.5)
+                      : AppTypography.jakarta(
+                          size: 14.5,
+                          weight: FontWeight.w400,
+                        ))
+                  .copyWith(color: AppColors.textFaint),
         ),
       ),
     );

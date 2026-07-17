@@ -22,6 +22,8 @@ class ComicSource {
     this.status = SourceStatus.normal,
     this.session = false,
     this.parserKind,
+    this.repoPackage,
+    this.repoSourceId,
   });
 
   final String id;
@@ -43,6 +45,11 @@ class ComicSource {
   /// sekali (WebView Session Mode saja).
   final String? parserKind;
 
+  /// Identitas stabil extension repo. Ini membuat sumber tetap mengikuti
+  /// perubahan base URL/domain pada index repository terbaru.
+  final String? repoPackage;
+  final String? repoSourceId;
+
   String get initial => name.isEmpty ? '?' : name[0];
 
   /// Bisa dibaca otomatis (grid discover tampil) — logika prototipe.
@@ -54,43 +61,58 @@ class ComicSource {
     if (session) return (label: 'Session aktif', color: AppColors.success);
     return switch (status) {
       SourceStatus.webview => (
-          label: 'Membutuhkan WebView',
-          color: AppColors.warning
-        ),
+        label: 'Membutuhkan WebView',
+        color: AppColors.warning,
+      ),
       SourceStatus.limited => (label: 'Terbatas', color: AppColors.warningAlt),
       SourceStatus.failed => (
-          label: 'Gagal diakses',
-          color: AppColors.dangerAlt
-        ),
+        label: 'Gagal diakses',
+        color: AppColors.dangerAlt,
+      ),
       SourceStatus.normal => (label: 'Normal', color: AppColors.success),
     };
   }
 
-  ComicSource copyWith({bool? active, bool? session, SourceStatus? status}) {
+  ComicSource copyWith({
+    String? name,
+    String? url,
+    String? lang,
+    int? hue,
+    bool? active,
+    bool? session,
+    SourceStatus? status,
+    String? parserKind,
+    String? repoPackage,
+    String? repoSourceId,
+  }) {
     return ComicSource(
       id: id,
-      name: name,
-      url: url,
-      lang: lang,
-      hue: hue,
+      name: name ?? this.name,
+      url: url ?? this.url,
+      lang: lang ?? this.lang,
+      hue: hue ?? this.hue,
       active: active ?? this.active,
       status: status ?? this.status,
       session: session ?? this.session,
-      parserKind: parserKind,
+      parserKind: parserKind ?? this.parserKind,
+      repoPackage: repoPackage ?? this.repoPackage,
+      repoSourceId: repoSourceId ?? this.repoSourceId,
     );
   }
 
   /// Mapping ke `users/{uid}/sources/{sourceId}` — lihat docs/DATABASE.md.
   Map<String, dynamic> toMap() => {
-        'name': name,
-        'url': url,
-        'lang': lang,
-        'hue': hue,
-        'active': active,
-        'status': status.name,
-        'session': session,
-        'parserKind': ?parserKind,
-      };
+    'name': name,
+    'url': url,
+    'lang': lang,
+    'hue': hue,
+    'active': active,
+    'status': status.name,
+    'session': session,
+    'parserKind': ?parserKind,
+    'repoPackage': ?repoPackage,
+    'repoSourceId': ?repoSourceId,
+  };
 
   factory ComicSource.fromMap(String id, Map<String, dynamic> map) =>
       ComicSource(
@@ -106,17 +128,59 @@ class ComicSource {
         ),
         session: map['session'] as bool? ?? false,
         parserKind: map['parserKind'] as String?,
+        repoPackage: map['repoPackage'] as String?,
+        repoSourceId: map['repoSourceId'] as String?,
       );
 }
 
 /// Data demo — dipakai saat belum login/Firebase tak tersedia.
 const _seedSources = [
-  ComicSource(id: 's1', name: 'AsuraToons', url: 'asuratoons.example', lang: 'EN', hue: 265),
-  ComicSource(id: 's2', name: 'MangaVerse', url: 'mangaverse.example', lang: 'EN', hue: 190),
-  ComicSource(id: 's3', name: 'KomikStation', url: 'komikstation.example', lang: 'ID', hue: 130, status: SourceStatus.webview),
-  ComicSource(id: 's5', name: 'MangaFox Scans', url: 'mangafox-scans.example', lang: 'EN', hue: 20, status: SourceStatus.limited),
-  ComicSource(id: 's6', name: 'ScanVault', url: 'scanvault.example', lang: 'EN', hue: 0, status: SourceStatus.failed),
-  ComicSource(id: 's4', name: 'ReaperReads', url: 'reaperreads.example', lang: 'EN', hue: 40, active: false),
+  ComicSource(
+    id: 's1',
+    name: 'AsuraToons',
+    url: 'asuratoons.example',
+    lang: 'EN',
+    hue: 265,
+  ),
+  ComicSource(
+    id: 's2',
+    name: 'MangaVerse',
+    url: 'mangaverse.example',
+    lang: 'EN',
+    hue: 190,
+  ),
+  ComicSource(
+    id: 's3',
+    name: 'KomikStation',
+    url: 'komikstation.example',
+    lang: 'ID',
+    hue: 130,
+    status: SourceStatus.webview,
+  ),
+  ComicSource(
+    id: 's5',
+    name: 'MangaFox Scans',
+    url: 'mangafox-scans.example',
+    lang: 'EN',
+    hue: 20,
+    status: SourceStatus.limited,
+  ),
+  ComicSource(
+    id: 's6',
+    name: 'ScanVault',
+    url: 'scanvault.example',
+    lang: 'EN',
+    hue: 0,
+    status: SourceStatus.failed,
+  ),
+  ComicSource(
+    id: 's4',
+    name: 'ReaperReads',
+    url: 'reaperreads.example',
+    lang: 'EN',
+    hue: 40,
+    active: false,
+  ),
 ];
 
 class SourcesNotifier extends Notifier<List<ComicSource>> {
@@ -131,7 +195,9 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
     final col = _col;
     if (col == null) return _seedSources;
     _sub = col.snapshots().listen((snap) {
-      state = snap.docs.map((d) => ComicSource.fromMap(d.id, d.data())).toList();
+      state = snap.docs
+          .map((d) => ComicSource.fromMap(d.id, d.data()))
+          .toList();
     });
     return const [];
   }
@@ -145,6 +211,21 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
     await col.doc(source.id).set({
       ...source.toMap(),
       'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> update(ComicSource source) async {
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final s in state)
+          if (s.id == source.id) source else s,
+      ];
+      return;
+    }
+    await col.doc(source.id).update({
+      ...source.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -191,5 +272,6 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
   }
 }
 
-final sourcesProvider =
-    NotifierProvider<SourcesNotifier, List<ComicSource>>(SourcesNotifier.new);
+final sourcesProvider = NotifierProvider<SourcesNotifier, List<ComicSource>>(
+  SourcesNotifier.new,
+);

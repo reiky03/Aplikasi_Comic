@@ -9,12 +9,66 @@ import 'models.dart';
 /// Data demo — dipakai saat belum login/Firebase tak tersedia (mode
 /// `FAKE_AUTH`, web preview, widget test).
 const _seedLibrary = [
-  Comic(id: 'c1', title: 'Echoes of the Void', src: 'MangaVerse', hue: 265, ch: 42, unread: 3, read: 40, col: 'reading'),
-  Comic(id: 'c2', title: 'Crimson Vow', src: 'AsuraToons', hue: 350, ch: 108, unread: 0, read: 108, col: 'fav'),
-  Comic(id: 'c3', title: 'Neon Samurai', src: 'MangaVerse', hue: 190, ch: 78, unread: 12, read: 77, col: 'reading'),
-  Comic(id: 'c4', title: 'Garden of Ashes', src: 'KomikStation', hue: 130, ch: 5, unread: 1, read: 4, col: 'later'),
-  Comic(id: 'c5', title: 'The Last Alchemist', src: 'ReaperReads', hue: 40, ch: 210, unread: 0, read: 210, col: 'fav'),
-  Comic(id: 'c6', title: 'Starlight Requiem', src: 'AsuraToons', hue: 300, ch: 23, unread: 2, read: 21, col: 'later'),
+  Comic(
+    id: 'c1',
+    title: 'Echoes of the Void',
+    src: 'MangaVerse',
+    hue: 265,
+    ch: 42,
+    unread: 3,
+    read: 40,
+    col: 'reading',
+  ),
+  Comic(
+    id: 'c2',
+    title: 'Crimson Vow',
+    src: 'AsuraToons',
+    hue: 350,
+    ch: 108,
+    unread: 0,
+    read: 108,
+    col: 'fav',
+  ),
+  Comic(
+    id: 'c3',
+    title: 'Neon Samurai',
+    src: 'MangaVerse',
+    hue: 190,
+    ch: 78,
+    unread: 12,
+    read: 77,
+    col: 'reading',
+  ),
+  Comic(
+    id: 'c4',
+    title: 'Garden of Ashes',
+    src: 'KomikStation',
+    hue: 130,
+    ch: 5,
+    unread: 1,
+    read: 4,
+    col: 'later',
+  ),
+  Comic(
+    id: 'c5',
+    title: 'The Last Alchemist',
+    src: 'ReaperReads',
+    hue: 40,
+    ch: 210,
+    unread: 0,
+    read: 210,
+    col: 'fav',
+  ),
+  Comic(
+    id: 'c6',
+    title: 'Starlight Requiem',
+    src: 'AsuraToons',
+    hue: 300,
+    ch: 23,
+    unread: 2,
+    read: 21,
+    col: 'later',
+  ),
 ];
 
 const _seedCollections = [
@@ -131,25 +185,64 @@ class LibraryNotifier extends Notifier<List<Comic>> {
   /// tercatat lewat `history`, cuma tidak ada dokumen `library` untuk
   /// di-update. Cek keberadaan di [state] dulu (bukan langsung `.update()`
   /// Firestore) supaya tidak melempar error "not-found" yang gagal diam-diam.
-  Future<void> updateProgress(String comicId, {required int read}) async {
+  Future<void> updateProgress(
+    String comicId, {
+    required int read,
+    int? page,
+    int? pages,
+    String? chapterUrl,
+    String? chapterLabel,
+  }) async {
     final current = state.where((c) => c.id == comicId).firstOrNull;
     if (current == null) return;
+    final chapterProgress = _chapterProgressFor(
+      page: page,
+      pages: pages,
+      chapterUrl: chapterUrl,
+      chapterLabel: chapterLabel,
+    );
+    final updatedProgress = chapterProgress == null
+        ? current.chapterProgress
+        : {...current.chapterProgress, read: chapterProgress};
     final col = _col;
     if (col == null) {
       state = [
         for (final c in state)
           if (c.id == comicId)
-            c.copyWith(read: read, unread: read >= c.ch ? 0 : c.unread)
+            c.copyWith(
+              read: read,
+              unread: read >= c.ch ? 0 : c.unread,
+              chapterProgress: updatedProgress,
+            )
           else
             c,
       ];
       return;
     }
-    await col.doc(comicId).update({
+    await col.doc(comicId).update(<Object, Object?>{
       'read': read,
       if (read >= current.ch) 'unread': 0,
+      if (chapterProgress != null)
+        FieldPath(['chapterProgress', '$read']): chapterProgress.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  ChapterProgress? _chapterProgressFor({
+    int? page,
+    int? pages,
+    String? chapterUrl,
+    String? chapterLabel,
+  }) {
+    if (page == null || pages == null || page <= 0 || pages <= 0) {
+      return null;
+    }
+    return ChapterProgress(
+      page: page.clamp(1, pages).toInt(),
+      pages: pages,
+      chapterUrl: chapterUrl,
+      chapterLabel: chapterLabel,
+    );
   }
 
   /// Tandai satu chapter [chapterNum] *selesai* dibaca (halaman terakhir
@@ -161,16 +254,21 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     if (current == null) return;
     if (current.readChapters.contains(chapterNum)) return;
     final updated = {...current.readChapters, chapterNum};
+    final updatedProgress = {...current.chapterProgress}..remove(chapterNum);
     final col = _col;
     if (col == null) {
       state = [
         for (final c in state)
-          if (c.id == comicId) c.copyWith(readChapters: updated) else c,
+          if (c.id == comicId)
+            c.copyWith(readChapters: updated, chapterProgress: updatedProgress)
+          else
+            c,
       ];
       return;
     }
     await col.doc(comicId).update({
       'readChapters': (updated.toList()..sort()),
+      FieldPath(['chapterProgress', '$chapterNum']): FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -211,8 +309,9 @@ class LibraryNotifier extends Notifier<List<Comic>> {
   }
 }
 
-final libraryProvider =
-    NotifierProvider<LibraryNotifier, List<Comic>>(LibraryNotifier.new);
+final libraryProvider = NotifierProvider<LibraryNotifier, List<Comic>>(
+  LibraryNotifier.new,
+);
 
 class CollectionsNotifier extends Notifier<List<ComicCollection>> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
@@ -226,8 +325,9 @@ class CollectionsNotifier extends Notifier<List<ComicCollection>> {
     final col = _col;
     if (col == null) return _seedCollections;
     _sub = col.snapshots().listen((snap) {
-      state =
-          snap.docs.map((d) => ComicCollection.fromMap(d.id, d.data())).toList();
+      state = snap.docs
+          .map((d) => ComicCollection.fromMap(d.id, d.data()))
+          .toList();
     });
     return const [];
   }
@@ -274,4 +374,5 @@ class CollectionsNotifier extends Notifier<List<ComicCollection>> {
 
 final collectionsProvider =
     NotifierProvider<CollectionsNotifier, List<ComicCollection>>(
-        CollectionsNotifier.new);
+      CollectionsNotifier.new,
+    );

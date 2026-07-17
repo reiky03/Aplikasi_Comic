@@ -8,6 +8,7 @@ import '../theme/app_typography.dart';
 Widget comicCoverContent({
   required String? coverUrl,
   required String initial,
+  Map<String, String> headers = const {},
   double fontSize = 52,
   // Ukuran target decode (piksel fisik) — tanpa ini Flutter decode cover
   // di resolusi ASLI-nya biar pun tampil kecil di grid, boros GPU/memory
@@ -29,6 +30,7 @@ Widget comicCoverContent({
   return Image.network(
     coverUrl,
     fit: BoxFit.cover,
+    headers: headers.isEmpty ? null : headers,
     cacheWidth: cacheWidth,
     errorBuilder: (_, _, _) => placeholder,
   );

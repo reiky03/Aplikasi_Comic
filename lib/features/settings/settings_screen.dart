@@ -4,7 +4,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/demo_state.dart';
+import '../../data/bookmarks_state.dart';
+import '../../data/extension_runtime.dart';
+import '../../data/history_state.dart';
+import '../../data/library_state.dart';
+import '../../data/repository_state.dart';
+import '../../data/sources_state.dart';
 import '../../data/updates_state.dart';
 import '../sync/sync_service.dart';
 import '../auth/auth_repository.dart';
@@ -75,7 +80,9 @@ class SettingsScreen extends ConsumerWidget {
                             Text(
                               name,
                               style: AppTypography.jakarta(
-                                  size: 15, weight: FontWeight.w700),
+                                size: 15,
+                                weight: FontWeight.w700,
+                              ),
                             ),
                             Text(
                               email,
@@ -132,41 +139,72 @@ class SettingsScreen extends ConsumerWidget {
                   _menuRow(
                     icon: LucideIcons.alignLeft,
                     label: 'Pengaturan Reader',
-                    trailing: const Icon(AppIcons.forward,
-                        size: 16, color: AppColors.textFaint),
+                    trailing: const Icon(
+                      AppIcons.forward,
+                      size: 16,
+                      color: AppColors.textFaint,
+                    ),
                     onTap: () => showReaderSettingsSheet(context),
                   ),
                   _menuRow(
                     icon: LucideIcons.rotateCw,
                     label: 'Sinkronisasi & Cadangan',
-                    trailing: const Icon(AppIcons.forward,
-                        size: 16, color: AppColors.textFaint),
+                    trailing: const Icon(
+                      AppIcons.forward,
+                      size: 16,
+                      color: AppColors.textFaint,
+                    ),
                     onTap: () => _runSync(context, ref),
                   ),
                   _menuRow(
                     icon: LucideIcons.info,
                     label: 'Tentang',
-                    trailing: const Icon(AppIcons.forward,
-                        size: 16, color: AppColors.textFaint),
+                    trailing: const Icon(
+                      AppIcons.forward,
+                      size: 16,
+                      color: AppColors.textFaint,
+                    ),
                     onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AboutScreen(),
+                      ),
                     ),
                     showDivider: false,
                   ),
                 ]),
-                _eyebrow('Demo state (prototype)'),
+                _eyebrow('Library & Sumber'),
                 _card([
-                  _toggleRow(context, ref, 'Library kosong',
-                      demoLibEmptyProvider),
-                  _toggleRow(context, ref, 'History kosong',
-                      demoHistEmptyProvider),
-                  _toggleRow(context, ref, 'Jelajahi kosong',
-                      demoBrowseEmptyProvider),
-                  _toggleRow(context, ref, 'Simulasi gagal sync saat login',
-                      syncDebugFailProvider),
-                  _toggleRow(context, ref, 'Repository kosong',
-                      demoRepoEmptyProvider,
-                      showDivider: false),
+                  _menuRow(
+                    icon: LucideIcons.refreshCw,
+                    label: 'Periksa Update Chapter',
+                    trailing: const Icon(
+                      AppIcons.forward,
+                      size: 16,
+                      color: AppColors.textFaint,
+                    ),
+                    onTap: () => _checkUpdates(context, ref),
+                  ),
+                  _menuRow(
+                    icon: LucideIcons.packageCheck,
+                    label: 'Extension Runtime',
+                    trailing: const Icon(
+                      AppIcons.forward,
+                      size: 16,
+                      color: AppColors.textFaint,
+                    ),
+                    onTap: () => _checkExtensionRuntime(context),
+                  ),
+                  _menuRow(
+                    icon: LucideIcons.clock,
+                    label: 'Bersihkan History',
+                    trailing: const Icon(
+                      AppIcons.forward,
+                      size: 16,
+                      color: AppColors.textFaint,
+                    ),
+                    onTap: () => _clearHistory(context, ref),
+                    showDivider: false,
+                  ),
                 ]),
                 const SizedBox(height: 22),
                 InkWell(
@@ -178,8 +216,7 @@ class SettingsScreen extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: const Color(0x14FF5C7A), // rgba(214,66,43,.08)
                       borderRadius: BorderRadius.circular(14),
-                      border:
-                          Border.all(color: const Color(0x4DFF5C7A)), // .3
+                      border: Border.all(color: const Color(0x4DFF5C7A)), // .3
                     ),
                     child: Text(
                       'Keluar',
@@ -210,22 +247,19 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _eyebrow(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(6, 22, 6, 8),
-        child: Text(
-          text.toUpperCase(),
-          style: AppTypography.eyebrow,
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(6, 22, 6, 8),
+    child: Text(text.toUpperCase(), style: AppTypography.eyebrow),
+  );
 
   Widget _card(List<Widget> children) => Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(children: children),
-      );
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
+    ),
+    child: Column(children: children),
+  );
 
   Widget _menuRow({
     required IconData icon,
@@ -240,8 +274,9 @@ class SettingsScreen extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         decoration: showDivider
             ? const BoxDecoration(
-                border:
-                    Border(bottom: BorderSide(color: AppColors.sheetRowDivider)),
+                border: Border(
+                  bottom: BorderSide(color: AppColors.sheetRowDivider),
+                ),
               )
             : null,
         child: Row(
@@ -255,55 +290,6 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             trailing,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _toggleRow(
-    BuildContext context,
-    WidgetRef ref,
-    String label,
-    NotifierProvider<dynamic, bool> provider, {
-    bool showDivider = true,
-  }) {
-    final value = ref.watch(provider);
-    void toggle() {
-      final notifier = ref.read(provider.notifier);
-      // DemoFlag & SyncDebugFail sama-sama expose toggle/set.
-      if (notifier is DemoFlag) {
-        notifier.toggle();
-      } else if (notifier is SyncDebugFail) {
-        notifier.set(!value);
-      }
-    }
-
-    return InkWell(
-      onTap: toggle,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: showDivider
-            ? const BoxDecoration(
-                border:
-                    Border(bottom: BorderSide(color: AppColors.sheetRowDivider)),
-              )
-            : null,
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style:
-                    AppTypography.jakarta(size: 13.5, weight: FontWeight.w600),
-              ),
-            ),
-            AppPillSwitch(
-              value: value,
-              onChanged: (_) => toggle(),
-              width: 44,
-              height: 26,
-            ),
           ],
         ),
       ),
@@ -333,8 +319,96 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _checkUpdates(BuildContext context, WidgetRef ref) async {
+    AppToast.show(context, 'Memeriksa chapter baru…');
+    final result = await ref.read(updatesProvider.notifier).refresh();
+    if (!context.mounted) return;
+    AppToast.show(
+      context,
+      result.checked == 0
+          ? 'Belum ada komik sumber asli di Library'
+          : '${result.updated} komik ada chapter baru'
+                '${result.failed > 0 ? ' · ${result.failed} gagal dicek' : ''}',
+    );
+  }
+
+  Future<void> _checkExtensionRuntime(BuildContext context) async {
+    AppToast.show(context, 'Mengecek runtime extension…');
+    try {
+      const bridge = ExtensionRuntimeBridge();
+      final info = await bridge.runtimeInfo();
+      final packages = await bridge.listInstalledExtensions();
+      if (!context.mounted) return;
+      final loader = info.capabilities.apkClassLoading
+          ? 'loader APK aktif'
+          : 'loader APK belum aktif';
+      AppToast.show(
+        context,
+        '${info.platform} runtime aktif · ${packages.length} APK · $loader',
+      );
+      if (!info.capabilities.apkClassLoading || packages.isEmpty) return;
+
+      final target = packages.firstWhere(
+        (extension) => extension.packageName.toLowerCase().contains('.komiku'),
+        orElse: () => packages.first,
+      );
+      final source = await bridge
+          .inspectExtension(target.packageName)
+          .timeout(const Duration(seconds: 8));
+      if (!context.mounted) return;
+      AppToast.show(context, 'Loaded ${source.name} · ${source.baseUrl}');
+
+      final page = await bridge
+          .fetchPopularFromExtension(target.packageName)
+          .timeout(const Duration(seconds: 15));
+      if (!context.mounted) return;
+      AppToast.show(
+        context,
+        'Extension fetch OK · ${page.mangas.length} judul',
+      );
+    } catch (_) {
+      if (context.mounted) {
+        AppToast.show(context, 'Runtime extension belum bisa diakses');
+      }
+    }
+  }
+
+  Future<void> _clearHistory(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showConfirmSheet(
+      context,
+      title: 'Bersihkan history?',
+      message: 'Riwayat baca akan dikosongkan, tapi Library tetap aman.',
+    );
+    if (!confirmed || !context.mounted) return;
+    await ref.read(historyProvider.notifier).clear();
+    if (context.mounted) AppToast.show(context, 'History dibersihkan');
+  }
+
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    await ref.read(authControllerProvider.notifier).signOut();
+    final confirmed = await showConfirmSheet(
+      context,
+      title: 'Keluar dari akun?',
+      message:
+          'Kamu perlu masuk kembali dengan Google untuk mengakses Library '
+          'dan data yang tersinkron.',
+      confirmLabel: 'Keluar',
+    );
+    if (!confirmed || !context.mounted) return;
+    try {
+      await ref.read(authControllerProvider.notifier).signOut();
+    } catch (_) {
+      if (context.mounted) AppToast.show(context, 'Gagal keluar dari akun');
+      return;
+    }
+    ref
+      ..invalidate(libraryProvider)
+      ..invalidate(collectionsProvider)
+      ..invalidate(bookmarksProvider)
+      ..invalidate(historyProvider)
+      ..invalidate(updatesProvider)
+      ..invalidate(sourcesProvider)
+      ..invalidate(repositoriesProvider)
+      ..invalidate(activeLangsProvider);
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
       MaterialPageRoute<void>(builder: (_) => const LoginScreen()),

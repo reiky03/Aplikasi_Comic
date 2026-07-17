@@ -2,6 +2,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
+import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
 /// Parser native untuk situs bertema WordPress "MangaThemesia" (dipakai
@@ -25,11 +26,12 @@ class MangaThemesiaSource implements MangaSource {
   final http.Client _client;
 
   Map<String, String> get _headers => {
-        'Referer': '$baseUrl/',
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      };
+    'Referer': '$baseUrl/',
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    ...SourceSessionStore.headersFor(baseUrl),
+  };
 
   Future<Document> _getHtml(Uri url) async {
     late final http.Response response;
@@ -43,18 +45,40 @@ class MangaThemesiaSource implements MangaSource {
         '$name mengembalikan status ${response.statusCode}.',
       );
     }
+    final lowerBody = response.body.toLowerCase();
+    if (lowerBody.contains('/cdn-cgi/challenge-platform/') ||
+        lowerBody.contains('just a moment') ||
+        lowerBody.contains('error establishing a redis connection')) {
+      throw MangaSourceException(
+        '$name sedang meminta verifikasi browser. Buka lewat WebView dulu.',
+      );
+    }
     return html_parser.parse(response.body);
   }
 
   String _absUrl(String href) => Uri.parse(baseUrl).resolve(href).toString();
 
   /// Setara `imgAttr()` Kotlin — situs lazy-load gambar via atribut lain.
-  String _imgAttr(Element img) {
+  String? _imgAttr(Element img) {
     for (final attr in ['data-lazy-src', 'data-src', 'data-cfsrc']) {
       final v = img.attributes[attr];
-      if (v != null && v.isNotEmpty) return _absUrl(v);
+      if (_isRealImageUrl(v)) return _absUrl(v!);
     }
-    return _absUrl(img.attributes['src'] ?? '');
+    final src = img.attributes['src'];
+    return _isRealImageUrl(src) ? _absUrl(src!) : null;
+  }
+
+  bool _isRealImageUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    final lower = url.toLowerCase();
+    if (lower.startsWith('data:')) return false;
+    if (lower.contains('blank.') ||
+        lower.contains('placeholder') ||
+        lower.contains('loading.') ||
+        lower.contains('lazyload')) {
+      return false;
+    }
+    return true;
   }
 
   Future<SourceMangaPage> _search({
@@ -62,23 +86,24 @@ class MangaThemesiaSource implements MangaSource {
     String query = '',
     required String order,
   }) async {
-    final url = Uri.parse('$baseUrl/manga/').replace(queryParameters: {
-      'title': query,
-      'page': '$page',
-      'order': order,
-    });
+    final url = Uri.parse('$baseUrl/manga/').replace(
+      queryParameters: {'title': query, 'page': '$page', 'order': order},
+    );
     final document = await _getHtml(url);
     final mangas = document
-        .querySelectorAll('.utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx')
+        .querySelectorAll(
+          '.utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx',
+        )
         .map((el) {
-      final a = el.querySelector('a');
-      final img = el.querySelector('img');
-      return SourceManga(
-        url: _absUrl(a?.attributes['href'] ?? ''),
-        title: a?.attributes['title'] ?? '',
-        thumbnailUrl: img == null ? null : _imgAttr(img),
-      );
-    }).toList();
+          final a = el.querySelector('a');
+          final img = el.querySelector('img');
+          return SourceManga(
+            url: _absUrl(a?.attributes['href'] ?? ''),
+            title: a?.attributes['title'] ?? '',
+            thumbnailUrl: img == null ? null : _imgAttr(img),
+          );
+        })
+        .toList();
     final hasNextPage =
         document.querySelector('div.pagination .next, div.hpage .r') != null;
     return SourceMangaPage(mangas: mangas, hasNextPage: hasNextPage);
@@ -112,7 +137,8 @@ class MangaThemesiaSource implements MangaSource {
     for (final el in document.querySelectorAll('.tsinfo .imptdt')) {
       final text = el.text.trim();
       if (labels.any((l) => text.toLowerCase().startsWith(l.toLowerCase()))) {
-        final value = el.querySelector('i')?.text.trim() ??
+        final value =
+            el.querySelector('i')?.text.trim() ??
             el.querySelector('a')?.text.trim();
         if (value != null && value.isNotEmpty) return value;
       }
@@ -134,7 +160,8 @@ class MangaThemesiaSource implements MangaSource {
         .where((s) => s.isNotEmpty)
         .toList();
     final thumb = document.querySelector(
-        '.infomanga > div[itemprop=image] img, .thumb img');
+      '.infomanga > div[itemprop=image] img, .thumb img',
+    );
     final status = _labelValue(document, ['status']);
 
     return SourceMangaDetails(
@@ -150,8 +177,12 @@ class MangaThemesiaSource implements MangaSource {
   SourceMangaStatus _parseStatus(String? status) {
     if (status == null) return SourceMangaStatus.unknown;
     final s = status.toLowerCase();
-    if (['ongoing', 'on going', 'berjalan', 'publishing']
-        .any((k) => s.contains(k))) {
+    if ([
+      'ongoing',
+      'on going',
+      'berjalan',
+      'publishing',
+    ].any((k) => s.contains(k))) {
       return SourceMangaStatus.ongoing;
     }
     if (['completed', 'tamat', 'finished'].any((k) => s.contains(k))) {
@@ -160,8 +191,12 @@ class MangaThemesiaSource implements MangaSource {
     if (['hiatus', 'on hold', 'pausado'].any((k) => s.contains(k))) {
       return SourceMangaStatus.hiatus;
     }
-    if (['dropped', 'discontinued', 'canceled', 'cancelled']
-        .any((k) => s.contains(k))) {
+    if ([
+      'dropped',
+      'discontinued',
+      'canceled',
+      'cancelled',
+    ].any((k) => s.contains(k))) {
       return SourceMangaStatus.cancelled;
     }
     return SourceMangaStatus.unknown;
@@ -176,8 +211,20 @@ class MangaThemesiaSource implements MangaSource {
   /// paket `intl`.
   DateTime? _parseChapterDate(String? text) {
     if (text == null || text.trim().isEmpty) return null;
-    final match =
-        RegExp(r'^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$').firstMatch(text.trim());
+    final trimmed = text.trim();
+    final numeric = RegExp(
+      r'^(\d{1,2})/(\d{1,2})/(\d{4})$',
+    ).firstMatch(trimmed);
+    if (numeric != null) {
+      return DateTime(
+        int.parse(numeric.group(3)!),
+        int.parse(numeric.group(2)!),
+        int.parse(numeric.group(1)!),
+      );
+    }
+    final match = RegExp(
+      r'^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$',
+    ).firstMatch(trimmed);
     if (match == null) return null;
     final monthIndex = _months.indexOf(match.group(1)!.toLowerCase());
     if (monthIndex == -1) return null;
@@ -191,11 +238,13 @@ class MangaThemesiaSource implements MangaSource {
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
     final document = await _getHtml(Uri.parse(mangaUrl));
-    final rows =
-        document.querySelectorAll('div.bxcl li, div.cl li, #chapterlist li');
+    final rows = document.querySelectorAll(
+      'div.bxcl li, div.cl li, #chapterlist li',
+    );
     return rows.map((el) {
       final a = el.querySelector('a');
-      final name = el.querySelector('.lch a, .chapternum')?.text.trim() ??
+      final name =
+          el.querySelector('.lch a, .chapternum')?.text.trim() ??
           a?.text.trim() ??
           '';
       final date = el.querySelector('.chapterdate')?.text.trim();
@@ -214,22 +263,29 @@ class MangaThemesiaSource implements MangaSource {
     final document = await _getHtml(Uri.parse(chapterUrl));
     final imgs = document.querySelectorAll('div#readerarea img');
     if (imgs.isNotEmpty) {
-      return [
+      final pages = [
         for (var i = 0; i < imgs.length; i++)
-          SourcePage(index: i, imageUrl: _imgAttr(imgs[i])),
+          if (_imgAttr(imgs[i]) case final imageUrl?)
+            SourcePage(index: i, imageUrl: imageUrl),
       ];
+      if (pages.isNotEmpty) return pages;
     }
     // Sejumlah situs memuat halaman lewat JavaScript — cari array
     // "images": [...] tertanam di script.
     final match = _imageListRegex.firstMatch(document.outerHtml);
-    if (match == null) return const [];
-    final urls = RegExp(r'"([^"]+)"')
-        .allMatches(match.group(1)!)
-        .map((m) => m.group(1)!)
-        .toList();
-    return [
+    if (match == null) {
+      throw MangaSourceException('Gambar chapter $name tidak ditemukan.');
+    }
+    final urls = RegExp(
+      r'"([^"]+)"',
+    ).allMatches(match.group(1)!).map((m) => m.group(1)!).toList();
+    final pages = [
       for (var i = 0; i < urls.length; i++)
         SourcePage(index: i, imageUrl: urls[i]),
     ];
+    if (pages.isEmpty) {
+      throw MangaSourceException('Gambar chapter $name tidak ditemukan.');
+    }
+    return pages;
   }
 }

@@ -435,6 +435,7 @@ class ComicGridCard extends StatelessWidget {
                   children: [
                     comicCoverContent(
                       coverUrl: comic.coverUrl,
+                      headers: comic.coverHeaders,
                       initial: comic.initial,
                       cacheWidth: cacheWidth,
                     ),

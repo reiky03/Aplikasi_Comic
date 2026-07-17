@@ -1,8 +1,11 @@
+import 'asura_source.dart';
+import 'extension_runtime_source.dart';
 import 'komiku_source.dart';
 import 'manga_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
 import 'shinigami_source.dart';
+import 'universal_html_source.dart';
 
 /// Sumber yang punya parser native (lihat file lain di `lib/sources/`),
 /// dicocokkan dari URL yang diketik user di Add Source. Situs di luar
@@ -10,11 +13,16 @@ import 'shinigami_source.dart';
 /// masih lewat WebView Session Mode (spek 10), bukan parser otomatis.
 abstract final class SourceCatalog {
   static final List<MangaSource> sources = [
+    AsuraSource(),
     ShinigamiSource(),
     KomikuSource(),
     MangaThemesiaSource(name: 'Komikindo', baseUrl: 'https://komikindo.ch'),
     NatsuIdSource(name: 'Ikiru', baseUrl: 'https://06.ikiru.wtf'),
   ];
+
+  static const Map<String, List<String>> _hostAliases = {
+    'Asura Scans': ['asurascans.com', 'asuracomic.net'],
+  };
 
   /// Cari parser yang host base URL-nya cocok dengan [url] yang diketik user.
   static MangaSource? matchByUrl(String url) {
@@ -22,7 +30,11 @@ abstract final class SourceCatalog {
     if (normalized.isEmpty) return null;
     for (final source in sources) {
       final host = Uri.parse(source.baseUrl).host.toLowerCase();
-      if (normalized.contains(host)) return source;
+      final aliases = _hostAliases[source.name] ?? const <String>[];
+      if (normalized.contains(host) ||
+          aliases.any((alias) => normalized.contains(alias))) {
+        return source;
+      }
     }
     return null;
   }
@@ -33,15 +45,31 @@ abstract final class SourceCatalog {
   /// Kalau situs custom yang user tambahkan kebetulan pakai salah satu
   /// tema ini, kita bisa langsung baca otomatis TANPA perlu nulis parser
   /// baru khusus — lihat [detectGeneric].
-  static const genericKinds = ['mangathemesia', 'natsuid'];
+  static const genericKinds = ['mangathemesia', 'natsuid', 'universal-html'];
 
   /// Bangun instance parser generik dari [kind] (hasil [detectGeneric]
   /// yang tersimpan di `ComicSource.parserKind`) + nama/base URL sumber
   /// custom-nya.
-  static MangaSource? buildGeneric(String kind, String name, String baseUrl) {
+  static MangaSource? buildGeneric(
+    String kind,
+    String name,
+    String baseUrl, {
+    String? lang,
+  }) {
+    if (kind.startsWith('extension-runtime:')) {
+      final packageName = kind.substring('extension-runtime:'.length).trim();
+      if (packageName.isEmpty) return null;
+      return ExtensionRuntimeSource(
+        name: name,
+        packageName: packageName,
+        baseUrl: baseUrl,
+        lang: lang,
+      );
+    }
     return switch (kind) {
       'mangathemesia' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
       'natsuid' => NatsuIdSource(name: name, baseUrl: baseUrl),
+      'universal-html' => UniversalHtmlSource(name: name, baseUrl: baseUrl),
       _ => null,
     };
   }

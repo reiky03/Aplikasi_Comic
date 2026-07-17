@@ -20,6 +20,7 @@ class HistoryEntry {
     required this.readAt,
     this.chapterUrl,
     this.chapterLabel,
+    this.coverUrl,
   });
 
   final String comicId;
@@ -55,6 +56,7 @@ class HistoryEntry {
   /// nampilin "Chapter 3" — bukan salah buka chapter, cuma dua sistem
   /// penomoran beda yang gak sinkron tampilannya. Null untuk entri lama.
   final String? chapterLabel;
+  final String? coverUrl;
 
   String get initial => title.isEmpty ? '?' : title[0];
   String get pageLabel => '${chapterLabel ?? 'Ch. $chNum'} · Hal $page/$pages';
@@ -65,15 +67,16 @@ class HistoryEntry {
   String get time => _relativeLabel(readAt);
 
   Map<String, dynamic> toMap() => {
-        'title': title,
-        'sourceName': src,
-        'hue': hue,
-        'chapter': chNum,
-        'page': page,
-        'pages': pages,
-        'chapterUrl': ?chapterUrl,
-        'chapterLabel': ?chapterLabel,
-      };
+    'title': title,
+    'sourceName': src,
+    'hue': hue,
+    'chapter': chNum,
+    'page': page,
+    'pages': pages,
+    'chapterUrl': ?chapterUrl,
+    'chapterLabel': ?chapterLabel,
+    'coverUrl': ?coverUrl,
+  };
 
   factory HistoryEntry.fromMap(String comicId, Map<String, dynamic> map) {
     final ts = map['readAt'];
@@ -88,6 +91,7 @@ class HistoryEntry {
       readAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
       chapterLabel: map['chapterLabel'] as String?,
       chapterUrl: map['chapterUrl'] as String?,
+      coverUrl: map['coverUrl'] as String?,
     );
   }
 }
@@ -109,10 +113,46 @@ String _relativeLabel(DateTime dt) {
 
 /// Data demo — dipakai saat belum login/Firebase tak tersedia.
 final _seedHistory = [
-  HistoryEntry(comicId: 'c3', title: 'Neon Samurai', src: 'MangaVerse', hue: 190, chNum: 77, page: 14, pages: 40, readAt: DateTime.now().subtract(const Duration(hours: 2))),
-  HistoryEntry(comicId: 'c1', title: 'Echoes of the Void', src: 'MangaVerse', hue: 265, chNum: 40, page: 8, pages: 38, readAt: DateTime.now().subtract(const Duration(hours: 27))),
-  HistoryEntry(comicId: 'c2', title: 'Crimson Vow', src: 'AsuraToons', hue: 350, chNum: 108, page: 22, pages: 22, readAt: DateTime.now().subtract(const Duration(days: 2))),
-  HistoryEntry(comicId: 'c6', title: 'Starlight Requiem', src: 'AsuraToons', hue: 300, chNum: 21, page: 3, pages: 45, readAt: DateTime.now().subtract(const Duration(days: 7))),
+  HistoryEntry(
+    comicId: 'c3',
+    title: 'Neon Samurai',
+    src: 'MangaVerse',
+    hue: 190,
+    chNum: 77,
+    page: 14,
+    pages: 40,
+    readAt: DateTime.now().subtract(const Duration(hours: 2)),
+  ),
+  HistoryEntry(
+    comicId: 'c1',
+    title: 'Echoes of the Void',
+    src: 'MangaVerse',
+    hue: 265,
+    chNum: 40,
+    page: 8,
+    pages: 38,
+    readAt: DateTime.now().subtract(const Duration(hours: 27)),
+  ),
+  HistoryEntry(
+    comicId: 'c2',
+    title: 'Crimson Vow',
+    src: 'AsuraToons',
+    hue: 350,
+    chNum: 108,
+    page: 22,
+    pages: 22,
+    readAt: DateTime.now().subtract(const Duration(days: 2)),
+  ),
+  HistoryEntry(
+    comicId: 'c6',
+    title: 'Starlight Requiem',
+    src: 'AsuraToons',
+    hue: 300,
+    chNum: 21,
+    page: 3,
+    pages: 45,
+    readAt: DateTime.now().subtract(const Duration(days: 7)),
+  ),
 ];
 
 class HistoryNotifier extends Notifier<List<HistoryEntry>> {
@@ -132,16 +172,12 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
     // dokumen dari hasil orderBy kalau field urutnya null/belum ke-resolve,
     // jadi entri baru sempat hilang total dari listener sampai ack server
     // datang — makanya riwayat kelihatan "tidak pernah ke-track".
-    _sub = col.snapshots().listen(
-      (snap) {
-        final list = snap.docs
-            .map((d) => HistoryEntry.fromMap(d.id, d.data()))
-            .toList()
-          ..sort((a, b) => b.readAt.compareTo(a.readAt));
-        state = list;
-      },
-      onError: (Object e) => debugPrint('history stream error: $e'),
-    );
+    _sub = col.snapshots().listen((snap) {
+      final list =
+          snap.docs.map((d) => HistoryEntry.fromMap(d.id, d.data())).toList()
+            ..sort((a, b) => b.readAt.compareTo(a.readAt));
+      state = list;
+    }, onError: (Object e) => debugPrint('history stream error: $e'));
     return const [];
   }
 
@@ -170,6 +206,7 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
     required int pages,
     String? chapterUrl,
     String? chapterLabel,
+    String? coverUrl,
   }) async {
     final entry = HistoryEntry(
       comicId: comicId,
@@ -182,13 +219,11 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
       readAt: DateTime.now(),
       chapterUrl: chapterUrl,
       chapterLabel: chapterLabel,
+      coverUrl: coverUrl,
     );
     final col = _col;
     if (col == null) {
-      state = [
-        entry,
-        ...state.where((h) => h.comicId != comicId),
-      ];
+      state = [entry, ...state.where((h) => h.comicId != comicId)];
       return;
     }
     await col.doc(comicId).set({
@@ -198,5 +233,6 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
   }
 }
 
-final historyProvider =
-    NotifierProvider<HistoryNotifier, List<HistoryEntry>>(HistoryNotifier.new);
+final historyProvider = NotifierProvider<HistoryNotifier, List<HistoryEntry>>(
+  HistoryNotifier.new,
+);
