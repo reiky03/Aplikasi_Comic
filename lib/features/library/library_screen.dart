@@ -323,14 +323,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       collections: [
         for (final col in collections)
           SheetCollection(
+            id: col.id,
             name: col.name,
             count: library.where((c) => c.col == col.id).length,
             selected: comic.col == col.id,
           ),
       ],
-      onPick: (name) {
-        final col = collections.firstWhere((c) => c.name == name);
-        ref.read(libraryProvider.notifier).moveToCollection(comic.id, col.id);
+      onPick: (id) {
+        ref.read(libraryProvider.notifier).moveToCollection(comic.id, id);
         AppToast.show(context, 'Dipindahkan koleksi');
       },
       onCreateAndPick: (name) async {
@@ -349,19 +349,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       collections: [
         for (final col in collections)
           SheetCollection(
+            id: col.id,
             name: col.name,
             count: library.where((c) => c.col == col.id).length,
           ),
       ],
-      onDelete: (name) {
-        final col = collections.firstWhere((c) => c.name == name);
-        ref.read(collectionsProvider.notifier).delete(col.id);
-        if (_activeTab == col.id) setState(() => _activeTab = 'all');
+      onDelete: (id) {
+        ref.read(collectionsProvider.notifier).delete(id);
+        if (_activeTab == id) setState(() => _activeTab = 'all');
         AppToast.show(context, 'Koleksi dihapus');
       },
-      onCreate: (name) {
-        ref.read(collectionsProvider.notifier).create(name);
-        AppToast.show(context, 'Koleksi "$name" dibuat');
+      onCreate: (name) async {
+        final id = await ref.read(collectionsProvider.notifier).create(name);
+        if (mounted) AppToast.show(context, 'Koleksi "$name" dibuat');
+        return id;
+      },
+      onRename: (id, newName) {
+        ref.read(collectionsProvider.notifier).rename(id, newName);
+        AppToast.show(context, 'Koleksi diganti jadi "$newName"');
       },
     );
   }

@@ -707,13 +707,14 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
       collections: [
         for (final col in collections)
           SheetCollection(
+            id: col.id,
             name: col.name,
             count: library.where((c) => c.col == col.id).length,
             selected: inLibrary && current.col == col.id,
           ),
       ],
-      onPick: (name) {
-        final col = collections.firstWhere((c) => c.name == name);
+      onPick: (id) {
+        final col = collections.firstWhere((c) => c.id == id);
         assign(col.id, col.name);
       },
       onCreateAndPick: (name) async {

@@ -247,6 +247,20 @@ class CollectionsNotifier extends Notifier<List<ComicCollection>> {
     return id;
   }
 
+  /// Ganti nama koleksi — komik di dalamnya tetap terhubung (relasi lewat
+  /// `collectionId`, bukan nama), jadi rename tidak perlu sentuh `library`.
+  Future<void> rename(String id, String newName) async {
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final c in state)
+          if (c.id == id) ComicCollection(id: id, name: newName) else c,
+      ];
+      return;
+    }
+    await col.doc(id).update({'name': newName});
+  }
+
   Future<void> delete(String id) async {
     final col = _col;
     if (col == null) {

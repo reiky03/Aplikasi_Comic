@@ -7,11 +7,13 @@ import 'app_sheet.dart';
 /// Data koleksi untuk sheet (UI murni; wiring state di layar pemanggil).
 class SheetCollection {
   const SheetCollection({
+    required this.id,
     required this.name,
     required this.count,
     this.selected = false,
   });
 
+  final String id;
   final String name;
   final int count;
 
@@ -92,7 +94,7 @@ class _CollectionPickerBodyState extends State<_CollectionPickerBody> {
                 : null,
             onTap: () {
               Navigator.pop(context);
-              widget.onPick(col.name);
+              widget.onPick(col.id);
             },
           ),
         const SizedBox(height: 10),
@@ -151,13 +153,14 @@ class _CollectionPickerBodyState extends State<_CollectionPickerBody> {
   }
 }
 
-/// Manage collections — spek 15: daftar koleksi + tombol hapus per row,
+/// Manage collections — spek 15: daftar koleksi + tombol edit/hapus per row,
 /// input + "Buat" persisten di bawah. Hapus koleksi tidak menghapus komiknya.
 Future<void> showManageCollectionsSheet(
   BuildContext context, {
   required List<SheetCollection> collections,
   required ValueChanged<String> onDelete,
-  required ValueChanged<String> onCreate,
+  required Future<String> Function(String name) onCreate,
+  required void Function(String id, String newName) onRename,
 }) {
   return showAppSheet(
     context,
@@ -165,6 +168,7 @@ Future<void> showManageCollectionsSheet(
       collections: collections,
       onDelete: onDelete,
       onCreate: onCreate,
+      onRename: onRename,
     ),
   );
 }
@@ -174,11 +178,13 @@ class _ManageCollectionsBody extends StatefulWidget {
     required this.collections,
     required this.onDelete,
     required this.onCreate,
+    required this.onRename,
   });
 
   final List<SheetCollection> collections;
   final ValueChanged<String> onDelete;
-  final ValueChanged<String> onCreate;
+  final Future<String> Function(String name) onCreate;
+  final void Function(String id, String newName) onRename;
 
   @override
   State<_ManageCollectionsBody> createState() => _ManageCollectionsBodyState();
@@ -205,30 +211,60 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
           _CollectionRow(
             collection: col,
             verticalPadding: 12,
-            trailing: InkWell(
-              onTap: () async {
-                final confirmed = await showConfirmSheet(
-                  context,
-                  title: 'Hapus koleksi?',
-                  message:
-                      '"${col.name}" akan dihapus. Komik di dalamnya tidak '
-                      'ikut terhapus, cuma lepas dari koleksi ini.',
-                );
-                if (!confirmed || !context.mounted) return;
-                setState(() => _items.remove(col));
-                widget.onDelete(col.name);
-              },
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  onTap: () async {
+                    final newName = await _showRenameSheet(context, col.name);
+                    if (newName == null || !context.mounted) return;
+                    final index = _items.indexOf(col);
+                    setState(() => _items[index] = SheetCollection(
+                          id: col.id,
+                          name: newName,
+                          count: col.count,
+                        ));
+                    widget.onRename(col.id, newName);
+                  },
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.dangerBorder),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Icon(AppIcons.edit,
+                        size: 15, color: AppColors.accentText),
+                  ),
                 ),
-                child: const Icon(AppIcons.delete,
-                    size: 15, color: AppColors.danger),
-              ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () async {
+                    final confirmed = await showConfirmSheet(
+                      context,
+                      title: 'Hapus koleksi?',
+                      message:
+                          '"${col.name}" akan dihapus. Komik di dalamnya tidak '
+                          'ikut terhapus, cuma lepas dari koleksi ini.',
+                    );
+                    if (!confirmed || !context.mounted) return;
+                    setState(() => _items.remove(col));
+                    widget.onDelete(col.id);
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.dangerBorder),
+                    ),
+                    child: const Icon(AppIcons.delete,
+                        size: 15, color: AppColors.danger),
+                  ),
+                ),
+              ],
             ),
           ),
         Container(
@@ -251,7 +287,7 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                 controller: _controller,
                 height: 48,
                 horizontalPadding: 18,
-                onCreate: (name) {
+                onCreate: (name) async {
                   // Bukan `FocusScope.of(context).unfocus()` — di dalam
                   // bottom sheet itu bisa "bubble up" ke scope route-nya dan
                   // kebaca sebagai sinyal "sheet kehilangan fokus, tutup",
@@ -260,11 +296,14 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                   // dari node yang aktif sekarang (TextField-nya), tanpa
                   // bubbling ke scope.
                   FocusManager.instance.primaryFocus?.unfocus();
-                  setState(() {
-                    _items.add(SheetCollection(name: name, count: 0));
-                    _controller.clear();
-                  });
-                  widget.onCreate(name);
+                  _controller.clear();
+                  // Tunggu id asli dari notifier (bukan id sementara) —
+                  // dipakai buat rename/hapus row ini setelahnya.
+                  final id = await widget.onCreate(name);
+                  if (!mounted) return;
+                  setState(
+                    () => _items.add(SheetCollection(id: id, name: name, count: 0)),
+                  );
                 },
               ),
             ],
@@ -273,6 +312,62 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
       ],
     );
   }
+}
+
+/// Sheet ganti nama koleksi — dibuka dari tombol edit di "Kelola koleksi".
+/// Balikin nama baru (trimmed, non-kosong, beda dari sebelumnya) atau null
+/// kalau dibatalkan.
+Future<String?> _showRenameSheet(BuildContext context, String currentName) {
+  final controller = TextEditingController(text: currentName);
+  return showAppSheet<String>(
+    context,
+    builder: (sheetContext) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const AppSheetTitle('Ganti nama koleksi', bottomGap: 14),
+        _NewCollectionField(
+          controller: controller,
+          height: 48,
+          borderColor: AppColors.borderStrong,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => Navigator.pop(sheetContext),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 46,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text('Batal',
+                      style:
+                          AppTypography.jakarta(size: 14, weight: FontWeight.w700)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _CreateButton(
+                controller: controller,
+                height: 46,
+                label: 'Simpan',
+                onCreate: (name) => Navigator.pop(
+                  sheetContext,
+                  name == currentName ? null : name,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  ).whenComplete(controller.dispose);
 }
 
 class _CollectionRow extends StatelessWidget {
@@ -383,12 +478,14 @@ class _CreateButton extends StatelessWidget {
     required this.height,
     required this.onCreate,
     this.horizontalPadding = 16,
+    this.label = 'Buat',
   });
 
   final TextEditingController controller;
   final double height;
   final ValueChanged<String> onCreate;
   final double horizontalPadding;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -412,7 +509,7 @@ class _CreateButton extends StatelessWidget {
               ),
               textStyle: AppTypography.buttonSmall,
             ),
-            child: const Text('Buat'),
+            child: Text(label),
           ),
         );
       },

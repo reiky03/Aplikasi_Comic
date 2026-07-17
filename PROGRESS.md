@@ -1164,3 +1164,70 @@ tanpa pilihan palsu. User pilih opsi kedua.
 - Diverifikasi: `flutter analyze` bersih, `flutter test` 18/18 lolos
   (`-j 1`, semua file test termasuk mangathemesia/natsuid ikut jalan),
   `flutter build web` sukses tanpa error kompilasi.
+
+### 2026-07-17 — Setelan gaya Tachiyomi/Mihon: "Tentang" + edit nama koleksi
+
+User minta menu Setelan diisi hal-hal ala Tachiyomi/Mihon yang relevan
+buat fitur yang sudah dikembangkan: halaman "Tentang" (identitas
+developer pakai nama GitHub, bukan nama generik prototipe), "Periksa
+pembaruan" beneran (bukan simulasi), dan tombol edit nama koleksi di
+"Kelola koleksi" (biar salah ketik nama koleksi nggak harus dihapus &
+dibuat ulang).
+
+**Halaman "Tentang"** (`lib/features/settings/about_screen.dart`, baru):
+- Identitas: logo Kizen, versi (dari `pubspec.yaml`: 1.0.0 build 1),
+  kredit developer "Reiky Aryanando Pratama · @reiky03" (dikonfirmasi
+  lewat GitHub API `get_me` — bukan tebakan) yang tap-nya buka
+  `github.com/reiky03`, dan "Kode sumber" yang buka
+  `github.com/reiky03/Aplikasi_Comic`.
+- "Periksa pembaruan": `lib/data/app_update_checker.dart` (baru) —
+  `checkForAppUpdate()` betulan hit endpoint publik GitHub Releases
+  (`/repos/reiky03/Aplikasi_Comic/releases/latest`, tanpa token) dan
+  bandingkan tag rilis vs versi terpasang secara numerik per segmen
+  (bukan string compare, biar "1.10.0" > "1.2.0" kebaca benar). Repo ini
+  belum ada rilis publik saat ini — dicek jujur (404 → "Belum ada rilis
+  publik", bukan diam-diam dianggap "sudah terbaru"). Semua kegagalan
+  (offline, timeout, format tak terduga) ditangkap & dikasih pesan,
+  tidak pernah crash.
+- `_openUrl` awalnya TIDAK bungkus `launchUrl` dengan try/catch — ketauan
+  lewat smoke-test: di web headless (popup diblokir) `launchUrl`
+  nge-throw dan jadi unhandled exception (tidak crash UI, tapi tetap
+  bug nyata — di device asli bisa kejadian serupa kalau tidak ada
+  browser/app yang bisa handle link). Dibungkus try/catch, fallback ke
+  toast "Gagal membuka link".
+- `pubspec.yaml` — tambah dependency `url_launcher`. `AndroidManifest.xml`
+  — tambah `<queries>` intent VIEW/https biar `url_launcher` bisa cek
+  browser yang tersedia di Android 11+.
+- `settings_screen.dart` — row baru "Tentang" di card "Aplikasi", push
+  ke `AboutScreen`.
+
+**Edit nama koleksi** (`collection_sheets.dart`, `library_state.dart`):
+- `CollectionsNotifier.rename(id, newName)` — baru, symmetric sama
+  `create`/`delete`.
+- `SheetCollection` dapat field `id` (sebelumnya sheet-sheet koleksi
+  cuma pegang `name` buat identitas — `onPick`/`onDelete` resolve balik
+  ke id lewat `collections.firstWhere((c) => c.name == name)`, rapuh
+  kalau ada nama kembar atau baru diganti nama di sesi yang sama).
+  Semua callback (`onPick`, `onDelete`) diganti pakai `id` langsung,
+  bukan `name` — perbaikan sekalian, bukan cuma buat rename.
+  `onCreate` diganti jadi `Future<String> Function(String name)` (balikin
+  id asli dari notifier) supaya row yang baru dibuat di sheet "Kelola
+  koleksi" langsung punya id yang benar buat di-rename/dihapus tanpa
+  perlu tutup-buka sheet dulu.
+- Tombol pensil baru di tiap row "Kelola koleksi" (di sebelah tombol
+  hapus) → `_showRenameSheet` (sheet baru, field pre-filled nama
+  sekarang + tombol Batal/Simpan) → update `_items` lokal + panggil
+  `onRename(id, newName)`.
+- `library_screen.dart`, `comic_detail_screen.dart` — pemanggil
+  `SheetCollection`/`showCollectionPickerSheet`/`showManageCollectionsSheet`
+  disesuaikan ke id-based.
+- Diverifikasi lewat smoke-test web (FAKE_AUTH, headless Chromium
+  `--no-web-resources-cdn` + `--enable-unsafe-swiftshader` biar CanvasKit
+  jalan tanpa GPU asli): buka Setelan → Tentang → nama/link developer
+  tampil benar, "Periksa pembaruan" gagal dengan pesan yang masuk akal
+  (jaringan sandbox diblok proxy, bukan crash) setelah fix try/catch.
+  Kelola koleksi → tap pensil di "Sedang Dibaca" → ganti jadi "Favorit
+  Banget" → tersimpan & toast konfirmasi muncul → chip filter di Library
+  ikut ke-update ke nama baru secara live (listener Firestore/demo-state).
+- `flutter analyze` bersih, `flutter test` 18/18 lolos, `flutter build
+  web` sukses.

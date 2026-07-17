@@ -10,6 +10,7 @@ import '../sync/sync_service.dart';
 import '../auth/auth_repository.dart';
 import '../onboarding/login_screen.dart';
 import '../reader/reader_settings_sheet.dart';
+import 'about_screen.dart';
 
 /// Tab Setelan — spek 14.
 class SettingsScreen extends ConsumerWidget {
@@ -141,6 +142,15 @@ class SettingsScreen extends ConsumerWidget {
                     trailing: const Icon(AppIcons.forward,
                         size: 16, color: AppColors.textFaint),
                     onTap: () => _runSync(context, ref),
+                  ),
+                  _menuRow(
+                    icon: LucideIcons.info,
+                    label: 'Tentang',
+                    trailing: const Icon(AppIcons.forward,
+                        size: 16, color: AppColors.textFaint),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+                    ),
                     showDivider: false,
                   ),
                 ]),
