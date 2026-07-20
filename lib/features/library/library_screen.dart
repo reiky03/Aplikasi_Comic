@@ -339,6 +339,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ref.read(libraryProvider.notifier).moveToCollection(comic.id, id);
         if (mounted) AppToast.show(context, 'Ditambahkan ke $name');
       },
+      onRemove: () async {
+        await ref.read(libraryProvider.notifier).remove(comic.id);
+        if (mounted) AppToast.show(context, 'Penyimpanan komik dibatalkan');
+      },
     );
   }
 

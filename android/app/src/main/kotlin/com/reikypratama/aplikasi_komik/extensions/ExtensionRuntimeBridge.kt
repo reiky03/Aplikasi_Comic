@@ -7,9 +7,14 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
 import dalvik.system.DexClassLoader
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -20,6 +25,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Headers
 import org.json.JSONArray
+import org.jsoup.Jsoup
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -42,7 +48,10 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "runtimeInfo" -> result.success(runtimeInfo())
+            "openVpnSettings" -> openVpnSettings(result)
+            "probeUrl" -> probeUrl(call, result)
             "readWebViewSession" -> readWebViewSession(call, result)
+            "renderHtmlWithWebView" -> renderHtmlWithWebView(call, result)
             "listInstalledExtensions" -> result.success(listInstalledExtensions())
             "installExtensionApk" -> installExtensionApk(call, result)
             "uninstallExtensionPackage" -> uninstallExtensionPackage(call, result)
@@ -72,6 +81,79 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         ),
     )
 
+    private fun openVpnSettings(result: MethodChannel.Result) {
+        try {
+            val intent = Intent(Settings.ACTION_VPN_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            result.success(true)
+        } catch (e: Throwable) {
+            try {
+                val fallback = Intent(Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallback)
+                result.success(true)
+            } catch (fallbackError: Throwable) {
+                result.error(
+                    "settings_failed",
+                    fallbackError.safeMessage(),
+                    fallbackError.stackTraceToString(),
+                )
+            }
+        }
+    }
+
+    private fun probeUrl(call: MethodCall, result: MethodChannel.Result) {
+        val url = call.argument<String>("url")
+        if (url.isNullOrBlank()) {
+            result.error("bad_args", "url kosong", null)
+            return
+        }
+        Thread {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header(
+                        "User-Agent",
+                        WebSettings.getDefaultUserAgent(context),
+                    )
+                    .get()
+                    .build()
+                OkHttpClient.Builder()
+                    .followRedirects(true)
+                    .followSslRedirects(true)
+                    .build()
+                    .newCall(request)
+                    .execute()
+                    .use { response ->
+                        val preview = response.peekBody(64L * 1024L).string()
+                        result.success(
+                            mapOf(
+                                "ok" to response.isSuccessful,
+                                "statusCode" to response.code,
+                                "finalUrl" to response.request.url.toString(),
+                                "blocked" to preview.looksLikeNetworkBlock(),
+                                "message" to response.message,
+                            ),
+                        )
+                    }
+            } catch (e: Throwable) {
+                val message = e.safeMessage()
+                result.success(
+                    mapOf(
+                        "ok" to false,
+                        "statusCode" to 0,
+                        "finalUrl" to url,
+                        "blocked" to message.looksLikeNetworkBlock(),
+                        "message" to message,
+                    ),
+                )
+            }
+        }.start()
+    }
+
     private fun readWebViewSession(call: MethodCall, result: MethodChannel.Result) {
         val url = call.argument<String>("url")
         if (url.isNullOrBlank()) {
@@ -89,6 +171,93 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             )
         } catch (e: Throwable) {
             result.error("session_failed", e.safeMessage(), e.stackTraceToString())
+        }
+    }
+
+    private fun renderHtmlWithWebView(call: MethodCall, result: MethodChannel.Result) {
+        val url = call.argument<String>("url")
+        if (url.isNullOrBlank()) {
+            result.error("bad_args", "url kosong", null)
+            return
+        }
+        Handler(Looper.getMainLooper()).post {
+            var completed = false
+            lateinit var webView: WebView
+            val handler = Handler(Looper.getMainLooper())
+            fun finishSuccess(html: String?) {
+                if (completed) return
+                completed = true
+                runCatching {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+                result.success(html.orEmpty())
+            }
+            fun finishError(error: Throwable) {
+                if (completed) return
+                completed = true
+                runCatching {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+                result.error("webview_render_failed", error.safeMessage(), error.stackTraceToString())
+            }
+            fun captureHtml() {
+                if (completed) return
+                webView.evaluateJavascript(
+                    WEBVIEW_RENDER_SCRIPT,
+                ) { encoded ->
+                    val html = runCatching { JSONArray("[$encoded]").optString(0) }
+                        .getOrDefault("")
+                    finishSuccess(html)
+                }
+            }
+
+            try {
+                val sessionHeaders = call.sessionHeaders()
+                val cookie = sessionHeaders.entries.firstOrNull {
+                    it.key.equals("Cookie", ignoreCase = true)
+                }?.value
+                val manager = CookieManager.getInstance()
+                manager.setAcceptCookie(true)
+                if (!cookie.isNullOrBlank()) {
+                    cookie.split(';')
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .forEach { manager.setCookie(url, it) }
+                    manager.flush()
+                }
+
+                webView = WebView(context)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    manager.setAcceptThirdPartyCookies(webView, true)
+                }
+                webView.settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    databaseEnabled = true
+                    loadsImagesAutomatically = false
+                    blockNetworkImage = true
+                    userAgentString = sessionHeaders.entries.firstOrNull {
+                        it.key.equals("User-Agent", ignoreCase = true)
+                    }?.value ?: WebSettings.getDefaultUserAgent(context)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    }
+                }
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, finishedUrl: String) {
+                        handler.postDelayed({ captureHtml() }, WEBVIEW_RENDER_SETTLE_MS)
+                    }
+                }
+                handler.postDelayed({ captureHtml() }, WEBVIEW_RENDER_TIMEOUT_MS)
+                webView.loadUrl(
+                    url,
+                    sessionHeaders.filterKeys { !it.equals("Cookie", ignoreCase = true) },
+                )
+            } catch (e: Throwable) {
+                finishError(e)
+            }
         }
     }
 
@@ -198,15 +367,17 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             result.error("bad_args", "packageName kosong", null)
             return
         }
-        try {
-            val source = loadExtensionSource(packageName)
-            val sourceMap = source.toMap()
-            Log.i(TAG, "inspectExtension OK ${source.packageName} -> ${sourceMap["name"]}")
-            result.success(sourceMap)
-        } catch (e: Throwable) {
-            Log.e(TAG, "inspectExtension failed for $packageName", e)
-            result.error("inspect_failed", e.safeMessage(), e.stackTraceToString())
-        }
+        Thread {
+            try {
+                val source = loadExtensionSource(packageName)
+                val sourceMap = source.toMap()
+                Log.i(TAG, "inspectExtension OK ${source.packageName} -> ${sourceMap["name"]}")
+                result.success(sourceMap)
+            } catch (e: Throwable) {
+                Log.e(TAG, "inspectExtension failed for $packageName", e)
+                result.error("inspect_failed", e.safeMessage(), e.stackTraceToString())
+            }
+        }.start()
     }
 
     private fun listExtensionSources(call: MethodCall, result: MethodChannel.Result) {
@@ -425,6 +596,28 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "fetchPageList failed for $packageName", e)
+                if (packageName.contains("doujindesu", ignoreCase = true)) {
+                    val fallback = runCatching {
+                        val source = loadExtensionSource(
+                            packageName,
+                            call.argument<String>("sourceName"),
+                            call.argument<String>("sourceLang"),
+                            call.argument<String>("baseUrl"),
+                        )
+                        fetchDoujindesuPages(
+                            source.absoluteUrlForSource(chapterUrl),
+                            call.sessionHeaders(),
+                        )
+                    }.getOrElse { fallbackError ->
+                        Log.e(TAG, "Doujindesu page fallback failed", fallbackError)
+                        emptyList()
+                    }
+                    if (fallback.isNotEmpty()) {
+                        Log.i(TAG, "Doujindesu page fallback OK count=${fallback.size}")
+                        result.success(fallback)
+                        return@Thread
+                    }
+                }
                 result.error("pages_failed", e.safeMessage(), e.stackTraceToString())
             }
         }.start()
@@ -574,6 +767,15 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     private fun Throwable.safeMessage(): String =
         cause?.message ?: message ?: javaClass.simpleName
 
+    private fun String.looksLikeNetworkBlock(): Boolean {
+        val value = lowercase()
+        return value.contains("internetbaik") ||
+            value.contains("internetpositif") ||
+            value.contains("trustpositif") ||
+            value.contains("hostname mismatch") ||
+            value.contains("certificate_verify_failed")
+    }
+
     private fun MethodCall.sessionHeaders(): Map<String, String> {
         val raw = argument<Map<*, *>>("sessionHeaders") ?: return emptyMap()
         return raw.entries.mapNotNull { (key, value) ->
@@ -660,6 +862,101 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         }
     }
 
+    private fun fetchDoujindesuPages(
+        chapterUrl: String,
+        sessionHeaders: Map<String, String>,
+    ): List<Map<String, Any?>> {
+        val headers = buildMap {
+            put("User-Agent", WebSettings.getDefaultUserAgent(context))
+            put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            put("Referer", chapterUrl)
+            putAll(sessionHeaders)
+        }
+        val request = Request.Builder()
+            .url(chapterUrl)
+            .headers(Headers.headersOf(*headers.flatMap { listOf(it.key, it.value) }.toTypedArray()))
+            .get()
+            .build()
+        val html = OkHttpClient.Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+            .newCall(request)
+            .execute()
+            .use { response ->
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("HTTP ${response.code}")
+                }
+                response.body.string()
+            }
+        val document = Jsoup.parse(html, chapterUrl)
+        val urls = linkedSetOf<String>()
+        document.select(
+            "#readerarea img, .reading-content img, .entry-content img, " +
+                ".chapter-content img, article img, main img, img",
+        ).forEach { img ->
+            listOf(
+                "data-lazy-src",
+                "data-src",
+                "data-original",
+                "data-url",
+                "data-image",
+                "srcset",
+                "src",
+            ).firstNotNullOfOrNull { attr ->
+                img.attr(attr).takeIf { it.isNotBlank() }
+            }?.let { raw ->
+                raw.split(',').first().trim().split(' ').firstOrNull()
+            }?.let { candidate ->
+                if (candidate.looksLikeReaderImage()) urls.add(document.absUrl(candidate, chapterUrl))
+            }
+        }
+        IMAGE_URL_REGEX.findAll(html).forEach { match ->
+            val candidate = match.value
+                .replace("\\/", "/")
+                .replace("\\u002F", "/")
+                .replace("\\u002f", "/")
+            if (candidate.looksLikeReaderImage()) {
+                urls.add(document.absUrl(candidate, chapterUrl))
+            }
+        }
+        Log.i(TAG, "Doujindesu page fallback scanned url=$chapterUrl images=${urls.size}")
+        return urls.mapIndexed { index, imageUrl ->
+            mapOf(
+                "index" to index,
+                "url" to imageUrl,
+                "imageUrl" to imageUrl,
+                "headers" to headers,
+            )
+        }
+    }
+
+    private fun org.jsoup.nodes.Document.absUrl(raw: String, base: String): String =
+        runCatching {
+            java.net.URI.create(base).resolve(raw).toString()
+        }.getOrDefault(raw)
+
+    private fun String.looksLikeReaderImage(): Boolean {
+        val value = lowercase()
+        if (
+            value.startsWith("data:") ||
+            value.contains("placeholder") ||
+            value.contains("loading.") ||
+            value.contains("blank.") ||
+            value.contains("/logo") ||
+            value.contains("/icon") ||
+            value.contains("/avatar") ||
+            value.contains("/ads")
+        ) {
+            return false
+        }
+        return value.contains(".jpg") ||
+            value.contains(".jpeg") ||
+            value.contains(".png") ||
+            value.contains(".webp") ||
+            value.contains(".avif")
+    }
+
     private fun Any.toChapterMap(): Map<String, Any?> = mapOf(
         "url" to (callOrNull("getUrl") as? String ?: ""),
         "name" to (callOrNull("getName") as? String ?: ""),
@@ -710,6 +1007,14 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         val extensionClass: String,
         val instance: Any,
     ) {
+        fun absoluteUrlForSource(rawUrl: String): String {
+            val value = rawUrl.trim()
+            if (value.startsWith("http://") || value.startsWith("https://")) return value
+            val base = instance.callOrNull("getBaseUrl") as? String ?: return value
+            return runCatching { java.net.URI.create(base).resolve(value).toString() }
+                .getOrDefault(value)
+        }
+
         fun toMap(): Map<String, Any?> = mapOf(
             "packageName" to packageName,
             "sourceDir" to sourceDir,
@@ -735,6 +1040,21 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         private const val TAG = "KizenExtensionRuntime"
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         private const val API_VERSION = 1
+        // Cloudflare biasanya redirect sekali setelah cookie clearance aktif.
+        // Beri waktu JavaScript normal selesai, tanpa menyentuh CAPTCHA.
+        private const val WEBVIEW_RENDER_SETTLE_MS = 2_500L
+        private const val WEBVIEW_RENDER_TIMEOUT_MS = 12_000L
+        private val IMAGE_URL_REGEX =
+            Regex(
+                """(?:https?:)?(?:\\?/){2}[^"'\\\s<>]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s<>]*)?|(?:\\?/)?(?:wp-content|uploads|images|image|img|storage|reader|pages|manga|doujin|doujindesu)(?:\\?/|[^"'\\\s<>])+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s<>]*)?""",
+                RegexOption.IGNORE_CASE,
+            )
+        private val WEBVIEW_RENDER_SCRIPT = """
+            (function() {
+              var element = document.documentElement || document.body;
+              return element ? element.outerHTML : '';
+            })()
+        """.trimIndent()
         private val constEmptyList = emptyList<Any?>()
     }
 }

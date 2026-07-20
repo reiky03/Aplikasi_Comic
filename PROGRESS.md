@@ -27,6 +27,241 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-07-18 — Extension Soul Scans yang hanya mengirim 4 item ikut diperluas
+
+Tab Terbaru masih 4 item karena source yang tersimpan ternyata bisa resolve ke
+extension repository Soul Scans. `ExtensionRuntimeSource` menganggap 4 hasil
+extension sebagai hasil final, sehingga parser HTML/SvelteKit tidak pernah
+dipakai walau katalog website lebih lengkap.
+
+Fix:
+- `extension_runtime_source.dart` khusus pada `fetchLatest` sekarang, bila
+  extension mengembalikan kurang dari 20 item, mencoba fallback HTML dan parser
+  alternatif. Hasil fallback dipakai hanya jika jumlahnya lebih besar, jadi
+  extension normal yang sudah lengkap tetap tidak disentuh.
+- Test baru mensimulasikan extension 4 item + fallback 5 item dan memastikan
+  hasil 5 item yang dipakai.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- Test extension runtime lulus 6/6.
+- APK profile berhasil dibuild dan dipasang ulang ke device.
+
+### 2026-07-18 — Tab Terbaru Soulscans ikut memakai katalog penuh
+
+Tab Terbaru masih menampilkan 4 komik karena parser mencoba route `/latest`
+yang ternyata 404, lalu jatuh ke `/comic` sebagai homepage. Homepage hanya
+punya 4 item, sementara katalog `/allcomic` live berisi daftar penuh.
+
+Fix:
+- `sveltekit_comic_source.dart` mengubah urutan `fetchLatest` menjadi
+  `/allcomic` → `/comic` → `/`, sama seperti popular. Parameter halaman tetap
+  dikirim untuk scroll/pagination.
+- Test baru memastikan `fetchLatest(1)` request pertama ke `/allcomic`.
+
+Diverifikasi:
+- Route live `/latest` 404, `/comic` 4 item, `/allcomic` 50 item.
+- `flutter analyze lib test` bersih.
+- Test SvelteKit lulus 5/5.
+- APK profile berhasil dibuild dan dipasang ulang ke device.
+
+### 2026-07-18 — Universal parser tidak berhenti di 4 item homepage SvelteKit
+
+Walau parser SvelteKit sudah mendahulukan `/allcomic`, source Soulscans lama
+masih bisa memakai `UniversalHtmlSource`. Universal menganggap 4 item dari
+homepage sebagai hasil valid dan selesai sebelum fallback SvelteKit terpanggil.
+
+Fix:
+- `universal_html_source.dart` sekarang mengenali marker
+  `data-sveltekit-fetched`/`__sveltekit_`. Kalau hasilnya kurang dari 20 item,
+  parser mengecek katalog SvelteKit penuh sebelum mengembalikan hasil kecil.
+- Hasil katalog yang lebih banyak dipakai sebagai hasil final, sementara
+  source non-SvelteKit tetap memakai jalur universal lama tanpa request
+  tambahan ini.
+- Test Universal + SvelteKit tetap lulus setelah perubahan.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- Test targeted parser lulus 19 test dengan 3 skip WebView safe mode.
+- APK profile berhasil dibuild dan dipasang ulang ke device.
+
+### 2026-07-18 — Soulscans memakai katalog penuh, bukan homepage 4 komik
+
+User menemukan Soulscans hanya menampilkan 4 komik walaupun katalog website
+jauh lebih banyak. Root cause-nya parser berhenti di homepage: payload
+homepage hanya berisi section `hot_weekly` dengan 4 item.
+
+Fix:
+- `sveltekit_comic_source.dart` sekarang mencoba `/allcomic` lebih dulu untuk
+  popular, lalu `/comic`, baru homepage sebagai fallback. Parameter `page`
+  tetap dikirim supaya infinite scroll di Source Detail bisa mengambil katalog
+  berikutnya.
+- Test baru memastikan request pertama popular selalu ke `/allcomic`, jadi
+  homepage ringkas tidak boleh lagi memotong daftar menjadi 4 item.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- Test SvelteKit lulus 4/4.
+- APK profile berhasil dibuild dan dipasang ulang ke device.
+
+### 2026-07-18 — Sumber custom tanpa parserKind tidak lagi langsung dilempar ke WebView
+
+User sudah memasukkan Soulscans, tetapi app tetap membuka WebView. Root cause:
+sumber yang dibuat sebelum parser SvelteKit ditambahkan kemungkinan tersimpan
+tanpa `parserKind`; `SourceDetailScreen` dan `source_resolver.dart` sebelumnya
+memang menganggap kondisi itu tidak punya parser native.
+
+Fix:
+- `adaptive_source.dart` menambah rantai otomatis untuk sumber custom tanpa
+  parserKind: SvelteKit → Universal HTML → MangaThemesia → NatsuId. Setiap
+  metode harus menghasilkan data non-kosong; kalau semua gagal, exception
+  WebView membawa URL halaman yang relevan.
+- `source_catalog.dart` menambah factory `buildAutomatic`.
+- `source_resolver.dart` sekarang memakai parser otomatis untuk source manual
+  dan source repository yang belum punya parserKind, jadi komik lama tetap
+  bisa dicoba tanpa hapus/tambah ulang sumber.
+- `source_detail_screen.dart` memakai parser otomatis saat metadata source
+  belum menyimpan parserKind.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- Test parser SvelteKit dan resolver lulus.
+- APK profile sudah dibuild dan dipasang ulang ke device; startup setelah
+  install tidak menunjukkan crash/ANR.
+
+### 2026-07-18 — Parser pola SvelteKit untuk Soulscans dan URL gambar HTTPS
+
+User minta Soulscans dibuatkan parser yang bisa menjadi pola reusable untuk
+situs lain. Dari halaman live `v1.soulscans.asia` terlihat daftar/detail/chapter
+dirender lewat payload SvelteKit `application/json`/`data-sveltekit-fetched`,
+sedangkan gambar reader dikirim dari `sscdn.dbm.my.id` memakai URL `http://`.
+URL HTTP itu rawan gagal di Android karena cleartext/network security.
+
+Fix:
+- `sveltekit_comic_source.dart` menambah parser generik pola SvelteKit untuk
+  daftar manga, detail, chapter, payload `pages`, dan gambar DOM. Parser tidak
+  dikunci ke satu domain supaya bisa dipakai situs SvelteKit lain yang memakai
+  struktur route/payload serupa.
+- URL gambar host `sscdn.dbm.my.id` dan subdomain Soulscans dinormalisasi ke
+  HTTPS sebelum masuk ke Reader.
+- `source_catalog.dart` menambah kind `sveltekit-comic` di auto-detect sebelum
+  parser tema lain.
+- `universal_html_source.dart` tetap menjadi metode utama untuk sumber lama,
+  tetapi sekarang punya fallback SvelteKit setelah parser universal gagal dan
+  ikut menormalisasi URL gambar Soulscans. Jadi source yang sudah terlanjur
+  tersimpan sebagai `universal-html` tetap mendapat perbaikan tanpa wajib
+  dihapus/tambah ulang.
+- `sveltekit_comic_source_test.dart` menguji listing, detail/chapter, payload
+  pages, dan konversi HTTP gambar menjadi HTTPS.
+
+Diverifikasi:
+- Halaman live Soulscans merespons HTTP 200; route comic/chapter dan URL gambar
+  HTTPS terkonfirmasi dari response saat pengecekan.
+- `flutter analyze lib test` bersih.
+- Test parser SvelteKit + Universal lulus; 3 test WebView lama tetap di-skip
+  sengaja karena safe mode ANR.
+
+### 2026-07-18 — Parser alternatif berantai + tombol WebView saat semua metode gagal
+
+User minta setiap sumber dicoba dengan beberapa metode secara berurutan: parser
+yang sudah jalan tetap dicoba dulu, parser tambahan baru dipakai kalau hasilnya
+kosong/gagal, lalu user tetap diberi jalan keluar lewat WebView. Sebelumnya
+`ExtensionRuntimeSource` berhenti setelah bridge dan satu fallback HTML gagal,
+sedangkan reader cuma menampilkan pesan error.
+
+Fix additive:
+- `alternative_source_methods.dart` menambah rantai parser tema
+  MangaThemesia dan NatsuId. Rantai ini hanya dipanggil setelah bridge APK dan
+  parser universal lama tidak menghasilkan data, jadi jalur source yang sudah
+  stabil tidak diambil alih parser baru.
+- `extension_runtime_source.dart` sekarang mencoba bridge → fallback lama →
+  parser alternatif untuk popular/latest/search/detail/chapter/page. Kalau
+  semuanya gagal, dilempar `MangaSourceWebViewException` dengan URL halaman
+  yang bisa langsung dibuka.
+- `manga_source.dart` menambah exception khusus WebView tanpa mengubah kontrak
+  `MangaSource` yang lama.
+- `reader_screen.dart` menampilkan tombol `Buka WebView` pada error daftar
+  chapter maupun gambar halaman dan mengirim URL chapter/detail yang gagal.
+- `source_detail_screen.dart` juga menampilkan tombol WebView saat daftar
+  Jelajahi gagal; `web_view_screen.dart` menerima `initialUrl` baru, sementara
+  pemakaian WebView lama tetap memakai URL sumber seperti sebelumnya.
+- Test extension runtime menutup dua jalur baru: fallback alternatif dipakai
+  setelah parser utama kosong, dan kegagalan total menghasilkan URL absolut
+  untuk WebView.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1` selesai tanpa failure; 3 test WebView otomatis tetap
+  di-skip sengaja karena safe mode ANR.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke device `2A311FDH300122` dan startup setelah
+  install tidak menunjukkan `FATAL EXCEPTION` atau ANR di logcat.
+
+### 2026-07-18 — Rollback compatibility batch karena regresi Doujindesu
+
+Setelah batch compatibility API lama dipasang ke APK profile, Doujindesu
+kembali membalas HTTP 404 walaupun blok request Doujindesu tidak diedit.
+Karena baseline sebelum batch terbukti jalan di device, semua tambahan batch
+terakhir di-rollback dari build yang akan dites:
+- status/constructor tambahan di `Page.kt`;
+- perubahan constructor `Filter.Separator`;
+- API fetch Rx tambahan di `HttpSource.kt`;
+- implementasi Observable tambahan di `rx/Observable.kt`.
+
+Baseline runtime extension dan fallback Doujindesu tetap dipertahankan. Ini
+menegaskan compatibility API baru harus diuji terpisah dulu dan tidak boleh
+masuk ke build utama sebelum ada bukti source stabil.
+
+### 2026-07-18 — Tambah compatibility API Tachiyomi lama tanpa ubah jalur stabil
+
+User minta dukungan source repository diperluas dengan aturan ketat: metode yang
+sudah jalan, terutama reader Doujindesu, tidak boleh dirombak. Dari APK
+extension Sektedoujin yang terpasang ditemukan signature Tachiyomi lama yang
+belum ada di compatibility layer Kizen:
+- constructor `Page(index, url, imageUrl, uri, status)`;
+- `Filter.Separator(name)`;
+- API Rx `Observable.just/error/map`;
+- API fetch lama `HttpSource.fetchPopularManga`, `fetchLatestUpdates`,
+  `fetchSearchManga`, `fetchMangaDetails`, `fetchChapterList`, dan
+  `fetchPageList`.
+
+Fix additive:
+- `Page.kt` hanya menambah status + konstanta status, tanpa mengubah field lama.
+- `Filter.kt` hanya membuat nama Separator bisa diisi, sementara constructor
+  kosong tetap tersedia.
+- `rx/Observable.kt` menambah constructor kosong kompatibel dan operasi dasar
+  Observable yang dipakai extension lama.
+- `HttpSource.kt` menambah API fetch lama yang menjalankan request/parse bawaan;
+  method request/parse existing dan bridge modern tidak diubah.
+
+Diverifikasi:
+- APK extension Doujindesu dan Sektedoujin dibaca dari device untuk mencocokkan
+  signature constructor/API yang benar.
+- Build dan test penuh dijalankan setelah compile selesai.
+
+### 2026-07-18 — Balikin URL asli extension supaya Doujindesu gak 404 lagi
+
+User melaporkan reader Doujindesu berubah dari error gambar/no-host menjadi
+`Doujindesu mengembalikan status 404`. Root cause regresinya ketemu di working
+tree: jalur bridge APK sebelumnya mengirim URL manga/chapter asli ke method
+`mangaDetailsRequest`, `chapterListRequest`, dan `pageListRequest`, tetapi
+perubahan metode tambahan sempat menormalisasi URL menjadi path baru sebelum
+diberikan ke extension. Sebagian extension Doujindesu membangun request sendiri
+dari URL itu, sehingga endpoint akhirnya berubah dan dibalas 404.
+
+Fix:
+- `ExtensionRuntimeBridge.kt` kembali mengirim `mangaUrl` dan `chapterUrl`
+  persis seperti yang diberikan extension/runtime, mengikuti perilaku commit
+  yang sebelumnya sudah berjalan.
+- Helper normalisasi URL yang tidak lagi dipakai di jalur extension dibuang.
+- Resolusi URL relatif tetap dipertahankan hanya di parser fallback universal
+  dan fallback native ketika memang perlu membuat URL absolut; jalur extension
+  lama tidak ikut disentuh.
+
+Diverifikasi:
+- Kotlin source dicek ulang terhadap commit `d038302` yang sebelumnya stabil.
+- Berikutnya wajib build APK profile dan uji reader Doujindesu di device.
+
 ### 2026-07-17 — Hardening source/repository + Updates dan Settings final
 - Runtime extension Android sekarang punya compatibility stub yang lebih luas,
   cache hasil request, resolver source stabil berdasarkan package/source ID,
@@ -1747,3 +1982,800 @@ state, serta History/Updates pakai cover asli.
 - `history/{comicId}` dan `updates/{comicId}` sekarang menyimpan `coverUrl`.
   Layar History/Updates juga fallback ke cover dari Library untuk entri lama.
 - Diverifikasi: `flutter analyze lib test` bersih, `flutter test` 22/22 lolos.
+
+### 2026-07-18 — Audit Omega Scans repo: blokir jaringan + stub rateLimit
+
+User melaporkan Omega Scans dari repository tidak bisa dibuka lagi. Dicek di
+iQOO:
+- APK extension Omega terpasang dan sudah versi repo terbaru
+  (`eu.kanade.tachiyomi.extension.en.omegascans` v1.4.50).
+- Index Keiyoushi/Yuzono masih menunjuk `https://omegascans.org`.
+- Dari HP, `curl https://omegascans.org` gagal TLS hostname mismatch; saat
+  dipaksa `-k`, responsnya halaman `internetbaik.telkomsel.com`, bukan situs
+  Omega. Jadi akar kegagalan saat ini adalah jaringan/DNS/filter belum lewat
+  VPN/default network yang benar.
+- Screenshot app juga sudah menampilkan
+  `CERTIFICATE_VERIFY_FAILED: Hostname mismatch`, jadi source jatuh sebelum
+  bisa memuat daftar komik.
+
+Fix aditif supaya Omega siap jalan saat jaringan sudah lolos:
+- `android/app/src/main/kotlin/keiyoushi/network/RateLimit.kt` ditambah sebagai
+  compatibility helper untuk extension Keiyoushi modern yang memanggil
+  `OkHttpClient.Builder.rateLimit(...)` (Omega/HeanCms memakainya saat client
+  dibuat).
+- `android/app/build.gradle.kts` menambah `androidx.preference:preference-ktx`
+  karena HeanCms mengimplementasikan `ConfigurableSource` dan mereferensikan
+  `EditTextPreference`/`SwitchPreferenceCompat`.
+
+Catatan penting buat agent berikutnya: ini bukan bypass blokir ISP dan tidak
+boleh disamakan dengan “Omega sudah pasti bisa tanpa VPN”. Kalau HP masih
+return `internetbaik/telkomsel`, parser resmi Tachiyomi pun akan gagal. Setelah
+VPN aktif sebagai default network, kalau Omega masih error baru cek logcat
+`KizenExtensionRuntime` untuk dependency compatibility berikutnya.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1` 48/48 lolos.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke iQOO.
+
+### 2026-07-18 — Tambah metode parser/runtime repo + fondasi cek jaringan
+
+User minta app lebih maksimal membuka sumber manual (`Sumber Saya`) dan sumber
+repository Tachiyomi/Keiyoushi/Yuzono, dengan catatan fitur yang sudah jalan
+jangan disentuh. Implementasi kali ini aditif:
+
+- Android extension runtime:
+  - Tambah alias `uy.kohesive.injekt.Injekt` plus helper `api.get<T>()` tanpa
+    menghapus `injekt` lama.
+  - Tambah stub Keiyoushi kecil yang sering dipakai extension modern:
+    `keiyoushi.utils.Collections`, `Context`, `Preferences`, `Date`, dan
+    `Json`.
+  - Tetap mempertahankan stub lama; tidak rewrite `ConfigurableSource`,
+    `HttpSource`, atau model Tachiyomi yang sudah dipakai source lama.
+- Universal HTML parser:
+  - Daftar sumber kini juga mencoba endpoint JSON umum: `api.<host>/query`,
+    `<host>/query`, `<host>/api/query`, WP REST, `/api/manga(s)`,
+    `/api/comic(s)`, `/api/series`, dan subdomain `api.`.
+  - Parser JSON mengenali pola HeanCms (`series_slug`, `id`, `meta.current_page`
+    / `last_page`), sehingga URL manga bisa disimpan sebagai
+    `/series/{slug}#{id}` dan chapter fallback bisa lanjut memakai
+    `series_id`.
+  - Detail/chapter/page sekarang punya fallback API tambahan:
+    `/series/{slug}`, `/chapter/query?series_id=...`,
+    `/chapter/{seriesSlug}/{chapterSlug}`, `/api/chapter(s)`, dan JSON reader
+    yang menyimpan gambar di field `images`, `image_url`, `src`, `path`, dll.
+  - Inline script biasa (`window.__NUXT__`, `__INITIAL_STATE__`,
+    `__APOLLO_STATE__`, object berisi `manga/series/chapters/pages`) ikut
+    diekstrak, bukan hanya `script[type=application/json]`.
+- Extension runtime bridge:
+  - Native bridge menambah `probeUrl` untuk fondasi cek akses per-sumber nanti:
+    bisa membedakan akses sumber yang benar vs blokir jaringan (`internetbaik`,
+    `internetpositif`, hostname mismatch).
+  - `openVpnSettings` masih ada sebagai util native, tapi menu
+    `Akses Jaringan / VPN` di Setelan sudah dibuang lagi karena user merasa
+    tidak kepakai.
+
+Catatan batasan:
+- App tidak memasang/bundling VPN gratis. Itu sengaja dihindari karena risiko
+  privasi, tracking, dan policy.
+- Source yang butuh Cloudflare browser challenge, login khusus, atau API
+  berproteksi tetap bisa gagal sampai ada session WebView/cookie atau stub
+  runtime spesifik berikutnya.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1` 53/53 lolos.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ke Pixel 7 Pro yang sedang tersambung.
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`
+  sukses.
+- Smoke test web via Playwright + Chrome lokal: screenshot Setelan/menu VPN
+  tidak blank dan tidak overlap (`/tmp/kizen-web-settings-vpn.png`,
+  `/tmp/kizen-web-vpn-sheet.png`).
+
+### 2026-07-18 — Runtime extension makin mirip Tachiyomi: cookie WebView + URL normalizer
+
+User minta tambah metode yang paling manjur supaya sumber repository APK dan
+`Sumber Saya` lebih banyak kebuka, tanpa mengganggu parser yang sudah jalan.
+Akar kurangnya runtime sebelumnya: walaupun app sudah punya WebView Session
+Mode, panggilan ke APK extension belum membawa cookie/session itu ke native
+runtime. Jadi situs yang butuh `cf_clearance`, login browser, atau cookie hasil
+redirect tetap dipanggil seperti request OkHttp kosong. Selain itu, beberapa
+alur lama bisa mengirim URL absolut dari UI ke method extension yang biasanya
+mengharapkan path relatif ala Tachiyomi (`/manga/foo`), sehingga default
+`HttpSource` berisiko membuat request salah.
+
+Fix aditif:
+- `lib/sources/extension_runtime_source.dart` sekarang mengirim
+  `SourceSessionStore.headersFor(...)` ke semua operasi extension:
+  popular/latest/search/details/chapter/page. Session dipilih dari `baseUrl`
+  dan URL manga/chapter yang sedang dibuka.
+- `lib/data/extension_runtime.dart` menambah parameter `sessionHeaders` di
+  semua method fetch extension, lalu meneruskannya lewat MethodChannel.
+- `android/.../eu/kanade/tachiyomi/network/NetworkHelper.kt` menambah
+  `WebViewCookieJar` yang membaca/menyimpan cookie dari `CookieManager`
+  Android. Ini bikin client extension yang memakai `network.client` /
+  `cloudflareClient` otomatis berbagi cookie dengan WebView, lebih dekat ke
+  cara app reader native menjaga sesi browser.
+- `ExtensionRuntimeBridge.kt` menormalisasi URL manga/chapter sebelum memanggil
+  request extension: URL absolut dengan host yang sama diubah ke path relatif,
+  sedangkan URL host lain tetap dibiarkan apa adanya. Ini mengurangi kasus
+  request rusak karena `baseUrl + absoluteUrl`.
+- Test `extension_runtime_source_test.dart` ditambah untuk memastikan cookie
+  WebView benar-benar ikut terkirim ke native bridge.
+
+Catatan batasan:
+- Ini bukan jaminan semua website langsung kebuka. Source yang butuh runtime API
+  Tachiyomi lain, JavaScript challenge penuh, atau proteksi server yang benar-
+  benar memerlukan browser aktif tetap perlu kompatibilitas berikutnya. Tapi ini
+  fondasi paling berdampak karena menyatukan WebView session dengan APK parser.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1` 54/54 lolos.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro.
+
+### 2026-07-18 — Universal parser tambah fallback DOM WebView-render
+
+User minta metode tambahan yang lebih dekat ke Tachimanga/Tachiyomi supaya
+website manual dan repo lebih banyak kebuka. Setelah cookie/session pipeline
+masuk, celah besar berikutnya adalah website modern yang HTML awalnya cuma
+shell kosong (`<div id="app">`) dan daftar manga/chapter/gambar baru muncul
+setelah JavaScript jalan. Parser HTTP biasa tidak akan pernah melihat DOM itu,
+walaupun cookie sudah benar.
+
+Fix aditif:
+- `ExtensionRuntimeBridge.kt` menambah method native
+  `renderHtmlWithWebView(url, sessionHeaders)`:
+  - berjalan di main thread Android;
+  - membuat WebView tersembunyi;
+  - mengaktifkan JavaScript + DOM storage;
+  - memasukkan cookie dari `sessionHeaders` ke `CookieManager`;
+  - memakai User-Agent dari WebView/session;
+  - menunggu page selesai + delay pendek, lalu membaca
+    `document.documentElement.outerHTML`.
+- `lib/data/extension_runtime.dart` menambah wrapper Dart
+  `renderHtmlWithWebView`.
+- `lib/sources/universal_html_source.dart` sekarang mencoba DOM hasil WebView
+  sebagai fallback untuk:
+  - listing popular/latest/search bila HTML awal berhasil di-fetch tapi tidak
+    menghasilkan kartu manga;
+  - detail sumber yang gagal HTTP/non-200/challenge ringan;
+  - daftar chapter bila HTML awal tidak berisi chapter;
+  - halaman reader bila HTML awal tidak berisi gambar.
+- Ekstraksi chapter/page di universal parser dipecah jadi helper reusable supaya
+  HTML biasa dan DOM WebView-render melewati parser yang sama, bukan logic baru
+  yang mudah meleset.
+- Test ditambah:
+  - bridge memastikan `renderHtmlWithWebView` membawa `sessionHeaders`;
+  - universal parser memastikan shell HTML kosong bisa berhasil bila MethodChannel
+    mengembalikan DOM hasil render.
+
+Catatan batasan:
+- Ini tetap fallback, bukan browser reader penuh. WebView disetel tidak memuat
+  gambar agar ringan, jadi cocok untuk membaca DOM/list URL, bukan untuk render
+  visual chapter. Website yang sengaja menyembunyikan data sampai user gesture,
+  CAPTCHA, atau challenge interaktif masih perlu WebView manual/session.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1` 56/56 lolos.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro.
+
+### 2026-07-18 — WebView snapshot state JS + fallback gambar non-img
+
+User minta ditambah lagi supaya makin mirip Tachiyomi/Tachimanga dan lebih
+leluasa parse banyak web komik. Setelah fallback DOM WebView-render, masih ada
+kelas website modern yang datanya tidak muncul sebagai elemen DOM biasa.
+Contohnya data daftar manga/chapter/pages disimpan di `window.__NUXT__`,
+`__NEXT_DATA__`, Apollo cache, atau `localStorage`, lalu komponen frontend
+yang merendernya tidak selalu meninggalkan HTML yang gampang diparse.
+
+Fix aditif:
+- `ExtensionRuntimeBridge.kt` memperluas `renderHtmlWithWebView`:
+  - setelah WebView selesai load, JavaScript runtime sekarang mengambil snapshot
+    state umum dari `window`: `__NEXT_DATA__`, `__NUXT__`,
+    `__INITIAL_STATE__`, `__APOLLO_STATE__`, `__remixContext`, `__SAPPER__`,
+    `__INITIAL_DATA__`, `__APP_DATA__`, `__ROUTE_DATA__`, `NUXT_DATA`, dan
+    `pageProps`;
+  - localStorage juga disapu terbatas untuk key/value yang mengandung sinyal
+    manga/comic/series/chapter/page/image, dan value JSON string dicoba
+    `JSON.parse`;
+  - snapshot disisipkan balik ke HTML sebagai
+    `<script id="kizen-webview-state" type="application/json">...`;
+  - ada guard circular reference, fungsi, BigInt, dan batas ukuran supaya
+    MethodChannel tidak kebanjiran payload.
+- `UniversalHtmlSource` tidak perlu parser khusus baru untuk state itu, karena
+  script JSON hasil snapshot otomatis ikut dibaca oleh parser JSON embedded yang
+  sudah ada.
+- Reader image fallback diperluas: selain `<img>`, sekarang juga membaca
+  `picture source[srcset]`, `link rel=preload as=image`, `og:image`,
+  `twitter:image`, dan anchor yang langsung mengarah ke file gambar.
+- Test baru:
+  - universal parser bisa membaca manga dari state `__NUXT__` hasil snapshot
+    WebView;
+  - reader bisa membaca gambar dari `source srcset` dan preload image.
+
+Catatan batasan:
+- Ini makin mendekati mode “browser-assisted parser”, tapi tetap bukan emulator
+  penuh Tachiyomi/Tachimanga untuk semua source. Website dengan CAPTCHA,
+  gesture wajib, login berbayar, atau API yang terenkripsi khusus tetap bisa
+  perlu parser extension/stub native tambahan.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1` 58/58 lolos.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro.
+
+### 2026-07-18 — WebView network/API capture + Comick-like payload support
+
+User minta gas lagi supaya lebih dekat ke Tachiyomi/Tachimanga karena masih ada
+contoh sumber manual yang belum kebuka seperti Comick/SoulScans. Dicek cepat:
+`https://comick.io/search?...` dari curl biasa balik Cloudflare `Just a
+moment`, jadi lapisan HTTP/HTML saja memang tidak cukup. Metode yang paling
+masuk berikutnya adalah browser-assisted network capture: biarkan WebView
+membuka halaman, lalu tangkap respons API/XHR yang dipakai frontend.
+
+Fix aditif:
+- `ExtensionRuntimeBridge.renderHtmlWithWebView` sekarang punya
+  `shouldInterceptRequest` untuk request GET yang kelihatan seperti API payload
+  (`/api/`, `/graphql`, `/query`, `/search`, `/manga`, `/comic`, `/series`,
+  `/chapter`, `/reader`, `/pages`, query `page=`/`q=`).
+- Request API tersebut diambil lewat OkHttp dengan header WebView + session
+  headers, responsnya tetap dikembalikan ke WebView sebagai
+  `WebResourceResponse` supaya halaman tidak putus.
+- Respons text/json/javascript/html kecil ikut ditangkap terbatas:
+  maksimal 40 payload, maksimal 1.2 MB per payload. Payload JSON object/array
+  langsung disisipkan sebagai JSON, bukan string mentah.
+- HTML hasil WebView sekarang ditambah script
+  `kizen-webview-network` berisi `responses` dari API yang ketangkap. Universal
+  parser otomatis menyapu script ini lewat parser JSON embedded.
+- `UniversalHtmlSource._jsonMaps` sekarang juga mencoba decode string yang
+  terlihat seperti JSON dan mengandung sinyal manga/comic/series/chapter/image.
+  Ini membantu localStorage atau API yang membungkus JSON sebagai string.
+- Parser cover/gambar ditambah support `b2key` Comick-like:
+  - cover manga `b2key` diarahkan ke `https://meo.comick.pictures/{b2key}`;
+  - reader page JSON yang cuma punya `b2key` juga diubah ke CDN yang sama.
+- Test baru memastikan:
+  - payload API dari `kizen-webview-network` bisa menghasilkan manga;
+  - cover `b2key` Comick-like menghasilkan URL CDN yang benar.
+
+Catatan batasan:
+- Ini sudah lebih dekat ke browser-assisted parser milik reader modern, tapi
+  tetap tidak bisa menjamin 200% semua website. CAPTCHA/interaksi manual,
+  WebSocket-only, payload terenkripsi per-session, atau proteksi yang sengaja
+  memblokir WebView tetap perlu penanganan khusus atau extension/stub tambahan.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1` 60/60 lolos.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro.
+
+### 2026-07-18 — Fix regresi reader Doujindesu setelah runtime/network capture
+
+User melaporkan Doujindesu yang sebelumnya bisa baca chapter tiba-tiba gagal
+dengan pesan `Gambar chapter Doujindesu belum dikenali`. Dicek logcat:
+
+- Listing masih jalan lewat fallback khusus:
+  `Doujindesu fallback parser OK count=24`.
+- Saat masuk reader, extension resmi gagal di `pageListParse` karena interceptor
+  extension mengira respons pageList adalah JSON, tapi situs mengembalikan HTML:
+  `JsonDecodingException: Expected start of the object '{', but had '<'`.
+- Karena error extension ditelan lalu jatuh ke universal HTML parser, UI akhirnya
+  menampilkan error generic gambar belum dikenali.
+
+Fix aditif dan scoped hanya untuk Doujindesu:
+- `ExtensionRuntimeBridge.fetchPageListFromExtension` sekarang kalau package
+  mengandung `doujindesu` dan extension pageList gagal, langsung mencoba fallback
+  native `fetchDoujindesuPages(...)`.
+- Fallback ini bypass interceptor extension yang rusak:
+  - request HTML chapter langsung lewat OkHttp bersih;
+  - pakai WebView User-Agent, Referer chapter, dan session headers;
+  - parse image dari `img` (`data-src`, `data-original`, `srcset`, `src`, dll)
+    plus regex URL gambar di script inline;
+  - filter placeholder/logo/icon/avatar/ads;
+  - mengembalikan format page map yang sama dengan runtime extension normal.
+- Tambah helper `absoluteUrlForSource` supaya path chapter dari extension bisa
+  di-resolve ke URL absolut sebelum fallback HTML request.
+
+Catatan:
+- Ini sengaja bukan rewrite universal parser besar, karena regresinya spesifik:
+  extension Doujindesu rusak sebelum parse gambar. Fallback khusus ini menjaga
+  source lain tetap memakai jalur runtime/network capture yang baru.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- Targeted test `flutter test -j 1 test/sources/extension_runtime_source_test.dart
+  test/data/extension_runtime_test.dart` lolos 9/9.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro.
+
+Follow-up: user masih melihat error yang sama. Saat dicek, focus HP sedang di
+Mihon (`xyz.jmir.tachiyomi.mi`), bukan Kizen, jadi perlu hati-hati memastikan
+yang dites adalah APK Kizen terbaru. Tetap diperkuat lagi karena fallback image
+Doujindesu bisa gagal kalau gambar tersimpan sebagai JSON string/relative URL:
+- `UniversalHtmlSource._embeddedImageUrls` sekarang decode JSON string yang
+  berisi image/page sebelum menganggap string sebagai URL gambar. Ini mencegah
+  seluruh JSON string dianggap sebagai satu URL.
+- Regex gambar universal dan fallback Doujindesu native sekarang mengenali
+  protocol-relative/relative image URL seperti `//cdn...jpg`,
+  `/wp-content/...webp`, `/uploads/...jpg`, `/reader/...png`, dll.
+- Boundary check ditambah supaya regex relatif tidak salah menangkap potongan
+  tengah dari URL absolut (`https://cdn.example/reader/001.webp` tidak lagi
+  menghasilkan duplikat `https://source.example/reader/001.webp`).
+- Fallback native Doujindesu menulis log
+  `Doujindesu page fallback scanned ... images=N`, supaya kalau masih gagal bisa
+  langsung terlihat apakah HTML-nya memang tidak mengandung gambar atau pola
+  gambarnya belum dikenali.
+- Test universal baru menutup pola JSON string + relative URL.
+
+Diverifikasi tambahan:
+- `flutter analyze lib test` bersih.
+- `flutter test -j 1 test/sources/universal_html_source_test.dart` 17/17 lolos.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro.
+
+### 2026-07-18 — Guard ANR setelah WebView network capture terlalu agresif
+
+User melaporkan app sampai force close / muncul `Kizen tidak menanggapi` setelah
+metode browser-assisted terakhir dicoba. Root cause paling masuk: jalur
+`renderHtmlWithWebView` sebelumnya memasang `shouldInterceptRequest` lalu ikut
+fetch request API/XHR lewat OkHttp dari WebView. Di perangkat asli, pola ini
+bisa ngeblok load WebView terlalu lama, apalagi kalau situs banyak request,
+redirect, VPN/proxy, atau proteksi anti-bot. Selain itu universal parser juga
+terlalu gampang memanggil WebView render untuk banyak kandidat URL list.
+
+Fix:
+- `ExtensionRuntimeBridge.renderHtmlWithWebView` dicabut lagi bagian network/API
+  capture-nya:
+  - tidak ada lagi `shouldInterceptRequest`;
+  - tidak ada lagi fetch OkHttp sinkron dari dalam WebView;
+  - tetap mempertahankan WebView DOM/state snapshot yang lebih ringan
+    (`kizen-webview-state`) karena ini cuma baca state setelah halaman selesai.
+- Helper/konstanta capture yang sudah tidak dipakai ikut dibersihkan supaya
+  agent berikutnya tidak mengaktifkan lagi tanpa sadar.
+- `UniversalHtmlSource._getHtml` sekarang tidak otomatis render WebView untuk
+  semua status non-200. Render cuma dicoba untuk status yang memang sering
+  berarti challenge/rate-limit/server block (`403`, `429`, `5xx`, `520-524`,
+  dll), bukan untuk kandidat URL yang normalnya `404`.
+- `UniversalHtmlSource._list` membatasi fallback render saat daftar komik:
+  WebView hanya dicoba pada kandidat pertama atau HTML yang kelihatan seperti
+  shell JavaScript (`#app`, `#__next`, `__nuxt`, `window.__`, dll). Ini mencegah
+  banyak WebView tersembunyi dibuat beruntun saat parser sedang nyoba banyak
+  bentuk URL.
+
+Catatan:
+- Ini sengaja bukan buang semua metode baru. Parser HTML/API, snapshot state
+  WebView, fallback gambar, dan fallback khusus Doujindesu tetap dipertahankan.
+- Yang dimatikan hanya capture network lewat intercept WebView karena dampaknya
+  paling mungkin bikin ANR.
+
+Diverifikasi:
+- `dart format lib/sources/universal_html_source.dart` selesai.
+- `flutter analyze lib test` bersih.
+- Targeted test `flutter test -j 1 test/sources/universal_html_source_test.dart
+  test/sources/extension_runtime_source_test.dart
+  test/data/extension_runtime_test.dart` lolos 26/26.
+- Full test `flutter test -j 1` lolos 61/61.
+- `flutter build apk --profile` sukses.
+- APK profile `build/app/outputs/flutter-apk/app-profile.apk` terinstall ulang
+  ke Pixel 7 Pro.
+- App berhasil dibuka via `adb shell monkey -p com.reikypratama.aplikasi_komik
+  1`; log startup pendek tidak menunjukkan `FATAL EXCEPTION`/ANR.
+
+### 2026-07-18 — Guard ANR lanjutan: WebView snapshot dimatikan otomatis
+
+User masih melaporkan `Kizen tidak menanggapi` setelah network capture dimatikan.
+Logcat jelas menunjukkan ANR:
+`Input dispatching timed out ... Waited 5002ms for MotionEvent`. Trace ANR
+tidak bisa dibaca langsung dari `/data/anr` karena permission Android, tapi
+kode terakhir masih punya kandidat berat: `WEBVIEW_RENDER_SCRIPT` melakukan
+`JSON.stringify` ke banyak object global (`__NEXT_DATA__`, `__NUXT__`,
+`__APOLLO_STATE__`, dll) dan menyapu `localStorage`. Di website modern, object
+ini bisa besar/circular/berisi cache banyak, sehingga evaluate JS di WebView
+bisa menahan main thread cukup lama.
+
+Fix:
+- `WEBVIEW_RENDER_SCRIPT` sekarang dibuat DOM-only:
+  `document.documentElement.outerHTML` / `document.body.outerHTML`.
+- Snapshot object global dan localStorage tidak lagi otomatis disisipkan ke
+  `kizen-webview-state`. Parser Dart masih bisa membaca script state kalau HTML
+  website memang sudah punya script JSON sendiri, tapi native WebView tidak lagi
+  membuat snapshot besar sendiri.
+- Timeout WebView render dipercepat:
+  - settle dari `1500ms` ke `750ms`;
+  - timeout dari `10000ms` ke `6000ms`.
+- `inspectExtension` dipindah ke background `Thread`, karena load/inspect APK
+  extension bisa melibatkan class loading dan tidak boleh menahan main thread
+  saat user membuka source repo.
+
+Catatan:
+- Ini sengaja memprioritaskan stabil dulu. Efek sampingnya, sebagian source
+  JavaScript-heavy yang tadinya berharap pada snapshot global buatan Kizen bisa
+  balik lebih sering gagal parse, tapi app tidak boleh sampai ANR/force close.
+
+Diverifikasi:
+- `flutter analyze lib test` bersih.
+- Targeted test `flutter test -j 1 test/data/extension_runtime_test.dart
+  test/sources/extension_runtime_source_test.dart
+  test/sources/universal_html_source_test.dart` lolos 26/26.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro.
+- App dibuka via `adb shell monkey -p com.reikypratama.aplikasi_komik 1`;
+  log startup pendek setelah install ulang tidak menunjukkan ANR/crash.
+
+### 2026-07-18 — Safe mode parser universal setelah APK masih ANR
+
+User masih melaporkan APK tetap `Kizen tidak menanggapi` dan terasa hancur.
+Kesimpulan: eksperimen parser all-in harus ditarik lebih jauh. Walau network
+capture dan snapshot WebView sudah dimatikan, universal parser masih terlalu
+agresif karena:
+- WebView render otomatis tetap bisa dibuat dari beberapa jalur parser;
+- deep JSON walk bisa menyapu script/state HTML besar di isolate UI Flutter;
+- regex gambar bisa nyapu `outerHtml` besar dua kali.
+
+Fix stabilitas:
+- `UniversalHtmlSource` masuk safe mode:
+  `_enableAutomaticWebViewRendering = false`, jadi parser universal tidak lagi
+  membuat hidden WebView otomatis.
+- Scan embedded JSON dibatasi:
+  - script JSON besar di-skip;
+  - inline script besar di-skip;
+  - recursive JSON walk dibatasi depth/visited/result count.
+- Scan raw image URL dari `outerHtml` dibatasi maksimal ukuran HTML tertentu.
+  Kalau HTML terlalu besar, parser hanya pakai selector DOM + embedded JSON yang
+  sudah lolos batas aman.
+- Test WebView otomatis di `universal_html_source_test.dart` tidak dihapus, tapi
+  di-`skip` dengan reason safe mode ANR. Ini supaya nanti bisa diaktifkan lagi
+  kalau WebView/parser berat sudah dipindah ke jalur yang benar-benar non-blocking.
+
+Catatan:
+- Ini mengorbankan sebagian support source JavaScript-heavy demi mengembalikan
+  APK agar responsif dulu. Setelah stabil, support website berat harus dibangun
+  ulang lebih selektif/per-source atau worker/isolate/native yang tidak ngeblok
+  UI.
+
+Diverifikasi:
+- `dart format lib/sources/universal_html_source.dart
+  test/sources/universal_html_source_test.dart` selesai.
+- `flutter analyze lib test` bersih.
+- Targeted test `flutter test -j 1 test/sources/universal_html_source_test.dart
+  test/data/extension_runtime_test.dart
+  test/sources/extension_runtime_source_test.dart` lolos; 3 test WebView
+  otomatis di-skip sengaja karena safe mode ANR.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro setelah `am force-stop`.
+- App dibuka via `adb shell monkey -p com.reikypratama.aplikasi_komik 1`;
+  log 8 detik setelah startup tidak menunjukkan ANR/FATAL. Log yang muncul
+  hanya Surface/ProfileInstaller/clipboard denied normal.
+
+### 2026-07-18 — Fix URL relatif Doujindesu setelah safe mode
+
+Setelah safe mode, user melaporkan force close berhenti, tapi Doujindesu gagal
+load dengan pesan `Gagal menghubungi Doujindesu: No host specified in URI`.
+Root cause: beberapa extension/source mengembalikan `mangaUrl` atau
+`chapterUrl` relatif (`/series/...`, `/chapter/...`). Universal fallback masih
+langsung `Uri.parse(...)` lalu `http.Client.get(...)`, sehingga request tanpa
+host meledak sebelum sampai ke website.
+
+Fix:
+- `UniversalHtmlSource` tambah helper `_absUri(...)` dan semua request HTML/JSON
+  sekarang di-resolve terhadap `baseUrl` sebelum `http.get`.
+- `_getRenderedHtml` juga pakai URL absolut kalau suatu saat safe mode WebView
+  dibuka lagi.
+- `fetchPageList` sekarang membuat `absoluteChapterUrl` untuk request dan
+  `Referer`, supaya image request Doujindesu tidak membawa referer relatif.
+- `ExtensionRuntimeSource._sessionHeadersFor(...)` sekarang resolve URL relatif
+  terhadap `baseUrl` sebelum mengambil cookie/session.
+- `_sameSite(...)` juga resolve image URL relatif sebelum membandingkan host.
+- Test baru memastikan `fetchPageList('/series/.../chapter-2/')` tetap request
+  ke `https://generic.example/...` dan tidak lagi memicu URI tanpa host.
+
+Diverifikasi:
+- `dart format lib/sources/universal_html_source.dart
+  lib/sources/extension_runtime_source.dart
+  test/sources/universal_html_source_test.dart` selesai.
+- Targeted test `flutter test -j 1 test/sources/universal_html_source_test.dart
+  test/sources/extension_runtime_source_test.dart` lolos; 3 test WebView
+  otomatis tetap di-skip sengaja karena safe mode ANR.
+- `flutter analyze lib test` bersih.
+- `flutter build apk --profile` sukses.
+- APK profile terinstall ulang ke Pixel 7 Pro setelah `am force-stop`.
+- App dibuka via `adb shell monkey -p com.reikypratama.aplikasi_komik 1`;
+  log startup tidak menunjukkan ANR/FATAL/`no host specified`.
+
+### 2026-07-18 — Kunci urutan tab Terbaru Soulscans
+
+User melihat tab `Terbaru` masih menampilkan jumlah/urutan yang mencurigakan.
+Root cause-nya bukan data komik lama, tapi request parser belum menyatakan
+aturan sorting secara eksplisit sehingga masih bergantung pada default route
+website.
+
+Fix:
+- `SvelteKitComicSource.fetchLatest()` sekarang mengirim
+  `sort=latest&order=desc` ke route `/allcomic`.
+- Query ini tetap memakai katalog penuh, bukan section homepage yang cuma
+  berisi beberapa komik.
+- Unit test menegaskan parameter sorting tersebut selalu ikut terkirim.
+
+Diverifikasi:
+- Live Soulscans mengembalikan data `updated_at` menurun saat memakai
+  `sort=latest&order=desc`.
+- Unit test parser SvelteKit lolos setelah perubahan.
+
+### 2026-07-18 — Hindari daftar Terbaru Soulscans yang stale dari extension APK
+
+User menemukan webview Soulscans sudah update sekitar 9 menit lalu, tapi tab
+`Terbaru` aplikasi masih berhenti di komik yang update sekitar seminggu lalu.
+Root cause: `ExtensionRuntimeSource` selalu menerima hasil parser APK sebagai
+final kalau jumlah itemnya sudah banyak. Akibatnya parser katalog SvelteKit
+yang mengambil data fresh dari `/allcomic` tidak pernah diberi kesempatan.
+
+Fix:
+- Untuk host Soulscans, `fetchLatest()` sekarang selalu mencoba katalog web
+  fresh setelah hasil extension.
+- Hasil katalog web dipakai jika tidak kosong; hasil extension tetap dipakai
+  kalau request web gagal.
+- Source lain tetap mempertahankan aturan lama supaya perubahan ini tidak
+  mengganggu parser APK yang sudah berjalan.
+
+Diverifikasi:
+- Ditambah test saat extension mengirim 20 item stale; katalog fallback tetap
+  dipilih untuk Soulscans.
+
+### 2026-07-18 — Pakai API terbaru Soulscans dan rapikan label First chapter
+
+User masih melihat daftar satu minggu walau webview menampilkan update 9 menit
+lalu. Setelah dicek, halaman Soulscans menyediakan endpoint resmi
+`/api/search?type=COMIC&limit=50&page=1&sort=latest&order=desc` yang berisi
+`updated_at` terbaru. Parser HTML sebelumnya masih bisa menangkap payload/route
+yang tidak tepat.
+
+Fix:
+- `SvelteKitComicSource.fetchLatest()` sekarang mencoba endpoint API tersebut
+  langsung, lalu baru fallback ke HTML kalau API tidak tersedia.
+- Daftar chapter sekarang memprioritaskan label dari payload chapter. Tombol
+  navigasi situs yang berlabel `First chapter` tidak lagi menimpa label asli
+  seperti `Chapter 1`.
+- Test ditambah untuk query API terbaru dan kasus label `First chapter`.
+
+### 2026-07-18 — Sambungkan fallback repo Soulscans ke parser API yang benar
+
+User masih melihat daftar sekitar satu minggu meskipun parser SvelteKit dan
+endpoint API sudah benar. Root cause terakhir ada di resolver repository:
+`ExtensionRuntimeSource` memakai `UniversalHtmlSource` sebagai fallback default,
+jadi parser API Soulscans tidak pernah dipanggil ketika extension APK
+mengembalikan data lama.
+
+Fix:
+- Fallback default `ExtensionRuntimeSource` untuk host `soulscans.asia` sekarang
+  langsung `SvelteKitComicSource`.
+- Source Soulscans dari repository maupun sumber manual kini melewati endpoint
+  `/api/search` terbaru sebelum fallback lain.
+- Host lain tetap memakai `UniversalHtmlSource` seperti sebelumnya.
+
+### 2026-07-18 — Bypass extension stale Soulscans di resolver
+
+User masih melihat data lama setelah fallback diarahkan ke SvelteKit. Supaya
+tidak ada jalur extension APK lama yang masih bisa menang, `SourceCatalog` kini
+langsung memilih `SvelteKitComicSource` untuk semua source dengan host
+`soulscans.asia`, termasuk source yang metadata repository-nya bertipe
+`extension-runtime`.
+
+Dengan begitu tab terbaru, detail, chapter, dan halaman baca Soulscans memakai
+parser API/HTML langsung yang sama, sementara extension APK tetap dipakai untuk
+source repository lain.
+
+### 2026-07-18 — Cegah request Populer menimpa tab Terbaru
+
+Screenshot dari device menunjukkan tab `Terbaru` aktif, tetapi isi grid bisa
+berasal dari request `Populer` yang dimulai saat layar pertama dibuka. Karena
+dua request berjalan bersamaan, response yang selesai belakangan dapat menimpa
+hasil tab yang baru dipilih.
+
+Fix:
+- `SourceDetailScreen` sekarang memberi ID generasi pada setiap request
+  discover/load-more.
+- Response lama diabaikan kalau sudah bukan request aktif.
+- Posisi grid di-reset ke atas saat pindah tab supaya item terbaru tidak
+  tertutup offset daftar sebelumnya.
+
+### 2026-07-18 — API resmi dipakai untuk Terbaru dan Populer Soulscans
+
+User masih melihat Terbaru kembali menjadi 4 item. Root cause-nya adalah
+fallback HTML yang masih boleh turun ke homepage/section ringkas setelah API
+gagal. Endpoint Soulscans sendiri menyediakan sorting resmi untuk dua mode.
+
+Fix:
+- `fetchLatest()` memakai `/api/search` dengan `sort=latest&order=desc`.
+- `fetchPopular()` memakai endpoint yang sama dengan `sort=popular&order=desc`.
+- Jalur fallback Terbaru hanya `/allcomic`; tidak lagi turun ke homepage 4
+  item yang bisa terlihat seperti hasil terbaru.
+- Request API diberi header JSON dan cache-control yang sesuai.
+
+### 2026-07-20 — Probe nyata source repository sebelum ditandai normal
+
+User menambahkan `www.toongod.org/webtoons`. Tes sumber sebelumnya bisa
+menampilkan berhasil hanya karena URL ditemukan di metadata repository dan APK
+extension-nya ada, padahal request aktual masih mentok Cloudflare.
+
+Fix additive:
+- `SourceCatalog.probeGeneric()` menjalankan `fetchPopular(1)` sungguhan untuk
+  source repository sebelum statusnya dianggap normal.
+- Add Source sekarang menyimpan source yang gagal probe sebagai `WebView`,
+  bukan memberi sinyal normal palsu.
+- Parser lama dan runtime extension tidak diubah.
+
+Catatan keamanan:
+- Tidak ditambahkan Botasaurus/CAPTCHA bypass atau spoof fingerprint.
+- User tetap bisa menyelesaikan challenge normal lewat WebView, menekan
+  `Tandai Session Aktif`, lalu mencoba ulang parser dengan cookie session.
+
+### 2026-07-20 — Tambah route katalog Toongod `/webtoons`
+
+User sudah bisa membuka WebView Toongod, tapi menu manhwa tetap tidak muncul.
+Root cause-nya parser generik hanya mencoba route umum seperti `/manga/`,
+sedangkan katalog Toongod ada di `/webtoons/`.
+
+Fix additive:
+- `UniversalHtmlSource` sekarang mencoba `/webtoons/` paling awal, lalu
+  variasi `/webtoon/`, `/webton/`, dan `/manhwa/` sebelum route lama.
+- Ditambah test yang memastikan request pertama dan hasil kartu berasal dari
+  `/webtoons/`.
+- Parser lama, extension runtime, dan alur WebView tidak dirombak.
+
+Verifikasi: test source parser lulus; setelah build profile, selesaikan
+Cloudflare di WebView Toongod, tandai session aktif, lalu buka ulang sumber.
+
+### 2026-07-20 — Fallback browser session khusus Toongod
+
+Session cookie sudah ditandai aktif, tetapi request HTTP biasa masih menerima
+403 Cloudflare. Root cause-nya clearance Cloudflare kadang perlu JavaScript
+WebView dan User-Agent browser yang sama, bukan hanya header Cookie.
+
+Fix additive:
+- `UniversalHtmlSource` punya opsi `enableBrowserSessionFallback`, default-nya
+  tetap mati agar source lain tidak memicu WebView tersembunyi.
+- Opsi itu hanya aktif untuk host `toongod.org`, termasuk source manual,
+  source generik, dan extension runtime fallback.
+- Android bridge menunggu JavaScript WebView lebih lama sebelum mengambil DOM,
+  sehingga redirect clearance normal punya waktu selesai.
+- Parser lama dan metode source lain tidak diubah.
+
+Catatan: ini memakai session browser normal yang sudah dibuat user; tidak ada
+CAPTCHA solver, spoof fingerprint, proxy rotation, atau bypass Cloudflare.
+
+### 2026-07-20 — Toongod terverifikasi sampai reader di Pixel
+
+Setelah user masih melihat fallback WebView, pengecekan dilakukan langsung di
+Pixel lewat log native dan smoke-test UI. WebView ternyata sudah melewati
+Cloudflare dan menghasilkan DOM katalog sekitar 181 KB. Extension package
+`eu.kanade.tachiyomi.extension.en.toongod` memang tidak terpasang, tetapi jalur
+browser fallback bisa mengambil alih dengan benar.
+
+Hasil smoke-test device:
+- `/webtoons/` menampilkan 18 judul halaman pertama.
+- Detail `Never Just Friends` terbuka dan 28 chapter terbaca.
+- Chapter 27 terbuka di reader dengan 50 gambar asli.
+- Snapshot memastikan halaman bukan Cloudflare challenge.
+
+Fix final:
+- Timeout Dart untuk menunggu hasil render native dinaikkan dari 12 ke 20
+  detik. Native bridge sendiri maksimal 12 detik, jadi hasil DOM besar tidak
+  kalah balapan dengan timeout Flutter.
+- Diagnostik snapshot sementara sudah dibuang; tidak ada HTML situs yang
+  disimpan permanen oleh aplikasi.
+
+### 2026-07-20 — Pagination, tab terbaru, dan cover Toongod
+
+Setelah katalog bisa dibuka, user menemukan hanya sedikit komik, cover kosong,
+dan tab Terbaru sama dengan Populer.
+
+Root cause:
+- Madara Toongod memakai `/webtoons/page/N/`, bukan query `?page=N`.
+- Tombol next memakai class `nextpostslink` yang belum dikenali parser umum.
+- Populer dan Terbaru perlu `m_orderby=trending` dan `m_orderby=latest`.
+- Cover di host Toongod mengembalikan Cloudflare 403 ke image loader, sedangkan
+  salinan CDN WordPress `i0.wp.com` bisa diambil dengan status 200.
+
+Fix additive:
+- URL katalog Toongod kini memakai path pagination dan parameter urutan asli.
+- `nextpostslink` dikenali sehingga infinite scroll dapat memuat halaman lanjut.
+- Search Toongod membawa `post_type=wp-manga`.
+- Gambar dalam `/wp-content/uploads/` diarahkan ke CDN WordPress, tanpa
+  mengubah gambar reader dari host lain.
+- Header Cookie/User-Agent Toongod tidak diteruskan ke `i0.wp.com`; CDN
+  menerima request cover lintas-domain yang bersih.
+- Test mencakup route halaman dua, tab terbaru/populer, next page, dan cover.
+
+### 2026-07-20 — Tanggal chapter, batal simpan, dan validasi judul ganda
+
+Tanggal chapter Toongod sebelumnya kosong walau daftar chapter sudah terbaca.
+Root cause-nya theme Madara menaruh tanggal sebagai saudara link chapter di
+`.chapter-release-date`, sedangkan parser universal cuma mengambil URL dan
+nama dari tag `<a>`.
+
+Fix:
+- `UniversalHtmlSource` sekarang mengambil tanggal dari container chapter
+  terdekat (`time`, `.chapter-release-date`, `.chapterdate`, dan variasinya),
+  termasuk field tanggal dari payload JSON/API.
+- Parser tanggal menerima ISO/timestamp, format `dd/mm/yyyy`, nama bulan
+  Inggris, serta waktu relatif Inggris/Indonesia. Kalau website memang tidak
+  memberi tanggal, UI tetap kosong dan tidak mengarang nilai.
+- Sheet pindah koleksi menampilkan ikon `X` merah pada koleksi yang sedang
+  aktif. Ikon itu membuka konfirmasi di sheet yang sama lalu menghapus komik
+  dari Library; dipakai dari Detail maupun menu Library.
+- Sebelum menyimpan komik beda URL/source, judul dinormalisasi (case, spasi,
+  dan tanda baca umum diabaikan). Bila judul sama sudah ada, user bisa pilih
+  `Tetap tambah`, `Ganti yang lama`, atau `Batal`.
+- Pilihan ganti memakai batch Firestore: semua entri beda-source dengan judul
+  sama dihapus dan versi baru ditulis sekaligus ke koleksi tujuan.
+- `analysis_options.yaml` mengecualikan `build/**` karena Swift Package Manager
+  menaruh source generated Firebase di sana dan sempat membuat `flutter
+  analyze` ikut memeriksa ratusan file dependency.
+
+Verifikasi:
+- `flutter analyze` nol issue.
+- `flutter test -j 1`: 75 lulus, 3 safe-mode diskip.
+- Build web FAKE_AUTH lulus dan smoke-test viewport 412×915 memastikan ikon
+  `X`, konfirmasi hapus, toast, serta state bookmark tidak overflow.
+- APK profile 90,5 MB berhasil dibangun, dipasang, dan dibuka di Pixel 7 Pro.
+
+### 2026-07-20 — Format tanggal resmi Toongod dan judul terkandung
+
+User mengonfirmasi tanggal chapter Toongod masih kosong dan menginginkan
+deteksi duplikat berdasarkan judul yang terkandung, bukan hanya judul penuh
+yang sama.
+
+Root cause tanggal:
+- Source resmi Toongod di repository Keiyoushi menetapkan format
+  `d MMM yyyy` (contoh `20 Jul 2026`). Parser universal sebelumnya baru
+  menerima nama bulan di depan (`July 20, 2026`), jadi selector tanggal sudah
+  menemukan teksnya tetapi parser mengembalikan null.
+
+Fix:
+- Parser tanggal sekarang mendukung urutan hari-bulan-tahun serta singkatan
+  bulan Inggris (`Jan` sampai `Dec`), sambil mempertahankan semua format lama.
+- Deteksi duplikat sekarang memakai kandungan frasa dua arah setelah
+  normalisasi. Batas kata tetap dijaga: `Solo Leveling` cocok dengan
+  `Solo Leveling Official`, tetapi `One` tidak cocok dengan `Someone`.
+- Karena hasilnya tetap berupa konfirmasi tiga pilihan, kecocokan kandungan
+  tidak otomatis menghapus atau mengganti komik.
+
+Verifikasi:
+- `flutter analyze` nol issue.
+- `flutter test -j 1`: 76 lulus, 3 safe-mode diskip.
+- APK profile terbaru berhasil dibangun, dipasang, dan dibuka di Pixel 7 Pro.
+
+### 2026-07-20 — Parser API lengkap MangaFire
+
+User menambahkan `https://mangafire.to/`, tetapi sumber tidak bisa dibuka
+lewat parser universal. Root cause-nya MangaFire versi sekarang tidak memakai
+katalog/chapter HTML biasa; extension resminya mengambil seluruh data dari
+endpoint JSON khusus.
+
+Fix additive:
+- Ditambah `MangaFireSource` dengan endpoint `/api/titles` untuk Populer,
+  Terbaru, dan pencarian (50 item per halaman).
+- Detail memakai `/api/titles/{hid}` dan mengurai sinopsis HTML, author,
+  artist, genre/theme, status, serta poster.
+- Chapter memakai `/api/titles/{hid}/chapters`, limit 200 dan pagination
+  sampai seluruh halaman selesai. Tanggal epoch ikut diteruskan ke UI.
+- Reader memakai `/api/chapters/{chapterId}` dan mengambil semua URL gambar.
+- Source manual/repository maupun source lama yang sebelumnya tersimpan
+  sebagai `universal-html` otomatis dialihkan berdasarkan host
+  `mangafire.to`; user tidak perlu hapus dan tambah ulang sumber.
+- `AdaptiveSource` dan fallback `ExtensionRuntimeSource` ikut mengenali
+  MangaFire, tetapi strategi API ini tidak dicoba pada website lain supaya
+  tidak menambah timeout global.
+
+Verifikasi:
+- Lima test khusus mencakup katalog populer/terbaru/search, detail, chapter
+  multi-page + tanggal, reader, dan migrasi source lama.
+- `flutter analyze` nol issue.
+- `flutter test -j 1`: 81 lulus, 3 safe-mode diskip.

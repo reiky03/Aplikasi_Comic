@@ -49,6 +49,7 @@ flutter {
 
 dependencies {
     implementation("androidx.core:core:1.17.0")
+    implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.squareup.okhttp3:okhttp-brotli:5.3.2")
     implementation("org.jsoup:jsoup:1.21.2")

@@ -20,6 +20,8 @@ private val scope = object : InjektScope {
     }
 }
 
+object Injekt : InjektScope by scope
+
 val injekt: InjektScope
     get() = scope
 

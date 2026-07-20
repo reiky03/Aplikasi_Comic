@@ -88,6 +88,59 @@ void main() {
   });
 
   test(
+    'renderHtmlWithWebView mengirim header session ke native WebView',
+    () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            expect(call.method, 'renderHtmlWithWebView');
+            expect(call.arguments, {
+              'url': 'https://reader.example',
+              'sessionHeaders': {'Cookie': 'cf_clearance=token'},
+            });
+            return '<html><body>Rendered</body></html>';
+          });
+
+      final html = await bridge.renderHtmlWithWebView(
+        'https://reader.example',
+        sessionHeaders: {'Cookie': 'cf_clearance=token'},
+      );
+
+      expect(html, contains('Rendered'));
+    },
+  );
+
+  test('probeUrl mengurai status akses jaringan', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'probeUrl');
+          expect(call.arguments, {'url': 'https://omegascans.org'});
+          return {
+            'ok': false,
+            'statusCode': 0,
+            'finalUrl': 'https://omegascans.org',
+            'blocked': true,
+            'message': 'Hostname mismatch',
+          };
+        });
+
+    final result = await bridge.probeUrl('https://omegascans.org');
+
+    expect(result.ok, isFalse);
+    expect(result.blocked, isTrue);
+    expect(result.message, contains('Hostname'));
+  });
+
+  test('openVpnSettings memanggil native settings launcher', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'openVpnSettings');
+          return true;
+        });
+
+    expect(await bridge.openVpnSettings(), isTrue);
+  });
+
+  test(
     'findInstalledExtensionForUrl memeriksa semua source dalam APK',
     () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

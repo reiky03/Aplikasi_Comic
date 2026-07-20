@@ -1,10 +1,13 @@
 import 'asura_source.dart';
+import 'adaptive_source.dart';
 import 'extension_runtime_source.dart';
 import 'komiku_source.dart';
 import 'manga_source.dart';
+import 'mangafire_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
 import 'shinigami_source.dart';
+import 'sveltekit_comic_source.dart';
 import 'universal_html_source.dart';
 
 /// Sumber yang punya parser native (lihat file lain di `lib/sources/`),
@@ -45,7 +48,12 @@ abstract final class SourceCatalog {
   /// Kalau situs custom yang user tambahkan kebetulan pakai salah satu
   /// tema ini, kita bisa langsung baca otomatis TANPA perlu nulis parser
   /// baru khusus — lihat [detectGeneric].
-  static const genericKinds = ['mangathemesia', 'natsuid', 'universal-html'];
+  static const genericKinds = [
+    'sveltekit-comic',
+    'mangathemesia',
+    'natsuid',
+    'universal-html',
+  ];
 
   /// Bangun instance parser generik dari [kind] (hasil [detectGeneric]
   /// yang tersimpan di `ComicSource.parserKind`) + nama/base URL sumber
@@ -56,7 +64,17 @@ abstract final class SourceCatalog {
     String baseUrl, {
     String? lang,
   }) {
+    // Berlaku juga buat source lama yang telanjur tersimpan sebagai
+    // universal-html/extension-runtime sebelum parser API ini tersedia.
+    if (_isMangaFire(baseUrl)) {
+      return MangaFireSource(name: name, baseUrl: baseUrl, lang: lang);
+    }
     if (kind.startsWith('extension-runtime:')) {
+      // Extension Soulscans yang terpasang bisa tertinggal dari API situsnya.
+      // Untuk katalog/chapter, parser API langsung lebih dapat dipercaya.
+      if (_isSoulScans(baseUrl)) {
+        return SvelteKitComicSource(name: name, baseUrl: baseUrl);
+      }
       final packageName = kind.substring('extension-runtime:'.length).trim();
       if (packageName.isEmpty) return null;
       return ExtensionRuntimeSource(
@@ -67,11 +85,61 @@ abstract final class SourceCatalog {
       );
     }
     return switch (kind) {
+      'mangafire-api' => MangaFireSource(
+        name: name,
+        baseUrl: baseUrl,
+        lang: lang,
+      ),
+      'sveltekit-comic' => SvelteKitComicSource(name: name, baseUrl: baseUrl),
       'mangathemesia' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
       'natsuid' => NatsuIdSource(name: name, baseUrl: baseUrl),
-      'universal-html' => UniversalHtmlSource(name: name, baseUrl: baseUrl),
+      'universal-html' => UniversalHtmlSource(
+        name: name,
+        baseUrl: baseUrl,
+        enableBrowserSessionFallback: _isToongod(baseUrl),
+      ),
       _ => null,
     };
+  }
+
+  static bool _isSoulScans(String url) {
+    final host = Uri.tryParse(url)?.host.toLowerCase();
+    return host == 'soulscans.asia' ||
+        host?.endsWith('.soulscans.asia') == true;
+  }
+
+  static bool _isToongod(String url) {
+    final host = Uri.tryParse(url)?.host.toLowerCase();
+    return host == 'toongod.org' || host?.endsWith('.toongod.org') == true;
+  }
+
+  static bool _isMangaFire(String url) {
+    final host = Uri.tryParse(url)?.host.toLowerCase();
+    return host == 'mangafire.to' || host?.endsWith('.mangafire.to') == true;
+  }
+
+  /// Parser otomatis untuk sumber custom yang belum punya parserKind. Ini
+  /// dipakai supaya URL baru tidak langsung dilempar ke WebView sebelum
+  /// semua parser generik dicoba.
+  static MangaSource buildAutomatic(String name, String baseUrl) =>
+      AdaptiveSource(name: name, baseUrl: baseUrl);
+
+  /// Probe nyata untuk source repository. Metadata APK saja belum berarti
+  /// source bisa mengambil daftar: Cloudflare/login bisa tetap memblokirnya.
+  static Future<bool> probeGeneric(
+    String kind,
+    String name,
+    String baseUrl, {
+    String? lang,
+  }) async {
+    final source = buildGeneric(kind, name, baseUrl, lang: lang);
+    if (source == null) return false;
+    try {
+      final page = await source.fetchPopular(1);
+      return page.mangas.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Coba tiap parser tema generik terhadap [baseUrl] — "banyak metode
@@ -80,6 +148,15 @@ abstract final class SourceCatalog {
   /// hasilnya tidak kosong (sinyal kuat struktur HTML-nya cocok).
   /// Sekuensial, berhenti di percobaan pertama yang berhasil.
   static Future<String?> detectGeneric(String name, String baseUrl) async {
+    if (_isMangaFire(baseUrl)) {
+      final source = MangaFireSource(name: name, baseUrl: baseUrl);
+      try {
+        final result = await source.fetchPopular(1);
+        if (result.mangas.isNotEmpty) return 'mangafire-api';
+      } catch (_) {
+        return null;
+      }
+    }
     for (final kind in genericKinds) {
       final source = buildGeneric(kind, name, baseUrl);
       if (source == null) continue;

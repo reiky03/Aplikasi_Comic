@@ -99,11 +99,19 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       rawUrl: url,
     );
     if (repoMatch?.source.pkg != null) {
+      final repoBaseUrl = repoMatch!.source.baseUrl ?? url;
+      final packageName = repoMatch.source.pkg!;
+      final readable = await SourceCatalog.probeGeneric(
+        'extension-runtime:$packageName',
+        repoMatch.source.name,
+        repoBaseUrl,
+        lang: repoMatch.source.lang,
+      );
       if (!mounted) return;
       setState(() {
         _repoMatch = repoMatch;
-        _detectedParserKind = 'extension-runtime:${repoMatch!.source.pkg}';
-        _testState = _TestState.ok;
+        _detectedParserKind = 'extension-runtime:$packageName';
+        _testState = readable ? _TestState.ok : _TestState.error;
       });
       return;
     }
@@ -206,6 +214,7 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
         extensionPackage != null || isBuiltIn || _testState == _TestState.ok
         ? SourceStatus.normal
         : SourceStatus.webview;
+    if (_testState == _TestState.error) status = SourceStatus.webview;
     if (!isBuiltIn && parserKind == null) {
       final normalizedUrl = rawUrl.startsWith('http')
           ? rawUrl

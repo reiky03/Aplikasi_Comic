@@ -21,6 +21,8 @@ class SheetCollection {
   final bool selected;
 }
 
+enum DuplicateComicAction { keepBoth, replaceExisting, cancel }
+
 /// Collection picker — spek 15. Judul kontekstual:
 /// "Simpan ke koleksi" (belum di Library) vs "Pindahkan ke koleksi".
 /// Tap row langsung commit + tutup; "Buat koleksi baru" expand jadi input.
@@ -30,6 +32,7 @@ Future<void> showCollectionPickerSheet(
   required List<SheetCollection> collections,
   required ValueChanged<String> onPick,
   required ValueChanged<String> onCreateAndPick,
+  VoidCallback? onRemove,
 }) {
   return showAppSheet(
     context,
@@ -38,6 +41,7 @@ Future<void> showCollectionPickerSheet(
       collections: collections,
       onPick: onPick,
       onCreateAndPick: onCreateAndPick,
+      onRemove: onRemove,
     ),
   );
 }
@@ -48,12 +52,14 @@ class _CollectionPickerBody extends StatefulWidget {
     required this.collections,
     required this.onPick,
     required this.onCreateAndPick,
+    this.onRemove,
   });
 
   final String title;
   final List<SheetCollection> collections;
   final ValueChanged<String> onPick;
   final ValueChanged<String> onCreateAndPick;
+  final VoidCallback? onRemove;
 
   @override
   State<_CollectionPickerBody> createState() => _CollectionPickerBodyState();
@@ -61,6 +67,7 @@ class _CollectionPickerBody extends StatefulWidget {
 
 class _CollectionPickerBodyState extends State<_CollectionPickerBody> {
   bool _creating = false;
+  bool _confirmingRemove = false;
   final _controller = TextEditingController();
 
   @override
@@ -71,6 +78,7 @@ class _CollectionPickerBodyState extends State<_CollectionPickerBody> {
 
   @override
   Widget build(BuildContext context) {
+    if (_confirmingRemove) return _buildRemoveConfirmation(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -89,8 +97,28 @@ class _CollectionPickerBodyState extends State<_CollectionPickerBody> {
           _CollectionRow(
             collection: col,
             trailing: col.selected
-                ? const Icon(AppIcons.downloaded,
-                    size: 19, color: AppColors.accent)
+                ? widget.onRemove == null
+                      ? const Icon(
+                          AppIcons.downloaded,
+                          size: 19,
+                          color: AppColors.accent,
+                        )
+                      : Tooltip(
+                          message: 'Batalkan simpan',
+                          child: IconButton(
+                            key: const ValueKey('remove-saved-comic'),
+                            onPressed: () =>
+                                setState(() => _confirmingRemove = true),
+                            icon: const Icon(AppIcons.close),
+                            iconSize: 19,
+                            color: AppColors.danger,
+                            padding: const EdgeInsets.all(8),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 36,
+                              height: 36,
+                            ),
+                          ),
+                        )
                 : null,
             onTap: () {
               Navigator.pop(context);
@@ -133,8 +161,11 @@ class _CollectionPickerBodyState extends State<_CollectionPickerBody> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(AppIcons.add,
-                      size: 17, color: AppColors.accentText),
+                  const Icon(
+                    AppIcons.add,
+                    size: 17,
+                    color: AppColors.accentText,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'Buat koleksi baru',
@@ -151,6 +182,133 @@ class _CollectionPickerBodyState extends State<_CollectionPickerBody> {
       ],
     );
   }
+
+  Widget _buildRemoveConfirmation(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const AppSheetTitle('Batalkan simpan?', bottomGap: 8),
+        Text(
+          'Komik akan dihapus dari Library dan tidak lagi tersimpan di '
+          'koleksi ini.',
+          style: AppTypography.jakarta(
+            size: 13,
+            weight: FontWeight.w400,
+            height: 1.5,
+            color: AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => setState(() => _confirmingRemove = false),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: AppColors.textPrimary,
+                  side: const BorderSide(color: AppColors.borderStrong),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Batal'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onRemove?.call();
+                },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  backgroundColor: AppColors.danger,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Hapus'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Konfirmasi saat judul yang sama sudah ada dari source/URL lain.
+Future<DuplicateComicAction> showDuplicateComicSheet(
+  BuildContext context, {
+  required String title,
+  required List<String> duplicateSources,
+}) async {
+  final sources = duplicateSources
+      .where((source) => source.isNotEmpty)
+      .join(', ');
+  final result = await showAppSheet<DuplicateComicAction>(
+    context,
+    builder: (sheetContext) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const AppSheetTitle('Judul sudah tersimpan', bottomGap: 8),
+        Text(
+          '"$title" sudah ada di Library${sources.isEmpty ? '' : ' dari $sources'}. '
+          'Pilih apakah versi baru tetap ditambah atau menggantikan yang lama.',
+          style: AppTypography.jakarta(
+            size: 13,
+            weight: FontWeight.w400,
+            height: 1.5,
+            color: AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 18),
+        OutlinedButton(
+          onPressed: () =>
+              Navigator.pop(sheetContext, DuplicateComicAction.keepBoth),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            foregroundColor: AppColors.textPrimary,
+            side: const BorderSide(color: AppColors.borderStrong),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: const Text('Tetap tambah'),
+        ),
+        const SizedBox(height: 9),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(sheetContext, DuplicateComicAction.replaceExisting),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: const Text('Ganti yang lama'),
+        ),
+        const SizedBox(height: 4),
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(sheetContext, DuplicateComicAction.cancel),
+          style: TextButton.styleFrom(
+            minimumSize: const Size.fromHeight(44),
+            foregroundColor: AppColors.textMuted,
+          ),
+          child: const Text('Batal'),
+        ),
+      ],
+    ),
+  );
+  return result ?? DuplicateComicAction.cancel;
 }
 
 /// Manage collections — spek 15: daftar koleksi + tombol edit/hapus per row,
@@ -232,7 +390,11 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
     if (newName != col.name) {
       final index = _items.indexOf(col);
       setState(() {
-        _items[index] = SheetCollection(id: col.id, name: newName, count: col.count);
+        _items[index] = SheetCollection(
+          id: col.id,
+          name: newName,
+          count: col.count,
+        );
         _editing = null;
       });
       widget.onRename(col.id, newName);
@@ -266,8 +428,11 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppColors.border),
                     ),
-                    child: const Icon(AppIcons.edit,
-                        size: 15, color: AppColors.accentText),
+                    child: const Icon(
+                      AppIcons.edit,
+                      size: 15,
+                      color: AppColors.accentText,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -292,8 +457,11 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppColors.dangerBorder),
                     ),
-                    child: const Icon(AppIcons.delete,
-                        size: 15, color: AppColors.danger),
+                    child: const Icon(
+                      AppIcons.delete,
+                      size: 15,
+                      color: AppColors.danger,
+                    ),
                   ),
                 ),
               ],
@@ -334,7 +502,9 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                   final id = await widget.onCreate(name);
                   if (!mounted) return;
                   setState(
-                    () => _items.add(SheetCollection(id: id, name: name, count: 0)),
+                    () => _items.add(
+                      SheetCollection(id: id, name: name, count: 0),
+                    ),
                   );
                 },
               ),
@@ -370,9 +540,13 @@ class _ManageCollectionsBodyState extends State<_ManageCollectionsBody> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppColors.border),
                   ),
-                  child: Text('Batal',
-                      style:
-                          AppTypography.jakarta(size: 14, weight: FontWeight.w700)),
+                  child: Text(
+                    'Batal',
+                    style: AppTypography.jakarta(
+                      size: 14,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -422,8 +596,11 @@ class _CollectionRow extends StatelessWidget {
                 color: AppColors.surfaceSunken,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(LucideIcons.folder,
-                  size: 18, color: AppColors.accentText),
+              child: const Icon(
+                LucideIcons.folder,
+                size: 18,
+                color: AppColors.accentText,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(

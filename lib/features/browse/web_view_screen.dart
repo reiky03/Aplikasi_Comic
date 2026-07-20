@@ -22,10 +22,19 @@ const _chromeBg = Color(0xFF141019);
 /// "Session aktif" murni ditandai MANUAL oleh user sendiri lewat tombol di
 /// bawah, bukan dideteksi otomatis dari isi halaman.
 class WebViewScreen extends ConsumerStatefulWidget {
-  const WebViewScreen({super.key, required this.sourceId, this.fallbackSource});
+  const WebViewScreen({
+    super.key,
+    required this.sourceId,
+    this.fallbackSource,
+    this.initialUrl,
+  });
 
   final String sourceId;
   final ComicSource? fallbackSource;
+
+  /// Kalau parser gagal di tengah alur baca, buka URL chapter/detail yang
+  /// sedang gagal, bukan selalu kembali ke homepage sumber.
+  final String? initialUrl;
 
   @override
   ConsumerState<WebViewScreen> createState() => _WebViewScreenState();
@@ -57,7 +66,12 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
             .where((s) => s.id == widget.sourceId)
             .firstOrNull ??
         widget.fallbackSource;
-    final startUrl = source != null ? _webUrl(source.url) : 'about:blank';
+    final requestedUrl = widget.initialUrl?.trim();
+    final startUrl = requestedUrl != null && requestedUrl.isNotEmpty
+        ? _webUrl(requestedUrl)
+        : source != null
+        ? _webUrl(source.url)
+        : 'about:blank';
     _currentUrl = startUrl;
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)

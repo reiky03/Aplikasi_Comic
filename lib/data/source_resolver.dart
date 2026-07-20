@@ -38,7 +38,9 @@ MangaSource? resolveMangaSource(
     final kind = repoMatch?.source.pkg == null
         ? custom.parserKind
         : 'extension-runtime:${repoMatch!.source.pkg}';
-    if (kind == null) return null;
+    if (kind == null) {
+      return SourceCatalog.buildAutomatic(custom.name, customBaseUrl);
+    }
     return SourceCatalog.buildGeneric(
       kind,
       custom.name,
@@ -62,7 +64,9 @@ MangaSource? resolveMangaSource(
     final kind = repoSource.pkg == null
         ? repoSource.parserKind
         : 'extension-runtime:${repoSource.pkg}';
-    if (kind == null) continue;
+    if (kind == null) {
+      return SourceCatalog.buildAutomatic(repoSource.name, baseUrl);
+    }
     return SourceCatalog.buildGeneric(
       kind,
       repoSource.name,

@@ -76,6 +76,20 @@ class MangaSourceException implements Exception {
   String toString() => message;
 }
 
+/// Penanda kalau semua parser native sudah dicoba dan user perlu lanjut lewat
+/// browser. URL disimpan supaya WebView bisa langsung membuka halaman yang
+/// gagal, bukan cuma mengantar user ke beranda sumber.
+class MangaSourceWebViewException extends MangaSourceException {
+  const MangaSourceWebViewException({
+    required String message,
+    required this.url,
+    this.cause,
+  }) : super(message);
+
+  final String url;
+  final Object? cause;
+}
+
 /// Kontrak parser sumber komik — satu implementasi per situs (mirip
 /// konsep "extension" di Tachiyomi, tapi ditulis native Dart supaya jalan
 /// di Android & iOS tanpa perlu menjalankan APK Kotlin pihak lain).

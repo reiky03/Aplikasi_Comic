@@ -18,6 +18,7 @@ import '../../data/source_resolver.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
 import '../detail/comic_detail_screen.dart';
+import '../browse/web_view_screen.dart';
 import 'reader_settings_sheet.dart';
 
 const _mockTotalPages = 8;
@@ -94,6 +95,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   List<SourceChapter>? _chapters;
   bool _chaptersLoading = false;
   String? _chaptersError;
+  String? _chaptersWebViewUrl;
+  String? _pagesWebViewUrl;
 
   /// Diambil sekali di [initState] dan dipakai lagi lewat referensi ini —
   /// BUKAN `ref.read(...)` fresh tiap kali — karena [_saveProgress] juga
@@ -217,6 +220,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     setState(() {
       _chaptersLoading = true;
       _chaptersError = null;
+      _chaptersWebViewUrl = null;
     });
     try {
       final chapters = await source.fetchChapterList(mangaUrl);
@@ -238,6 +242,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       setState(() {
         _chaptersError = '$e';
         _chaptersLoading = false;
+        _chaptersWebViewUrl = _resolveWebViewUrl(mangaUrl, source.baseUrl);
       });
     }
   }
@@ -258,6 +263,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _pagesLoading = true;
       _pagesError = null;
       _realPages = null;
+      _pagesWebViewUrl = null;
     });
     try {
       final pages = await source.fetchPageList(chapters[index].url);
@@ -272,8 +278,47 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       setState(() {
         _pagesError = '$e';
         _pagesLoading = false;
+        _pagesWebViewUrl = _resolveWebViewUrl(
+          chapters[index].url,
+          source.baseUrl,
+        );
       });
     }
+  }
+
+  String _resolveWebViewUrl(String rawUrl, String baseUrl) {
+    final value = rawUrl.trim();
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    return Uri.parse(baseUrl).resolve(value).toString();
+  }
+
+  void _openReaderWebView(String initialUrl) {
+    final registeredSource = ref
+        .read(sourcesProvider)
+        .where((source) => source.name == widget.comic.src)
+        .firstOrNull;
+    final matchedSource = _matchedSource;
+    final fallback =
+        registeredSource ??
+        ComicSource(
+          id: 'reader-webview-${widget.comic.id}',
+          name: widget.comic.src,
+          url: matchedSource?.baseUrl ?? initialUrl,
+          lang: '',
+          hue: widget.comic.hue,
+          status: SourceStatus.webview,
+        );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WebViewScreen(
+          sourceId: fallback.id,
+          fallbackSource: registeredSource == null ? fallback : null,
+          initialUrl: initialUrl,
+        ),
+      ),
+    );
   }
 
   /// Progres (chapter/halaman) disimpan ke history + library dengan jeda
@@ -588,6 +633,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               _buildLoadError(
                 'Gagal memuat daftar chapter.\n$_chaptersError',
                 _loadChapterList,
+                webViewUrl: _chaptersWebViewUrl,
               )
             else if (_isRealSource && _pagesLoading)
               const Center(
@@ -601,6 +647,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               _buildLoadError(
                 'Gagal memuat halaman.\n$_pagesError',
                 _loadRealPages,
+                webViewUrl: _pagesWebViewUrl,
               )
             else if (settings.isWebtoon)
               _buildWebtoon(settings)
@@ -620,7 +667,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
-  Widget _buildLoadError(String message, VoidCallback onRetry) {
+  Widget _buildLoadError(
+    String message,
+    VoidCallback onRetry, {
+    String? webViewUrl,
+  }) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -660,6 +711,40 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 ),
               ),
             ),
+            if (webViewUrl != null) ...[
+              const SizedBox(height: 10),
+              InkWell(
+                onTap: () => _openReaderWebView(webViewUrl),
+                borderRadius: BorderRadius.circular(11),
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: AppColors.accent.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.globe, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Buka WebView',
+                        style: AppTypography.jakarta(
+                          size: 13,
+                          weight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

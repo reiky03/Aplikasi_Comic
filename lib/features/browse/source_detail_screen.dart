@@ -45,6 +45,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   MangaSource? _matchedSource;
   bool _discoverLoading = false;
   String? _discoverError;
+  String? _discoverWebViewUrl;
   List<Comic> _discoverResults = const [];
   Timer? _searchDebounce;
 
@@ -54,6 +55,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   int _discoverPage = 1;
   bool _hasNextPage = true;
   bool _loadingMore = false;
+  int _discoverRequestId = 0;
   final _gridScrollController = ScrollController();
 
   @override
@@ -83,7 +85,12 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                       ? source.url
                       : 'https://${source.url}',
                 )
-              : null);
+              : SourceCatalog.buildAutomatic(
+                  source.name,
+                  source.url.startsWith('http')
+                      ? source.url
+                      : 'https://${source.url}',
+                ));
       if (_matchedSource != null) _loadDiscover(source);
     }
   }
@@ -132,6 +139,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     if (_tab == _DiscoverTab.search && _search.trim().isEmpty) return;
     setState(() => _loadingMore = true);
     final nextPage = _discoverPage + 1;
+    final requestId = ++_discoverRequestId;
     try {
       final result = switch (_tab) {
         _DiscoverTab.popular => await matched.fetchPopular(nextPage),
@@ -141,7 +149,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
           nextPage,
         ),
       };
-      if (!mounted) return;
+      if (!mounted || requestId != _discoverRequestId) return;
       setState(() {
         _discoverResults = [
           ..._discoverResults,
@@ -154,7 +162,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     } catch (_) {
       // Diam-diam gagal — yang sudah kemuat tetap ditampilkan, biarkan
       // scroll ke bawah lagi jadi pemicu buat coba lagi.
-      if (!mounted) return;
+      if (!mounted || requestId != _discoverRequestId) return;
       setState(() => _loadingMore = false);
     }
   }
@@ -184,18 +192,23 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   Future<void> _loadDiscover(ComicSource source, {int page = 1}) async {
     final matched = _matchedSource;
     if (matched == null) return;
+    final requestId = ++_discoverRequestId;
     if (_tab == _DiscoverTab.search && _search.trim().isEmpty) {
       setState(() {
         _discoverResults = const [];
         _discoverLoading = false;
         _discoverError = null;
+        _discoverWebViewUrl = null;
         _hasNextPage = false;
+        _loadingMore = false;
       });
       return;
     }
     setState(() {
       _discoverLoading = true;
+      _loadingMore = false;
       _discoverError = null;
+      _discoverWebViewUrl = null;
     });
     try {
       final result = switch (_tab) {
@@ -203,7 +216,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
         _DiscoverTab.latest => await matched.fetchLatest(page),
         _DiscoverTab.search => await matched.fetchSearch(_search.trim(), page),
       };
-      if (!mounted) return;
+      if (!mounted || requestId != _discoverRequestId) return;
       setState(() {
         _discoverResults = result.mangas
             .map((m) => _toComic(source, m))
@@ -213,10 +226,13 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
         _discoverLoading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _discoverRequestId) return;
       setState(() {
         _discoverError = '$e';
         _discoverLoading = false;
+        _discoverWebViewUrl = e is MangaSourceWebViewException
+            ? e.url
+            : source.url;
       });
     }
   }
@@ -233,6 +249,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
 
   void _switchTab(_DiscoverTab tab) {
     setState(() => _tab = tab);
+    if (_gridScrollController.hasClients) {
+      _gridScrollController.jumpTo(0);
+    }
     final source = _source;
     if (_matchedSource != null && source != null) _loadDiscover(source);
   }
@@ -268,12 +287,13 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     AppToast.show(context, 'Masih belum bisa dibaca otomatis — coba WebView');
   }
 
-  void _openWebView(ComicSource source) {
+  void _openWebView(ComicSource source, {String? initialUrl}) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => WebViewScreen(
           sourceId: source.id,
           fallbackSource: widget.fallbackSource,
+          initialUrl: initialUrl,
         ),
       ),
     );
@@ -608,6 +628,41 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                   weight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: () => _openWebView(
+              source,
+              initialUrl: _discoverWebViewUrl ?? source.url,
+            ),
+            borderRadius: BorderRadius.circular(11),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.globe, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Buka WebView',
+                    style: AppTypography.jakarta(
+                      size: 13,
+                      weight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

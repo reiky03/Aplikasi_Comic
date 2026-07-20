@@ -77,6 +77,33 @@ const _seedCollections = [
   ComicCollection(id: 'later', name: 'Nanti Dibaca'),
 ];
 
+/// Bentuk judul yang stabil buat mendeteksi komik sama dari source berbeda.
+/// Tanda baca dan variasi spasi diabaikan, tetapi huruf non-Latin tetap utuh.
+String normalizeLibraryTitle(String title) {
+  return title
+      .toLowerCase()
+      .replaceAll("'", '')
+      .replaceAll('\u2019', '')
+      .replaceAll('"', '')
+      .replaceAll(RegExp(r'[\s\-_/\\:;,.!?()\[\]{}]+'), ' ')
+      .trim();
+}
+
+bool sameLibraryTitle(String first, String second) {
+  final normalizedFirst = normalizeLibraryTitle(first);
+  final normalizedSecond = normalizeLibraryTitle(second);
+  if (normalizedFirst.isEmpty || normalizedSecond.isEmpty) return false;
+  if (normalizedFirst == normalizedSecond) return true;
+
+  // Pakai batas kata agar judul pendek seperti "One" tidak dianggap sama
+  // dengan "Someone", tetapi "Solo Leveling" tetap terdeteksi di dalam
+  // "Solo Leveling Official".
+  final paddedFirst = ' $normalizedFirst ';
+  final paddedSecond = ' $normalizedSecond ';
+  return paddedFirst.contains(paddedSecond) ||
+      paddedSecond.contains(paddedFirst);
+}
+
 /// `users/{uid}/library/{comicId}` — lihat docs/DATABASE.md.
 /// Firestore tersedia (login asli) → stream langsung dari cloud, mutasi =
 /// tulis dokumen (listener yang mengurus update `state`). Tidak tersedia
@@ -129,6 +156,42 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       'addedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  /// Ganti semua entri beda-source yang judul normalnya sama dengan [comic].
+  /// Firestore memakai batch supaya entri lama dan baru tidak sempat muncul
+  /// bersamaan saat listener library menerima snapshot.
+  Future<void> replaceByTitle(Comic comic, {String? collectionId}) async {
+    final duplicateIds = state
+        .where(
+          (saved) =>
+              saved.id != comic.id &&
+              sameLibraryTitle(saved.title, comic.title),
+        )
+        .map((saved) => saved.id)
+        .toSet();
+    final withCol = comic.copyWith(col: collectionId);
+    final col = _col;
+    if (col == null) {
+      state = [
+        withCol,
+        ...state.where(
+          (saved) => saved.id != comic.id && !duplicateIds.contains(saved.id),
+        ),
+      ];
+      return;
+    }
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (final id in duplicateIds) {
+      batch.delete(col.doc(id));
+    }
+    batch.set(col.doc(comic.id), {
+      ...withCol.toMap(),
+      'addedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
   }
 
   Future<void> markFinished(String comicId) async {

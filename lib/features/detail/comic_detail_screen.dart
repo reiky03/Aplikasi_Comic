@@ -691,21 +691,41 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     );
   }
 
-  void _openCollectionPicker(
+  Future<void> _openCollectionPicker(
     BuildContext context,
     WidgetRef ref,
     Comic current,
-  ) {
+  ) async {
     final collections = ref.read(collectionsProvider);
     final library = ref.read(libraryProvider);
     final inLibrary = library.any((c) => c.id == current.id);
+    final duplicates = inLibrary
+        ? const <Comic>[]
+        : library
+              .where(
+                (saved) =>
+                    saved.id != current.id &&
+                    sameLibraryTitle(saved.title, current.title),
+              )
+              .toList();
+    var duplicateAction = DuplicateComicAction.keepBoth;
+    if (duplicates.isNotEmpty) {
+      duplicateAction = await showDuplicateComicSheet(
+        context,
+        title: current.title,
+        duplicateSources: duplicates.map((comic) => comic.src).toSet().toList(),
+      );
+      if (!context.mounted || duplicateAction == DuplicateComicAction.cancel) {
+        return;
+      }
+    }
 
-    void assign(String collectionId, String collectionName) {
+    Future<void> assign(String collectionId, String collectionName) async {
       if (inLibrary) {
-        ref
+        await ref
             .read(libraryProvider.notifier)
             .moveToCollection(current.id, collectionId);
-        AppToast.show(context, 'Dipindahkan koleksi');
+        if (context.mounted) AppToast.show(context, 'Dipindahkan koleksi');
       } else {
         // Isi total chapter sungguhan (comic dari discover awalnya ch: 0
         // karena belum ada info sampai fetchChapterList selesai). Isi juga
@@ -726,14 +746,22 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                 sourceMangaUrl: current.sourceMangaUrl,
                 lastChapterUrl: chapters.isNotEmpty ? chapters.first.url : null,
               );
-        ref
-            .read(libraryProvider.notifier)
-            .add(toSave, collectionId: collectionId);
-        AppToast.show(context, 'Ditambahkan ke $collectionName');
+        final notifier = ref.read(libraryProvider.notifier);
+        if (duplicateAction == DuplicateComicAction.replaceExisting) {
+          await notifier.replaceByTitle(toSave, collectionId: collectionId);
+          if (context.mounted) {
+            AppToast.show(context, 'Versi lama diganti di $collectionName');
+          }
+        } else {
+          await notifier.add(toSave, collectionId: collectionId);
+          if (context.mounted) {
+            AppToast.show(context, 'Ditambahkan ke $collectionName');
+          }
+        }
       }
     }
 
-    showCollectionPickerSheet(
+    await showCollectionPickerSheet(
       context,
       title: inLibrary ? 'Pindahkan ke koleksi' : 'Simpan ke koleksi',
       collections: [
@@ -745,14 +773,22 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
             selected: inLibrary && current.col == col.id,
           ),
       ],
-      onPick: (id) {
+      onPick: (id) async {
         final col = collections.firstWhere((c) => c.id == id);
-        assign(col.id, col.name);
+        await assign(col.id, col.name);
       },
       onCreateAndPick: (name) async {
         final id = await ref.read(collectionsProvider.notifier).create(name);
-        assign(id, name);
+        await assign(id, name);
       },
+      onRemove: inLibrary
+          ? () async {
+              await ref.read(libraryProvider.notifier).remove(current.id);
+              if (context.mounted) {
+                AppToast.show(context, 'Penyimpanan komik dibatalkan');
+              }
+            }
+          : null,
     );
   }
 }

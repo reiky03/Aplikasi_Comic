@@ -47,6 +47,31 @@ class ExtensionRuntimeInfo {
   }
 }
 
+class NetworkProbeResult {
+  const NetworkProbeResult({
+    required this.ok,
+    required this.statusCode,
+    required this.finalUrl,
+    required this.blocked,
+    required this.message,
+  });
+
+  final bool ok;
+  final int statusCode;
+  final String finalUrl;
+  final bool blocked;
+  final String message;
+
+  factory NetworkProbeResult.fromMap(Map<Object?, Object?> map) =>
+      NetworkProbeResult(
+        ok: map['ok'] as bool? ?? false,
+        statusCode: (map['statusCode'] as num?)?.toInt() ?? 0,
+        finalUrl: map['finalUrl'] as String? ?? '',
+        blocked: map['blocked'] as bool? ?? false,
+        message: map['message'] as String? ?? '',
+      );
+}
+
 class ExtensionRuntimeCapabilities {
   const ExtensionRuntimeCapabilities({
     required this.packageDiscovery,
@@ -290,6 +315,29 @@ class ExtensionRuntimeBridge {
     return WebViewSession.fromMap(raw ?? const {});
   }
 
+  Future<String> renderHtmlWithWebView(
+    String url, {
+    Map<String, String> sessionHeaders = const {},
+  }) async {
+    final html = await _channel.invokeMethod<String>('renderHtmlWithWebView', {
+      'url': url,
+      if (sessionHeaders.isNotEmpty) 'sessionHeaders': sessionHeaders,
+    });
+    return html ?? '';
+  }
+
+  Future<bool> openVpnSettings() async {
+    final opened = await _channel.invokeMethod<bool>('openVpnSettings');
+    return opened ?? false;
+  }
+
+  Future<NetworkProbeResult> probeUrl(String url) async {
+    final raw = await _channel.invokeMapMethod<Object?, Object?>('probeUrl', {
+      'url': url,
+    });
+    return NetworkProbeResult.fromMap(raw ?? const {});
+  }
+
   Future<List<InstalledExtensionPackage>> listInstalledExtensions() async {
     final raw = await _channel.invokeListMethod<Object?>(
       'listInstalledExtensions',
@@ -345,6 +393,7 @@ class ExtensionRuntimeBridge {
     String? sourceName,
     String? sourceLang,
     String? baseUrl,
+    Map<String, String> sessionHeaders = const {},
   }) async {
     final raw = await _channel
         .invokeMapMethod<Object?, Object?>('fetchPopularFromExtension', {
@@ -354,6 +403,7 @@ class ExtensionRuntimeBridge {
             sourceLang: sourceLang,
             baseUrl: baseUrl,
           ),
+          if (sessionHeaders.isNotEmpty) 'sessionHeaders': sessionHeaders,
           'page': page,
         });
     return ExtensionMangaPage.fromMap(raw ?? const {});
@@ -365,6 +415,7 @@ class ExtensionRuntimeBridge {
     String? sourceName,
     String? sourceLang,
     String? baseUrl,
+    Map<String, String> sessionHeaders = const {},
   }) async {
     final raw = await _channel
         .invokeMapMethod<Object?, Object?>('fetchLatestFromExtension', {
@@ -374,6 +425,7 @@ class ExtensionRuntimeBridge {
             sourceLang: sourceLang,
             baseUrl: baseUrl,
           ),
+          if (sessionHeaders.isNotEmpty) 'sessionHeaders': sessionHeaders,
           'page': page,
         });
     return ExtensionMangaPage.fromMap(raw ?? const {});
@@ -386,6 +438,7 @@ class ExtensionRuntimeBridge {
     String? sourceName,
     String? sourceLang,
     String? baseUrl,
+    Map<String, String> sessionHeaders = const {},
   }) async {
     final raw = await _channel
         .invokeMapMethod<Object?, Object?>('fetchSearchFromExtension', {
@@ -395,6 +448,7 @@ class ExtensionRuntimeBridge {
             sourceLang: sourceLang,
             baseUrl: baseUrl,
           ),
+          if (sessionHeaders.isNotEmpty) 'sessionHeaders': sessionHeaders,
           'query': query,
           'page': page,
         });
@@ -409,6 +463,7 @@ class ExtensionRuntimeBridge {
     String? sourceName,
     String? sourceLang,
     String? baseUrl,
+    Map<String, String> sessionHeaders = const {},
   }) async {
     final raw = await _channel
         .invokeMapMethod<Object?, Object?>('fetchMangaDetailsFromExtension', {
@@ -418,6 +473,7 @@ class ExtensionRuntimeBridge {
             sourceLang: sourceLang,
             baseUrl: baseUrl,
           ),
+          if (sessionHeaders.isNotEmpty) 'sessionHeaders': sessionHeaders,
           'mangaUrl': mangaUrl,
           'title': title,
           'thumbnailUrl': thumbnailUrl,
@@ -433,6 +489,7 @@ class ExtensionRuntimeBridge {
     String? sourceName,
     String? sourceLang,
     String? baseUrl,
+    Map<String, String> sessionHeaders = const {},
   }) async {
     final raw = await _channel
         .invokeListMethod<Object?>('fetchChapterListFromExtension', {
@@ -442,6 +499,7 @@ class ExtensionRuntimeBridge {
             sourceLang: sourceLang,
             baseUrl: baseUrl,
           ),
+          if (sessionHeaders.isNotEmpty) 'sessionHeaders': sessionHeaders,
           'mangaUrl': mangaUrl,
           'title': title,
           'thumbnailUrl': thumbnailUrl,
@@ -460,6 +518,7 @@ class ExtensionRuntimeBridge {
     String? sourceName,
     String? sourceLang,
     String? baseUrl,
+    Map<String, String> sessionHeaders = const {},
   }) async {
     final raw = await _channel
         .invokeListMethod<Object?>('fetchPageListFromExtension', {
@@ -469,6 +528,7 @@ class ExtensionRuntimeBridge {
             sourceLang: sourceLang,
             baseUrl: baseUrl,
           ),
+          if (sessionHeaders.isNotEmpty) 'sessionHeaders': sessionHeaders,
           'chapterUrl': chapterUrl,
           'chapterName': chapterName,
         });
