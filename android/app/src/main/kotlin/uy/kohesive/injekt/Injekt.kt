@@ -9,7 +9,9 @@ private var application: Application? = null
 
 private val scope = object : InjektScope {
     override fun getInstance(type: Type): Any {
-        val typeName = type.typeName
+        // `Type.getTypeName()` baru ada di API 28; `toString()` cukup buat
+        // mengenali dependency Json dan aman sampai minSdk Kizen (24).
+        val typeName = type.toString()
         if (typeName.contains("kotlinx.serialization.json.Json")) {
             return Json {
                 ignoreUnknownKeys = true

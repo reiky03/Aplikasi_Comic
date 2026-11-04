@@ -72,6 +72,7 @@ Future<void> showComicContextMenu(
   required VoidCallback onMoveToCollection,
   required VoidCallback onMarkFinished,
   required VoidCallback onRemoveFromLibrary,
+  VoidCallback? onSelectMultiple,
 }) {
   return showAppSheet(
     context,
@@ -81,6 +82,15 @@ Future<void> showComicContextMenu(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ContextMenuPreview(cover: cover, title: title, subtitle: subtitle),
+        if (onSelectMultiple != null)
+          AppSheetMenuRow(
+            icon: LucideIcons.checkSquare,
+            label: 'Pilih banyak',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              onSelectMultiple();
+            },
+          ),
         AppSheetMenuRow(
           icon: LucideIcons.eye,
           label: 'Buka detail',

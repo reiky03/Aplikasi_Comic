@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:archive/archive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import 'firestore_scope.dart';
+import 'generated/repository_index.pb.dart' as repo_pb;
+import 'library_state.dart';
+import 'sources_state.dart';
 
 /// Sumber yang tersedia dari sebuah repository.
 class RepoSource {
@@ -21,6 +25,8 @@ class RepoSource {
     this.version,
     this.versionCode,
     this.parserKind,
+    this.nameAliases = const [],
+    this.baseUrlAliases = const [],
   });
 
   final String id;
@@ -33,8 +39,38 @@ class RepoSource {
   final String? version;
   final int? versionCode;
   final String? parserKind;
+  final List<String> nameAliases;
+  final List<String> baseUrlAliases;
 
   String get initial => name.isEmpty ? '?' : name[0];
+
+  bool matchesName(String value) =>
+      name == value || nameAliases.any((alias) => alias == value);
+
+  RepoSource copyWith({
+    String? name,
+    String? baseUrl,
+    String? pkg,
+    String? apk,
+    String? version,
+    int? versionCode,
+    String? parserKind,
+    List<String>? nameAliases,
+    List<String>? baseUrlAliases,
+  }) => RepoSource(
+    id: id,
+    name: name ?? this.name,
+    hue: hue,
+    lang: lang,
+    baseUrl: baseUrl ?? this.baseUrl,
+    pkg: pkg ?? this.pkg,
+    apk: apk ?? this.apk,
+    version: version ?? this.version,
+    versionCode: versionCode ?? this.versionCode,
+    parserKind: parserKind ?? this.parserKind,
+    nameAliases: nameAliases ?? this.nameAliases,
+    baseUrlAliases: baseUrlAliases ?? this.baseUrlAliases,
+  );
 
   Map<String, dynamic> toMap() => {
     'id': id,
@@ -47,6 +83,8 @@ class RepoSource {
     'version': ?version,
     'versionCode': ?versionCode,
     'parserKind': ?parserKind,
+    'nameAliases': nameAliases,
+    'baseUrlAliases': baseUrlAliases,
   };
 
   factory RepoSource.fromMap(Map<String, dynamic> map) => RepoSource(
@@ -60,6 +98,11 @@ class RepoSource {
     version: map['version'] as String?,
     versionCode: (map['versionCode'] as num?)?.toInt(),
     parserKind: map['parserKind'] as String?,
+    nameAliases:
+        (map['nameAliases'] as List?)?.whereType<String>().toList() ?? const [],
+    baseUrlAliases:
+        (map['baseUrlAliases'] as List?)?.whereType<String>().toList() ??
+        const [],
   );
 }
 
@@ -88,23 +131,56 @@ class ComicRepository {
     sources: sources ?? this.sources,
   );
 
-  /// Mapping ke `users/{uid}/repositories/{repoId}` — `sources` di-embed
-  /// (bukan subcollection) sesuai docs/DATABASE.md.
+  /// Index modern bisa berisi ribuan source. Simpan sebagai JSON gzip supaya
+  /// satu dokumen tetap jauh di bawah batas 1 MiB Firestore.
   Map<String, dynamic> toMap() => {
     'name': name,
     'url': url,
-    'sources': sources.map((s) => s.toMap()).toList(),
+    'sourcesGzip': _encodeRepositorySources(sources),
   };
 
-  factory ComicRepository.fromMap(String id, Map<String, dynamic> map) =>
-      ComicRepository(
-        id: id,
-        name: map['name'] as String? ?? '',
-        url: map['url'] as String? ?? '',
-        sources: (map['sources'] as List<dynamic>? ?? [])
-            .map((s) => RepoSource.fromMap(Map<String, dynamic>.from(s as Map)))
-            .toList(),
-      );
+  factory ComicRepository.fromMap(String id, Map<String, dynamic> map) {
+    final compressed = map['sourcesGzip'];
+    final decoded = compressed is String
+        ? _decodeRepositorySources(compressed)
+        : null;
+    final sources =
+        decoded ??
+        (map['sources'] as List<dynamic>? ?? [])
+            .whereType<Map>()
+            .map(
+              (source) => RepoSource.fromMap(Map<String, dynamic>.from(source)),
+            )
+            .toList();
+    return ComicRepository(
+      id: id,
+      name: map['name'] as String? ?? '',
+      url: map['url'] as String? ?? '',
+      sources: sources,
+    );
+  }
+}
+
+String _encodeRepositorySources(List<RepoSource> sources) {
+  final json = jsonEncode(sources.map((source) => source.toMap()).toList());
+  return base64Encode(GZipEncoder().encode(utf8.encode(json)));
+}
+
+List<RepoSource>? _decodeRepositorySources(String encoded) {
+  try {
+    final bytes = GZipDecoder().decodeBytes(
+      base64Decode(encoded),
+      verify: true,
+    );
+    final decoded = jsonDecode(utf8.decode(bytes));
+    if (decoded is! List) return null;
+    return decoded
+        .whereType<Map>()
+        .map((source) => RepoSource.fromMap(Map<String, dynamic>.from(source)))
+        .toList();
+  } catch (_) {
+    return null;
+  }
 }
 
 /// Data demo — dipakai saat belum login/Firebase tak tersedia.
@@ -208,6 +284,72 @@ bool repositoryUpdateAvailable({
   return false;
 }
 
+/// Gabungkan index terbaru lewat identitas package + source ID. Nama dan
+/// domain lama dibawa sebagai alias agar Library lama tetap resolve. Guard
+/// penyusutan menjaga cache saat sebuah repo besar sementara berubah menjadi
+/// index pemberitahuan migrasi berisi satu-dua extension saja.
+List<RepoSource> mergeRepositorySources(
+  List<RepoSource> current,
+  List<RepoSource> incoming,
+) {
+  if (current.isEmpty) return incoming;
+  if (incoming.isEmpty) return current;
+  if (incoming.every(_isRepositoryNotice)) return current;
+
+  final currentByKey = {
+    for (final source in current) _repoSourceKey(source): source,
+  };
+  final mergedIncoming = <RepoSource>[];
+  final incomingKeys = <String>{};
+  for (final fresh in incoming) {
+    final key = _repoSourceKey(fresh);
+    incomingKeys.add(key);
+    final previous = currentByKey[key];
+    if (previous == null) {
+      mergedIncoming.add(fresh);
+      continue;
+    }
+    final nameAliases = <String>{
+      ...previous.nameAliases,
+      ...fresh.nameAliases,
+      if (previous.name != fresh.name) previous.name,
+    }.toList();
+    final baseUrlAliases = <String>{
+      ...previous.baseUrlAliases,
+      ...fresh.baseUrlAliases,
+      if (previous.baseUrl != null && previous.baseUrl != fresh.baseUrl)
+        previous.baseUrl!,
+    }.toList();
+    mergedIncoming.add(
+      fresh.copyWith(nameAliases: nameAliases, baseUrlAliases: baseUrlAliases),
+    );
+  }
+
+  final shrankUnexpectedly =
+      current.length >= 20 &&
+      incoming.length < math.max(3, (current.length * 0.2).ceil());
+  if (!shrankUnexpectedly) return mergedIncoming;
+  return [
+    ...mergedIncoming,
+    for (final source in current)
+      if (!incomingKeys.contains(_repoSourceKey(source))) source,
+  ];
+}
+
+String _repoSourceKey(RepoSource source) {
+  final pkg = source.pkg?.trim();
+  if (pkg != null && pkg.isNotEmpty) return '$pkg|${source.id}';
+  if (source.id.isNotEmpty) return 'id:${source.id}';
+  return 'name:${source.name.toLowerCase()}|${source.lang}';
+}
+
+bool _isRepositoryNotice(RepoSource source) {
+  final name = source.name.toLowerCase();
+  return name.contains('outdated app') ||
+      name.contains('update to mihon') ||
+      name.contains('unsupported app');
+}
+
 List<int> _versionParts(String? value) => RegExp(
   r'\d+',
 ).allMatches(value ?? '').map((match) => int.parse(match.group(0)!)).toList();
@@ -221,13 +363,15 @@ RepoSourceMatch? findRepoSourceForUrl(
   RepoSourceMatch? fallback;
   for (final repository in repositories) {
     for (final source in repository.sources) {
-      final sourceHost = _hostOf(source.baseUrl ?? '');
-      if (sourceHost == null) continue;
-      if (host == sourceHost) {
-        return RepoSourceMatch(repository: repository, source: source);
-      }
-      if (_sameDomain(host, sourceHost)) {
-        fallback ??= RepoSourceMatch(repository: repository, source: source);
+      for (final candidate in [?source.baseUrl, ...source.baseUrlAliases]) {
+        final sourceHost = _hostOf(candidate);
+        if (sourceHost == null) continue;
+        if (host == sourceHost) {
+          return RepoSourceMatch(repository: repository, source: source);
+        }
+        if (_sameDomain(host, sourceHost)) {
+          fallback ??= RepoSourceMatch(repository: repository, source: source);
+        }
       }
     }
   }
@@ -239,6 +383,9 @@ RepoSourceMatch? findRepoSource({
   String? rawUrl,
   String? packageName,
   String? sourceId,
+  String? name,
+  List<String> nameAliases = const [],
+  List<String> urlAliases = const [],
 }) {
   if (sourceId != null || packageName != null) {
     RepoSourceMatch? packageFallback;
@@ -257,8 +404,36 @@ RepoSourceMatch? findRepoSource({
     }
     if (sourceId == null && packageFallback != null) return packageFallback;
   }
-  if (rawUrl == null) return null;
-  return findRepoSourceForUrl(rawUrl, repositories);
+
+  // Cek URL utama dan semua URL aliases
+  final candidateUrls = <String>[
+    if (rawUrl != null && rawUrl.trim().isNotEmpty) rawUrl,
+    ...urlAliases.where((u) => u.trim().isNotEmpty),
+  ];
+  for (final url in candidateUrls) {
+    final match = findRepoSourceForUrl(url, repositories);
+    if (match != null) return match;
+  }
+
+  // Cek Nama dan semua nama aliases (case-insensitive + normalized)
+  final candidateNames = <String>[
+    if (name != null && name.trim().isNotEmpty) name,
+    ...nameAliases.where((n) => n.trim().isNotEmpty),
+  ];
+  if (candidateNames.isNotEmpty) {
+    for (final repository in repositories) {
+      for (final source in repository.sources) {
+        for (final queryName in candidateNames) {
+          if (source.matchesName(queryName) ||
+              sameLibraryTitle(source.name, queryName)) {
+            return RepoSourceMatch(repository: repository, source: source);
+          }
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 String? _hostOf(String raw) {
@@ -277,38 +452,258 @@ Future<RepositoryIndexResult> fetchRepositoryIndex(
   http.Client? client,
 }) async {
   final url = normalizeRepositoryUrl(rawUrl);
-  final httpClient = client ?? http.Client();
-  late final http.Response response;
-  try {
-    response = await httpClient.get(
-      Uri.parse(url),
-      headers: const {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json,text/plain,*/*',
-      },
-    );
-  } catch (e) {
-    throw RepositoryIndexException('Gagal menghubungi repository: $e');
+  final uri = Uri.tryParse(url);
+  if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+    throw const RepositoryIndexException('Link repository tidak valid.');
   }
+  final httpClient = client ?? http.Client();
+  try {
+    return await _fetchRepositoryIndexUri(uri, httpClient, visited: <String>{});
+  } finally {
+    if (client == null) httpClient.close();
+  }
+}
+
+const _repositoryHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+  'Accept':
+      'application/protobuf,application/octet-stream,application/json,'
+      'text/plain,*/*',
+};
+
+Future<RepositoryIndexResult> _fetchRepositoryIndexUri(
+  Uri uri,
+  http.Client client, {
+  required Set<String> visited,
+  String? fallbackName,
+}) async {
+  if (visited.length >= 6 || !visited.add(uri.toString())) {
+    throw const RepositoryIndexException(
+      'Repository mengarah ke indeks yang berulang.',
+    );
+  }
+
+  final response = await _getRepository(uri, client);
   if (response.statusCode != 200) {
+    final migrated = await _tryLegacyRepositoryMetadata(
+      uri,
+      client,
+      visited: visited,
+      fallbackName: fallbackName,
+    );
+    if (migrated != null) return migrated;
     throw RepositoryIndexException(
       'Repository mengembalikan status ${response.statusCode}.',
     );
   }
 
-  final decoded = jsonDecode(response.body);
-  final extensions = switch (decoded) {
-    final List<dynamic> list => list,
-    final Map<String, dynamic> map when map['extensions'] is List =>
-      map['extensions'] as List<dynamic>,
-    final Map<String, dynamic> map when map['data'] is List =>
-      map['data'] as List<dynamic>,
-    _ => throw const RepositoryIndexException(
-      'Format repository tidak dikenali.',
-    ),
-  };
+  final bytes = response.bodyBytes;
+  if (_looksLikeJson(bytes)) {
+    final decoded = _decodeRepositoryJson(bytes);
+    if (decoded case final Map<String, dynamic> map) {
+      final indexV2 = map['index_v2'];
+      if (indexV2 is String && indexV2.trim().isNotEmpty) {
+        return _fetchRepositoryIndexUri(
+          uri.resolve(indexV2.trim()),
+          client,
+          visited: visited,
+          fallbackName: _jsonRepositoryName(map) ?? fallbackName,
+        );
+      }
+    }
 
+    final extensions = _jsonExtensions(decoded);
+    if (extensions == null) {
+      throw const RepositoryIndexException(
+        'Format repository JSON tidak dikenali.',
+      );
+    }
+    final sources = _repoSourcesFromJson(extensions);
+    if (sources.isEmpty) {
+      throw const RepositoryIndexException(
+        'Repository valid, tapi tidak ada sumber yang bisa dibaca dari index.',
+      );
+    }
+
+    if (sources.every(_isRepositoryNotice)) {
+      final migrated = await _tryLegacyRepositoryMetadata(
+        uri,
+        client,
+        visited: visited,
+        fallbackName: fallbackName,
+      );
+      if (migrated != null) return migrated;
+    }
+    return _repositoryResult(
+      name: fallbackName ?? _repoNameFromUrl(uri.toString()),
+      sources: sources,
+    );
+  }
+
+  try {
+    final index = repo_pb.Index.fromBuffer(_decodeGzipIfNeeded(bytes));
+    final name = index.name.trim().isEmpty
+        ? fallbackName ?? _repoNameFromUrl(uri.toString())
+        : index.name.trim();
+    final sources = switch (index.whichExtensions()) {
+      repo_pb.Index_Extensions.extensionList => _repoSourcesFromProto(
+        index.extensionList.extensions,
+      ),
+      repo_pb.Index_Extensions.extensionListUrl =>
+        await _fetchExternalExtensionList(
+          uri.resolve(index.extensionListUrl.trim()),
+          client,
+          visited: visited,
+        ),
+      repo_pb.Index_Extensions.notSet => const <RepoSource>[],
+    };
+    if (sources.isEmpty) {
+      throw const RepositoryIndexException(
+        'Repository valid, tapi tidak ada sumber yang bisa dibaca dari index.',
+      );
+    }
+    return _repositoryResult(name: name, sources: sources);
+  } on RepositoryIndexException {
+    rethrow;
+  } catch (e) {
+    throw RepositoryIndexException(
+      'Format repository Protobuf tidak dikenali: $e',
+    );
+  }
+}
+
+Future<http.Response> _getRepository(Uri uri, http.Client client) async {
+  try {
+    return await client.get(uri, headers: _repositoryHeaders);
+  } catch (e) {
+    throw RepositoryIndexException('Gagal menghubungi repository: $e');
+  }
+}
+
+Future<RepositoryIndexResult?> _tryLegacyRepositoryMetadata(
+  Uri uri,
+  http.Client client, {
+  required Set<String> visited,
+  String? fallbackName,
+}) async {
+  final metadataUri = _legacyRepositoryMetadataUri(uri);
+  if (metadataUri == null || visited.contains(metadataUri.toString())) {
+    return null;
+  }
+  try {
+    return await _fetchRepositoryIndexUri(
+      metadataUri,
+      client,
+      visited: visited,
+      fallbackName: fallbackName,
+    );
+  } on RepositoryIndexException {
+    return null;
+  }
+}
+
+Uri? _legacyRepositoryMetadataUri(Uri uri) {
+  if (uri.pathSegments.isEmpty) return null;
+  final file = uri.pathSegments.last.toLowerCase();
+  if (!file.startsWith('index') || !file.endsWith('.json')) return null;
+  return uri.replace(
+    pathSegments: [
+      ...uri.pathSegments.take(uri.pathSegments.length - 1),
+      'repo.json',
+    ],
+    query: null,
+    fragment: null,
+  );
+}
+
+bool _looksLikeJson(List<int> bytes) {
+  for (final byte in bytes) {
+    if (byte == 0x20 || byte == 0x09 || byte == 0x0a || byte == 0x0d) {
+      continue;
+    }
+    return byte == 0x5b || byte == 0x7b;
+  }
+  return false;
+}
+
+dynamic _decodeRepositoryJson(List<int> bytes) {
+  try {
+    return jsonDecode(utf8.decode(bytes));
+  } catch (e) {
+    throw RepositoryIndexException('JSON repository rusak: $e');
+  }
+}
+
+String? _jsonRepositoryName(Map<String, dynamic> map) {
+  final meta = map['meta'];
+  if (meta is! Map) return null;
+  final name = meta['name'];
+  return name is String && name.trim().isNotEmpty ? name.trim() : null;
+}
+
+List<dynamic>? _jsonExtensions(dynamic decoded) => switch (decoded) {
+  final List<dynamic> list => list,
+  final Map<String, dynamic> map when map['extensions'] is List =>
+    map['extensions'] as List<dynamic>,
+  final Map<String, dynamic> map when map['data'] is List =>
+    map['data'] as List<dynamic>,
+  _ => null,
+};
+
+List<int> _decodeGzipIfNeeded(List<int> bytes) {
+  if (bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+    return GZipDecoder().decodeBytes(bytes, verify: true);
+  }
+  return bytes;
+}
+
+Future<List<RepoSource>> _fetchExternalExtensionList(
+  Uri uri,
+  http.Client client, {
+  required Set<String> visited,
+}) async {
+  if (visited.length >= 6 || !visited.add(uri.toString())) {
+    throw const RepositoryIndexException(
+      'Daftar extension repository mengarah berulang.',
+    );
+  }
+  final response = await _getRepository(uri, client);
+  if (response.statusCode != 200) {
+    throw RepositoryIndexException(
+      'Daftar extension mengembalikan status ${response.statusCode}.',
+    );
+  }
+  final bytes = response.bodyBytes;
+  if (_looksLikeJson(bytes)) {
+    final extensions = _jsonExtensions(_decodeRepositoryJson(bytes));
+    if (extensions == null) {
+      throw const RepositoryIndexException(
+        'Format daftar extension JSON tidak dikenali.',
+      );
+    }
+    return _repoSourcesFromJson(extensions);
+  }
+
+  final decoded = _decodeGzipIfNeeded(bytes);
+  try {
+    final index = repo_pb.Index.fromBuffer(decoded);
+    if (index.hasExtensionList()) {
+      return _repoSourcesFromProto(index.extensionList.extensions);
+    }
+  } catch (_) {
+    // URL eksternal biasanya berisi ExtensionList langsung, bukan Index.
+  }
+  try {
+    final list = repo_pb.ExtensionList.fromBuffer(decoded);
+    return _repoSourcesFromProto(list.extensions);
+  } catch (e) {
+    throw RepositoryIndexException(
+      'Format daftar extension Protobuf tidak dikenali: $e',
+    );
+  }
+}
+
+List<RepoSource> _repoSourcesFromJson(List<dynamic> extensions) {
   final sources = <RepoSource>[];
   final seen = <String>{};
   for (final extRaw in extensions) {
@@ -330,7 +725,7 @@ Future<RepositoryIndexResult> fetchRepositoryIndex(
         if (name == null || name.trim().isEmpty) continue;
         final id = '${source['id'] ?? '$pkg:$name:$baseUrl'}';
         final lang = _normalizeRepoLang(source['lang'] as String?) ?? extLang;
-        final key = '$id|$baseUrl|$lang';
+        final key = '$pkg|$id|$baseUrl|$lang';
         if (!seen.add(key)) continue;
         sources.add(
           RepoSource(
@@ -366,17 +761,90 @@ Future<RepositoryIndexResult> fetchRepositoryIndex(
       );
     }
   }
-  if (sources.isEmpty) {
-    throw const RepositoryIndexException(
-      'Repository valid, tapi tidak ada sumber yang bisa dibaca dari index.',
-    );
+  return sources;
+}
+
+List<RepoSource> _repoSourcesFromProto(Iterable<repo_pb.Extension> extensions) {
+  final sources = <RepoSource>[];
+  final seen = <String>{};
+  for (final extension in extensions) {
+    final pkg = extension.packageName.trim();
+    final extName = extension.name.replaceFirst('Tachiyomi: ', '').trim();
+    final apk = extension.hasResources()
+        ? extension.resources.apkUrl.trim()
+        : '';
+    final version = extension.versionName.trim();
+    final versionCode = extension.hasVersionCode()
+        ? extension.versionCode.toInt()
+        : null;
+
+    if (extension.sources.isEmpty) {
+      if (extName.isEmpty) continue;
+      final id = pkg.isEmpty ? extName : pkg;
+      if (!seen.add('$pkg|$id')) continue;
+      sources.add(
+        RepoSource(
+          id: id,
+          name: extName,
+          hue: _stableHue('$pkg:$extName'),
+          lang: 'ALL',
+          pkg: pkg.isEmpty ? null : pkg,
+          apk: apk.isEmpty ? null : apk,
+          version: version.isEmpty ? null : version,
+          versionCode: versionCode,
+          parserKind: pkg.isEmpty ? null : 'extension-runtime:$pkg',
+        ),
+      );
+      continue;
+    }
+
+    for (final source in extension.sources) {
+      final name = source.name.trim().isEmpty ? extName : source.name.trim();
+      if (name.isEmpty) continue;
+      final mirrors = source.mirrorUrls
+          .map((url) => url.trim())
+          .where((url) => url.isNotEmpty)
+          .toSet();
+      final homeUrl = source.homeUrl.trim();
+      final baseUrl = homeUrl.isNotEmpty
+          ? homeUrl
+          : mirrors.isEmpty
+          ? null
+          : mirrors.first;
+      if (baseUrl != null) mirrors.remove(baseUrl);
+      final id = source.hasId() ? source.id.toString() : '$pkg:$name:$baseUrl';
+      final lang = _normalizeRepoLang(source.language) ?? 'ALL';
+      if (!seen.add('$pkg|$id|$baseUrl|$lang')) continue;
+      sources.add(
+        RepoSource(
+          id: id,
+          name: name,
+          hue: _stableHue('$pkg:$id:$name'),
+          lang: lang,
+          baseUrl: baseUrl,
+          baseUrlAliases: mirrors.toList(),
+          pkg: pkg.isEmpty ? null : pkg,
+          apk: apk.isEmpty ? null : apk,
+          version: version.isEmpty ? null : version,
+          versionCode: versionCode,
+          parserKind: pkg.isEmpty ? null : 'extension-runtime:$pkg',
+        ),
+      );
+    }
   }
+  return sources;
+}
+
+RepositoryIndexResult _repositoryResult({
+  required String name,
+  required List<RepoSource> sources,
+}) {
   sources.sort((a, b) {
     final byLang = a.lang.compareTo(b.lang);
     if (byLang != 0) return byLang;
     return a.name.toLowerCase().compareTo(b.name.toLowerCase());
   });
-  return RepositoryIndexResult(name: _repoNameFromUrl(url), sources: sources);
+  return RepositoryIndexResult(name: name, sources: sources);
 }
 
 String _repoNameFromUrl(String url) {
@@ -461,7 +929,8 @@ class RepositoriesNotifier extends Notifier<List<ComicRepository>> {
     await col.doc(id).update({
       'name': ?name,
       'url': ?url,
-      if (sources != null) 'sources': sources.map((s) => s.toMap()).toList(),
+      if (sources != null) 'sourcesGzip': _encodeRepositorySources(sources),
+      if (sources != null) 'sources': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -484,12 +953,17 @@ class RepositoriesNotifier extends Notifier<List<ComicRepository>> {
         await update(
           repository.id,
           name: repository.name,
-          sources: result.sources,
+          sources: mergeRepositorySources(repository.sources, result.sources),
         );
         updated++;
       } catch (_) {
         failed++;
       }
+    }
+    if (updated > 0) {
+      try {
+        await ref.read(sourcesProvider.notifier).syncWithRepositories(state);
+      } catch (_) {}
     }
     return RepositoryRefreshResult(updated: updated, failed: failed);
   }

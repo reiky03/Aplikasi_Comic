@@ -9,6 +9,7 @@ import '../../core/widgets/widgets.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/repository_state.dart';
+import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
 import '../../sources/source_catalog.dart';
@@ -75,22 +76,20 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       // sumber custom juga bisa nampilin grid discover, bukan cuma
       // fallback ke WebView.
       _matchedSource =
-          SourceCatalog.matchByUrl(source.url) ??
           _repoMatchedSource(source) ??
-          (source.parserKind != null
-              ? SourceCatalog.buildGeneric(
-                  source.parserKind!,
-                  source.name,
-                  source.url.startsWith('http')
-                      ? source.url
-                      : 'https://${source.url}',
-                )
-              : SourceCatalog.buildAutomatic(
-                  source.name,
-                  source.url.startsWith('http')
-                      ? source.url
-                      : 'https://${source.url}',
-                ));
+          SourceCatalog.matchByUrl(
+            source.url,
+            fallbackBaseUrls: source.urlAliases,
+          ) ??
+          SourceCatalog.buildAutomatic(
+            source.name,
+            source.url.startsWith('http')
+                ? source.url
+                : 'https://${source.url}',
+            preferredKind: source.parserKind,
+            lang: source.lang,
+            fallbackBaseUrls: source.urlAliases,
+          );
       if (_matchedSource != null) _loadDiscover(source);
     }
   }
@@ -108,11 +107,17 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     final packageName = match?.source.pkg;
     if (packageName == null) return null;
     final currentBaseUrl = match?.source.baseUrl ?? baseUrl;
-    return SourceCatalog.buildGeneric(
-      'extension-runtime:$packageName',
+    final fallbackBaseUrls = <String>{
+      ...source.urlAliases,
+      if (currentBaseUrl != baseUrl) baseUrl,
+      ...?match?.source.baseUrlAliases,
+    };
+    return SourceCatalog.buildAutomatic(
       source.name,
       currentBaseUrl,
+      preferredKind: 'extension-runtime:$packageName',
       lang: match?.source.lang,
+      fallbackBaseUrls: fallbackBaseUrls,
     );
   }
 
@@ -150,13 +155,16 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
         ),
       };
       if (!mounted || requestId != _discoverRequestId) return;
+      final incoming = result.mangas.map((m) => _toComic(source, m));
+      final merged = mergeDiscoverResults(_discoverResults, incoming);
+      final addedCount = merged.length - _discoverResults.length;
       setState(() {
-        _discoverResults = [
-          ..._discoverResults,
-          ...result.mangas.map((m) => _toComic(source, m)),
-        ];
+        _discoverResults = merged;
         _discoverPage = nextPage;
-        _hasNextPage = result.hasNextPage;
+        // Beberapa situs mengembalikan halaman sebelumnya lagi tetapi tetap
+        // bilang masih ada next page. Berhenti kalau tidak ada URL baru agar
+        // listener dasar grid tidak request tanpa akhir dan mengusik offset.
+        _hasNextPage = result.hasNextPage && addedCount > 0;
         _loadingMore = false;
       });
     } catch (_) {
@@ -168,23 +176,28 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   }
 
   ComicSource? get _source {
-    final sources = ref.watch(sourcesProvider);
+    final sources = ref.read(sourcesProvider);
     for (final s in sources) {
       if (s.id == widget.sourceId) return s;
     }
     return widget.fallbackSource;
   }
 
-  Comic _toComic(ComicSource source, SourceManga m) => Comic(
-    id: 'src_${source.id}_${Uri.encodeComponent(m.url)}',
-    title: m.title,
-    src: source.name,
-    hue: source.hue,
-    ch: 0,
-    coverUrl: m.thumbnailUrl,
-    coverHeaders: m.headers,
-    sourceMangaUrl: m.url,
-  );
+  Comic _toComic(ComicSource source, SourceManga manga) {
+    final activeUrl = _matchedSource == null
+        ? manga.url
+        : rebaseSourceUrl(manga.url, _matchedSource!.baseUrl);
+    return Comic(
+      id: 'src_${source.id}_${Uri.encodeComponent(activeUrl)}',
+      title: manga.title,
+      src: source.name,
+      hue: source.hue,
+      ch: 0,
+      coverUrl: manga.thumbnailUrl,
+      coverHeaders: manga.headers,
+      sourceMangaUrl: activeUrl,
+    );
+  }
 
   /// Ambil daftar komik ASLI dari sumber yang punya parser native (lihat
   /// lib/sources/) sesuai tab aktif. Sumber di luar daftar tetap pakai
@@ -276,15 +289,24 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     AppToast.show(context, 'Daftar komik diperbarui');
   }
 
-  /// Coba parse ulang. Timing prototipe ~1.3s (selalu gagal di demo).
-  /// TODO(backend): retry parse sungguhan.
+  /// Ulangi request parser aktif. WebView tetap jadi fallback bila seluruh
+  /// strategi parser masih gagal.
   Future<void> _retry() async {
     if (_retrying) return;
+    final source = _source;
+    if (source == null) return;
     setState(() => _retrying = true);
-    await Future<void>.delayed(const Duration(milliseconds: 1300));
+    if (_matchedSource != null) {
+      await _loadDiscover(source);
+    }
     if (!mounted) return;
     setState(() => _retrying = false);
-    AppToast.show(context, 'Masih belum bisa dibaca otomatis — coba WebView');
+    AppToast.show(
+      context,
+      _discoverError == null
+          ? 'Sumber berhasil dimuat ulang'
+          : 'Masih belum bisa dibaca otomatis — coba WebView',
+    );
   }
 
   void _openWebView(ComicSource source, {String? initialUrl}) {
@@ -306,6 +328,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild kalau sumber diedit/dihapus, sementara callback dan debounce
+    // membaca snapshot lewat `_source` tanpa membuat listener di luar build.
+    ref.watch(sourcesProvider);
     final source = _source;
     if (source == null) {
       // Sumber dihapus saat layar terbuka — kembali.
@@ -540,7 +565,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
           ),
         ),
         Expanded(
-          child: _matchedSource != null && _discoverLoading
+          child: _matchedSource != null && _discoverLoading && items.isEmpty
               ? const Center(child: AppSpinner(size: 28, strokeWidth: 2.5))
               : _matchedSource != null && _discoverError != null
               ? _buildDiscoverError(source)
@@ -586,6 +611,17 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                         bottom: 10,
                         child: Center(
                           child: AppSpinner(size: 22, strokeWidth: 2.5),
+                        ),
+                      ),
+                    if (_discoverLoading && items.isNotEmpty)
+                      const Positioned(
+                        top: 10,
+                        left: 0,
+                        right: 0,
+                        child: IgnorePointer(
+                          child: Center(
+                            child: AppSpinner(size: 22, strokeWidth: 2.5),
+                          ),
                         ),
                       ),
                   ],
@@ -955,6 +991,20 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       ),
     );
   }
+}
+
+/// Gabungkan pagination berdasarkan ID yang dibentuk dari URL sumber.
+/// Urutan item lama tidak disentuh supaya anchor scroll Flutter tetap stabil.
+@visibleForTesting
+List<Comic> mergeDiscoverResults(
+  List<Comic> current,
+  Iterable<Comic> incoming,
+) {
+  final seen = <String>{};
+  return [
+    for (final comic in [...current, ...incoming])
+      if (seen.add(comic.id)) comic,
+  ];
 }
 
 /// Kartu grid discover (tanpa caption "Ch. N", inisial 48px).

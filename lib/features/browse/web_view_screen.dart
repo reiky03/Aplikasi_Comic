@@ -50,7 +50,7 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
   bool _sessionCaptured = false;
 
   ComicSource? get _source {
-    final sources = ref.watch(sourcesProvider);
+    final sources = ref.read(sourcesProvider);
     for (final s in sources) {
       if (s.id == widget.sourceId) return s;
     }
@@ -78,6 +78,17 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
       ..setBackgroundColor(Colors.white)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final url = request.url.toLowerCase();
+            if (url.startsWith('http://') ||
+                url.startsWith('https://') ||
+                url.startsWith('about:blank')) {
+              return NavigationDecision.navigate;
+            }
+            // Blokir redirect iklan ke scheme non-HTTP (intent://, market://, tg://)
+            debugPrint('Blokir navigasi skema non-web: ${request.url}');
+            return NavigationDecision.prevent;
+          },
           onProgress: (p) {
             if (!mounted) return;
             setState(() => _progress = p / 100);
@@ -161,6 +172,9 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Listener Riverpod hanya dibuat saat build. `_markSessionActive()` juga
+    // memakai getter ini, jadi getter-nya sendiri harus berupa `read`.
+    ref.watch(sourcesProvider);
     final source = _source;
     final sessionActive = (source?.session ?? false) || _sessionCaptured;
 

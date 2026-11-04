@@ -12,6 +12,8 @@ import '../detail/comic_detail_screen.dart';
 import '../reader/reader_screen.dart';
 
 /// Tab History — spek 06: lanjut baca + bersihkan riwayat.
+enum _HistoryAction { delete }
+
 class HistoryScreen extends ConsumerWidget {
   const HistoryScreen({super.key});
 
@@ -113,6 +115,7 @@ class HistoryScreen extends ConsumerWidget {
           coverUrl: entry.coverUrl ?? libraryById[entry.comicId]?.coverUrl,
           onTap: () => _openDetail(context, ref, entry),
           onPlay: () => _resumeReading(context, ref, entry),
+          onLongPress: () => _openHistoryMenu(context, ref, entry),
         );
       },
     );
@@ -152,6 +155,34 @@ class HistoryScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openHistoryMenu(
+    BuildContext context,
+    WidgetRef ref,
+    HistoryEntry entry,
+  ) async {
+    final action = await showAppSheet<_HistoryAction>(
+      context,
+      menuStyle: true,
+      builder: (sheetContext) => AppSheetMenuRow(
+        icon: AppIcons.delete,
+        label: 'Hapus dari History',
+        destructive: true,
+        onTap: () => Navigator.pop(sheetContext, _HistoryAction.delete),
+      ),
+    );
+    if (action != _HistoryAction.delete || !context.mounted) return;
+    final confirmed = await showConfirmSheet(
+      context,
+      title: 'Hapus dari History?',
+      message:
+          'Riwayat baca "${entry.title}" akan dihapus. Komik di Library dan '
+          'progres chapter tidak ikut terhapus.',
+    );
+    if (!confirmed || !context.mounted) return;
+    await ref.read(historyProvider.notifier).remove(entry.comicId);
+    if (context.mounted) AppToast.show(context, 'Riwayat dihapus');
   }
 }
 
@@ -199,12 +230,14 @@ class _HistoryRow extends StatelessWidget {
     required this.coverUrl,
     required this.onTap,
     required this.onPlay,
+    required this.onLongPress,
   });
 
   final HistoryEntry entry;
   final String? coverUrl;
   final VoidCallback onTap;
   final VoidCallback onPlay;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -212,6 +245,7 @@ class _HistoryRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 2),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(14),
         highlightColor: AppColors.surface,
         child: Padding(

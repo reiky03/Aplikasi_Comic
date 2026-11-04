@@ -27,6 +27,32 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Universal Parser Fleksibel, Sinkronisasi Repo & Sumber Saya, serta Manajemen Batch Library
+
+Perbaikan menyeluruh atas permintaan user:
+1. Universal Parser & WebView Cloudflare Bypass:
+   - `universal_html_source.dart`: Memperluas selektor gambar reader (`#readerarea`, `.reader-area`, `.reading-content`, `.chapter-content`, `.reading-box`, `.vung-doc`, `.container-chapter-reader`, `noscript img`, dll) agar fleksibel menangani semua jenis struktur web komik (Madara, MangaThemesia, Custom CMS).
+   - `adaptive_source.dart` & `source_catalog.dart`: Mengaktifkan `enableBrowserSessionFallback: true` secara universal agar ketika situs memblokir dengan Cloudflare Turnstile (403/503) atau JS render kosong, parser otomatis mengambil snapshot DOM dan network image dari headless WebView.
+2. Keamanan & Stabilitas Reader:
+   - `reader_session_image_cache.dart`: Menghapus panggilan destruktif `emptyCache()` di `acquire()` dan `release()` yang sebelumnya menyebabkan race condition dan penghapusan cache gambar reader secara agresif. Mengatur throttle download 60ms dan worker tunggal.
+   - `reader_screen.dart`: Memastikan `_suppressScroll = false` selalu tereksekusi pada frame callback setelah zoom, dan menghitung offset scroll webtoon berbasis rasio aspek riil agar seekbar tidak snapping.
+   - `ExtensionRuntimeBridge.kt`: Menolak skema di luar `http://` dan `https://`, menonaktifkan `allowFileAccess` dan `allowContentAccess` guna menutup celah LFI.
+   - `extension_runtime_source.dart`: Membatasi pengiriman cookie `baseUrl` hanya ke domain/subdomain yang sama, mencegah kebocoran cookie ke CDN gambar pihak ketiga.
+   - `web_view_screen.dart`: Memblokir navigasi scheme intent/market/tg agar tidak crash akibat iklan redirect.
+3. Manajemen Library Multi-Pilih & Per-Sumber:
+   - `library_state.dart`: Menambahkan `moveToCollectionBatch`, `removeBatch`, `removeBySource`, serta helper `groupComicsBySource`.
+   - `library_screen.dart`: Menambahkan mode multi-pilih (checkbox grid, counter, action bar bawah untuk pindah koleksi atau hapus massal), filter chip sumber aktif, dan bottom sheet "Kelola Berdasarkan Sumber" yang merangkum jumlah komik per situs beserta aksi filter, pilih semua, dan hapus semua komik dari situs tersebut.
+4. Sinkronisasi Selaras Antara "Sumber Saya" dan "Repository":
+   - `repository_state.dart`: Memperbarui `findRepoSource` agar mendukung pencocokan nama (exact & fuzzy via `sameLibraryTitle`), URL aliases, dan name aliases.
+   - `sources_state.dart`: Menambahkan `syncWithRepositories(List<ComicRepository> repositories)` di `SourcesNotifier` yang otomatis menyelaraskan URL aktif ke mirror repo terbaru, menautkan `repoPackage` & `repoSourceId`, memigrasikan URL lama ke `urlAliases`, dan mengalihkan parser ke `extension-runtime:${pkg}` bila APK tersedia.
+   - `source_resolver.dart`: Mengutamakan extension runtime dan mencocokkan nama komik secara fuzzy, mencegah tabrakan versi saat user update extension dari app lain atau update repo.
+   - `repo_browse_tab.dart`: Mengintegrasikan `syncWithRepositories` saat repository di-refresh, saat extension dipasang/diperbarui, dan saat aplikasi resumed dari background.
+
+Diverifikasi:
+- `flutter analyze` bersih total: 0 issues found.
+- `flutter test -j 1` lolos 144/144 (3 skipped safe-mode tests).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn` sukses build tanpa error.
+
 ### 2026-07-18 — Extension Soul Scans yang hanya mengirim 4 item ikut diperluas
 
 Tab Terbaru masih 4 item karena source yang tersimpan ternyata bisa resolve ke
@@ -2779,3 +2805,742 @@ Verifikasi:
   multi-page + tanggal, reader, dan migrasi source lama.
 - `flutter analyze` nol issue.
 - `flutter test -j 1`: 81 lulus, 3 safe-mode diskip.
+
+### 2026-07-21 — Search Doujindesu, scroll Asura, kalender Update, dan hapus History
+
+Keluhan dari testing teman user mencakup empat area: pencarian Doujindesu dari
+repository gagal mengparse, reader Asura kadang meloncat ke atas setelah scroll
+panjang, Updates belum bisa difilter tanggal, dan History cuma bisa dibersihkan
+semua sekaligus.
+
+Root cause:
+- APK Doujindesu sudah berhasil membuat request dan mendekripsi response API,
+  tetapi parse `kotlinx-serialization` di runtime host bisa gagal. Fallback JSON
+  native sebenarnya sudah ada buat Populer/Terbaru, tetapi sengaja mengecualikan
+  mode search.
+- Placeholder webtoon selalu memakai rasio 0.7. API Asura memberi ukuran asli
+  seperti 800×12000; saat gambar selesai, tinggi item berubah sangat jauh dan
+  halaman di atas viewport mendorong posisi scroll.
+- Pagination grid belum membuang URL yang diulang situs antarhalaman. Situs yang
+  mengembalikan halaman sama sambil tetap bilang `hasNextPage` bisa memicu
+  request berulang di dasar daftar.
+- History notifier baru punya `clear()`, belum ada delete satu dokumen.
+
+Fix:
+- Fallback `parseDoujindesuMangas()` sekarang juga dipakai untuk search kalau
+  parser APK gagal. Jalur extension/decryptor lama tidak diubah.
+- Reader memesan tinggi halaman dari metadata width/height sebelum gambar mulai
+  dimuat. Gambar tetap `BoxFit.fitWidth`, jadi tidak dipotong atau dipaksa rasio
+  buatan.
+- Merge pagination mempertahankan urutan item lama, deduplikasi berdasarkan ID
+  URL stabil, dan berhenti kalau next page tidak memberi item baru. Grid lama
+  tetap terpasang saat refresh supaya controller tidak kehilangan viewport.
+- Updates mendapat date picker bahasa Indonesia, filter client-side berdasarkan
+  tanggal lokal `detectedAt`, indikator tanggal aktif, dan tombol X buat kembali
+  ke feed default Hari ini/Kemarin.
+- Tekan lama kartu History membuka menu hapus, dilanjutkan konfirmasi. Hanya
+  `history/{comicId}` yang dihapus; Library dan `chapterProgress` tetap aman.
+- Minimum iOS dinaikkan dari 13 ke 15 karena Firebase SDK sekarang mensyaratkan
+  iOS 15. Checklist signing dan kebijakan publik ditulis di `docs/RELEASE.md`.
+
+Verifikasi:
+- `flutter analyze` bersih.
+- `flutter test -j 1`: 85 lulus, 3 safe-mode diskip.
+- Build web FAKE_AUTH lulus. Smoke-test Playwright 412×915 memeriksa dialog
+  kalender, filter tanggal aktif, tombol hapus filter, dan menu long-press
+  History tanpa overflow.
+- APK profile 128,6 MB berhasil dipasang di Pixel 7 Pro.
+- Search Doujindesu `Silent War` menghasilkan `Silent War (My Kingdom)` dengan
+  cover asli; log native mencatat `Doujindesu fallback parser OK count=1`.
+- Reader Asura `Goblin Inc` chapter 5 (30 halaman) berhasil di-scroll, gambar
+  utuh, progres sampai 2/30, tanpa ANR/crash/OOM/error gambar.
+- Android AAB release berhasil dibangun (66,5 MB). Artifact ini masih memakai
+  debug signing dan belum boleh dianggap upload-ready.
+- Build iOS sudah melewati blocker deployment target setelah dinaikkan ke iOS
+  15; tahap deploy berhenti karena Mac belum punya Apple signing identity/team.
+
+### 2026-07-21 — Pisahkan tab Populer dan Terbaru Asura
+
+Setelah perbaikan scroll reader, user menemukan tab Populer dan Terbaru Asura
+menampilkan daftar yang sama. Root cause-nya kontrak query halaman browse Asura
+sudah berubah: `sort` memilih kategori (`popular`/`update`), sedangkan `order`
+hanya menerima arah urutan (`asc`/`desc`). Parser masih mengirim kategori lewat
+`order`, jadi server mengabaikannya dan selalu memakai sort default update.
+
+Fix:
+- `AsuraSource._browse()` sekarang mengirim `sort=popular` untuk Populer dan
+  `sort=update` untuk Terbaru. Parameter halaman tetap diteruskan seperti
+  sebelumnya.
+- Test regresi memastikan kedua method mengirim parameter yang berbeda, tidak
+  menyalahgunakan `order`, dan menghasilkan judul fixture yang berbeda.
+
+Verifikasi:
+- Request live `sort=popular` menghasilkan `Reformation of the Deadbeat Noble`
+  sebagai item pertama, sedangkan `sort=update` menghasilkan
+  `I Obtained a Mythic Item`.
+- `flutter test -j 1 test/sources/asura_source_test.dart`: 5 lulus.
+- `flutter analyze` nol issue; suite penuh 86 lulus dan 3 safe-mode diskip.
+- Build web FAKE_AUTH lulus sebagai compile sanity check.
+
+### 2026-07-21 — Filter Library Terakhir ditambahkan
+
+User minta urutan Library berdasarkan waktu komik masuk ke koleksi, sebagai
+tambahan dari Terakhir dibaca. Firestore sebenarnya sudah menulis `addedAt`
+saat `add()` dan `replaceByTitle()`, tetapi `Comic.fromMap()` belum membawa
+field itu ke model sehingga UI tidak bisa mengurutkannya.
+
+Fix:
+- `Comic` sekarang membawa `addedAt` dari timestamp Firestore dan
+  mempertahankannya saat `copyWith()`.
+- Mode demo memberi `DateTime.now()` saat komik ditambahkan/diganti supaya
+  perilakunya sama dengan login asli.
+- Sheet `Urutkan koleksi` mendapat opsi `Terakhir ditambahkan`. Urutan memakai
+  `addedAt` terbaru di depan; komik lama tanpa timestamp tetap di belakang
+  dengan urutan relatif yang stabil.
+- Test mencakup urutan tanggal terbaru, fallback dokumen lama tanpa tanggal,
+  dan konversi `Timestamp` Firestore ke model.
+
+Verifikasi:
+- `flutter analyze` nol issue.
+- `flutter test -j 1`: 89 lulus, 3 safe-mode diskip.
+- Build web FAKE_AUTH lulus.
+- Smoke-test viewport 412×915 memastikan empat opsi sheet muat tanpa overflow,
+  pilihan bisa ditekan, toast `Diurutkan: Terakhir ditambahkan` muncul, dan
+  console tidak mencatat error/warning.
+- APK profile terbaru berhasil dibangun dan dipasang di Pixel 7 Pro.
+
+### 2026-08-03 — Reader webtoon tidak lagi meloncat ke halaman awal
+
+User dan beberapa temannya menemukan bug lintas sumber: setelah baca cukup jauh,
+scroll kembali ke atas bisa tiba-tiba meloncat sampai gambar pertama. Bug ini
+paling mudah muncul pada sumber yang tidak menyediakan ukuran asli tiap gambar.
+
+Root cause:
+- `ListView.builder` memang membuang widget yang sudah jauh dari viewport dan
+  cache gambar Flutter juga bisa mengeluarkan bitmap webtoon yang besar.
+- Saat halaman lama dibuat ulang, reader cuma tahu placeholder rasio 0.7. Item
+  jadi pendek dulu, lalu memanjang drastis sesudah gambar selesai didekode.
+  Perubahan geometri besar itu menggeser scroll sampai terlihat seperti reader
+  reset ke awal.
+- Fix metadata sebelumnya hanya efektif untuk Asura karena kebanyakan sumber
+  lain cuma memberi URL gambar tanpa `width`/`height`.
+- Target `cacheWidth` lama masih bisa memperbesar gambar melebihi resolusi asli,
+  jadi pemakaian cache lebih boros dan gambar lebih cepat terbuang.
+
+Fix:
+- `reader_screen.dart` sekarang menyimpan rasio hasil decode berdasarkan URL
+  selama sesi baca. Rasio itu tetap dipakai saat item lazy-list dibuat ulang,
+  walaupun bitmap aslinya sudah keluar dari `ImageCache`.
+- Prefetch halaman sekitar sekaligus membaca dimensinya, jadi geometri halaman
+  berikutnya sudah stabil sebelum masuk viewport.
+- `StableReaderPageImage` menjaga placeholder dan gambar asli dalam ukuran yang
+  sama, membersihkan listener stream dengan aman, dan tidak mempertahankan frame
+  lama lewat `gaplessPlayback`.
+- Lebar decode dibatasi oleh lebar file asli dan batas tinggi bitmap 12 ribu
+  piksel. Gambar kecil tidak lagi di-upscale hanya untuk mengejar DPR layar.
+- Mode manga memakai key URL stabil supaya frame chapter sebelumnya tidak
+  tertukar saat pindah halaman.
+- Audit lifecycle menemukan getter source di `source_detail_screen.dart` dan
+  `web_view_screen.dart` memakai `ref.watch()` dari callback/timer. Getter kini
+  memakai `ref.read()`, sedangkan watch reaktif tetap dilakukan dari `build()`.
+  Ini mencegah error Riverpod saat search, refresh, atau aktivasi sesi web.
+
+Verifikasi:
+- `flutter analyze` bersih dan `dart fix --dry-run` tidak menemukan perbaikan.
+- `flutter test -j 1`: 91 lulus, 3 safe-mode diskip. Test reader baru mencakup
+  metadata kosong, rasio hasil decode, pembatas decode, eviction, dan remount.
+- Build web FAKE_AUTH lulus. Smoke-test viewport 412x915 melakukan urutan scroll
+  halaman 1 -> 6 -> 4 -> 7 -> 5 tanpa pernah kembali ke halaman 1 dan tanpa
+  error/warning browser.
+- Build APK profile sempat masuk tahap merge native/Java resource, tetapi gagal
+  hanya karena volume data kehabisan ruang (`No space left on device`). Artifact
+  Android baru belum dihasilkan; butuh beberapa GB ruang kosong sebelum build
+  dan uji perangkat bisa diulang.
+
+### 2026-08-03 — QC ketat lintas platform dan identitas chapter URL-first
+
+QC lanjutan dilakukan setelah ruang disk dibersihkan. Smoke-test awal memang
+terlihat lancar, tetapi audit kontrak data menemukan progres parsial, tanda
+selesai, dan bookmark di Comic Detail masih sebagian dicocokkan lewat nomor
+chapter sintetis. Nomor ini bisa bergeser saat situs menyisipkan chapter baru,
+jadi data chapter lama berisiko tampil di baris chapter lain walau Reader sudah
+membuka URL yang benar.
+
+Root cause dan fix:
+- `models.dart` menambah normalisasi identitas URL, lookup progres URL-first,
+  serta `readChapterUrls` untuk status selesai sumber asli. Nomor lama tetap
+  menjadi fallback buat data lawas dan komik demo.
+- `library_state.dart` menyimpan penyelesaian chapter dan progres dalam satu
+  write supaya update progres tidak balapan dengan penghapusan saat halaman
+  terakhir tercapai. Bila nomor sintetis yang sama sudah ditempati URL lain,
+  progres baru masuk slot internal lain dan keduanya tetap utuh.
+- `comic_detail_screen.dart` mencocokkan history, progres, status dibaca, dan
+  bookmark lewat URL chapter dulu. Key lazy-list dan URL pembuka Reader ikut
+  memakai identitas stabil.
+- `bookmarks_state.dart` memakai hash URL chapter untuk ID bookmark baru.
+  Dua chapter berbeda dengan nomor/halaman sama tidak lagi saling toggle;
+  bookmark lawas tetap bisa dibuka dan dihapus.
+- `reader_screen.dart` menyelaraskan nomor internal dari index URL terkini saat
+  masuk lewat Detail, History, atau bookmark. Penyimpanan selesai sekarang
+  atomik lewat `updateProgress(completed: true)`.
+- `repo_browse_tab.dart` diubah ke `ListView.builder`; repository besar tidak
+  lagi membangun seluruh kartu extension sekaligus. Kolom pencarian tetap diam
+  di atas.
+- Tombol retry di Source Detail sekarang benar-benar mengulang parser aktif;
+  WebView baru disarankan kalau retry masih gagal.
+
+QC native menemukan 6 error Android Lint yang sebelumnya tidak tercakup test:
+- bridge Injekt memanggil API refleksi level 28 padahal minSdk 24;
+- atribut splash API 27/29 berada di folder resource dasar;
+- permission `QUERY_ALL_PACKAGES` belum punya justifikasi lint terarah.
+
+Perbaikan Android:
+- bridge memakai `Type.toString()` yang aman di API 24;
+- atribut cutout/force-dark dipindah ke resource `values-v27`/`values-v29`;
+- permission extension diberi suppression terarah (bukan baseline global) dan
+  tetap tercatat sebagai blocker kebijakan Play Store;
+- WebView snapshot membuang setting database deprecated dan pengecekan API 21
+  yang tidak diperlukan lagi;
+- resource splash duplikat dibersihkan, bitmap 1x1 dipindah ke `drawable-nodpi`,
+  dan URI Kotlin memakai KTX;
+- `wakelock_plus` naik ke 1.7.0, versi yang sudah mendukung Built-in Kotlin dan
+  memperbaiki toggle saat Activity belum attached.
+
+Verifikasi akhir:
+- `flutter analyze`: nol issue.
+- `flutter test -j 1`: 96 lulus, 3 test snapshot WebView safe-mode diskip.
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn` lulus.
+- Smoke-test 412x915: Repository/search lazy-list tampil benar; Reader menyimpan
+  Chapter 41 Hal 4/8 dan Chapter 42 Hal 3/8 terpisah; Chapter 42 berubah menjadi
+  `Dibaca` setelah 8/8 tanpa menghapus progres Chapter 41; console nol error dan
+  warning.
+- `./gradlew lintProfile`: sukses, 0 error. Tujuh warning tersisa hanya update
+  versi Gradle/Android dependency yang belum dinaikkan supaya ABI extension
+  tidak berubah tanpa pengujian.
+- APK profile paling akhir dibangun ulang setelah fix retry (120.170.011 byte),
+  signature v2 valid dengan debug certificate, SHA-256
+  `91c668c3e33c8a80acb51ef5ea67e0d6247113054db132bc7023fd22c850b389`.
+- iOS profile `--no-codesign` berhasil menghasilkan `Runner.app` 60,4 MB.
+- Uji/install perangkat fisik belum dilakukan karena `adb devices -l` kosong.
+
+Risiko rilis yang masih terbuka dan bukan disamarkan sebagai bug selesai:
+- download chapter masih state visual, belum menyimpan file offline;
+- 3 test snapshot WebView otomatis memang nonaktif karena safe mode ANR;
+- Android release/profile masih debug-signed dan permission install/query APK
+  perlu jalur distribusi serta deklarasi kebijakan yang jelas.
+
+### 2026-08-06 — Migrasi domain dinamis, repository index.pb, dan zoom manga
+
+User melaporkan Ikiru, Shinigami, dan source lain kembali gagal saat website
+berganti domain/struktur. Komik yang sudah ada di Library juga masih menyimpan
+URL domain lama. Selain itu user minta zoom buat teks manga yang kecil.
+
+Root cause:
+- Resolver lama mendahulukan built-in berdasarkan nama. Source manual bernama
+  `Ikiru` yang URL-nya sudah diedit tetap diam-diam memakai domain hardcode.
+- URL manga/chapter disimpan absolut. Parser menerima host lama apa adanya dan
+  pencocokan progres menganggap resource yang sama di host baru sebagai beda.
+- Strategi parser cuma berantai pada satu base URL dan tidak mengingat strategi
+  yang terakhir berhasil. Mirror resmi repository belum ikut dicoba.
+- Link JSON Keiyoushi lama sekarang hanya berisi dua extension pemberitahuan,
+  sedangkan link Yuzono lama 404. Kedua repository aktif sudah pindah ke
+  `index.pb` Protobuf yang dikompresi gzip.
+- Index aktif berisi sekitar 2.022 source. Menyimpan seluruh map sebagai array
+  mentah berisiko melewati batas dokumen Firestore 1 MiB.
+- Reader mode Halaman belum punya transform/pan; gambar cuma `BoxFit.contain`
+  pada skala 1x.
+
+Fix domain/source (additive, urutan parser lama tetap dipertahankan):
+- `source_url.dart` menambah normalisasi, rebase URL lintas domain sambil
+  mempertahankan path/query/fragment, serta identitas resource lintas host.
+- `source_resolver.dart` mendahulukan source manual, lalu identitas stabil
+  package + source ID repository. Nama/domain lama ikut cocok lewat alias.
+- `ComicSource` dan `RepoSource` menyimpan `nameAliases`/URL aliases. Edit source
+  membawa nama/domain sebelumnya; refresh repository merge berdasarkan
+  package+source ID dan tidak membuang cache saat index berubah jadi notice atau
+  menyusut ekstrem.
+- `AdaptiveSource` mencoba parser pada domain aktif dulu, baru mirror/domain
+  lama, lalu mengingat strategi yang berhasil per operasi. URL Library lama
+  di-rebase khusus ke base URL tiap strategi.
+- `ExtensionRuntimeSource` tetap berurutan APK -> fallback lama -> alternatif
+  lama. Mirror baru hanya dicoba paling belakang sebelum WebView, jadi parser
+  yang sebelumnya bekerja tidak digeser atau diganti.
+- `SourceDetail`, Reader, Comic Detail, dan pemeriksa Updates memakai URL aktif.
+  Setelah fetch berhasil, `LibraryNotifier.updateSourceMangaUrl()` menyimpan
+  domain baru tanpa mengganti comic ID, koleksi, atau progres.
+- Identitas chapter sekarang menganggap path resource yang sama pada domain
+  baru sebagai chapter yang sama. Pergantian domain tidak membuat update palsu
+  atau menghilangkan tanda baca/progres.
+
+Fix repository modern:
+- Schema resmi v2 disimpan di `tool/proto/repository_index.proto`; binding Dart
+  generated ada di `lib/data/generated/` memakai `protobuf` 6.0.0.
+- Loader mengenali JSON lama, `repo.json/index_v2`, `index.pb` gzip, embedded
+  `ExtensionList`, dan daftar extension URL terpisah. URL APK absolut dan
+  mirror domain dari Protobuf diteruskan ke runtime.
+- URL `index.min.json` lama otomatis mencari `repo.json` di folder yang sama,
+  jadi user tidak wajib menghapus lalu menambahkan ulang repository.
+- Cache source Firestore sekarang `sourcesGzip` (Base64 JSON gzip). Field array
+  `sources` lama tetap terbaca dan dihapus saat refresh berhasil.
+
+Fix Reader manga:
+- Mode Halaman memakai `InteractiveViewer`: pinch 1x-5x, double-tap 2,5x/reset,
+  pan saat zoom, dan tombol zoom/reset di toolbar.
+- Saat zoom aktif, tap tidak salah memindahkan halaman. Zoom di-reset ketika
+  ganti halaman/chapter/mode atau lompat bookmark.
+- Decode manga menyiapkan resolusi 2x DPR tetapi dibatasi lebar asli/4.096 px,
+  jadi teks lebih tajam tanpa membuka risiko OOM besar.
+- Mode Webtoon tidak dibungkus zoom supaya perbaikan scroll stabil yang sudah
+  ada tidak tersentuh.
+
+Kejujuran batas fitur:
+- Ini jauh lebih tahan perubahan domain dan format repository, tetapi bukan
+  janji semua website pasti bisa diparse. Situs dengan API privat, login,
+  Cloudflare baru, atau struktur yang benar-benar berubah tetap butuh update
+  extension/parser; fallback terakhir tetap WebView.
+
+Verifikasi:
+- Uji live Keiyoushi `index.pb`, URL JSON Keiyoushi lama, dan URL JSON Yuzono
+  lama semuanya berhasil mengembalikan ratusan/ribuan source.
+- `flutter analyze`: nol issue; `dart fix --dry-run`: nothing to fix.
+- `flutter test -j 1`: 118 lulus, 3 snapshot WebView safe-mode diskip.
+- Build web FAKE_AUTH lulus. Smoke-test CanvasKit pada 412x915, 360x800, dan
+  320x700 memeriksa mode Halaman, zoom 2,5x, reset, toolbar tanpa overflow,
+  serta console nol warning/error.
+- APK profile berhasil dibangun 120,9 MB; SHA-256
+  `3a57f7118287b9250a731f2ff173df361ef99463a45d9d936ebdeef20f70179f`.
+- iOS profile tanpa codesign berhasil membangun `Runner.app` 60,8 MB.
+- Belum dipasang ke HP karena `adb devices -l` kosong saat verifikasi.
+
+### 2026-08-06 — Zoom mode gulir tanpa merusak posisi baca
+
+User minta zoom juga tersedia di mode Webtoon/Gulir karena teks kecil tidak
+cuma muncul di manga per halaman. Implementasi zoom sebelumnya sengaja hanya
+aktif di mode Halaman untuk melindungi perbaikan scroll yang pernah lompat
+kembali ke atas.
+
+Root cause/batas desain lama:
+- membungkus satu chapter webtoon yang sangat panjang dengan
+  `InteractiveViewer` akan membuat gesture pan berebut dengan `ListView` dan
+  berisiko menghilangkan lazy rendering;
+- transform visual seluruh viewport juga tidak menambah ukuran layout konten,
+  jadi pan vertikalnya tidak bisa melanjutkan baca ke strip berikutnya dengan
+  natural;
+- memperbesar target decode setiap strip tanpa batas bisa memicu OOM pada
+  gambar panjang yang tidak membawa metadata ukuran.
+
+Fix di `reader_screen.dart`:
+- mode Gulir sekarang bisa double-tap 2,5x lalu double-tap lagi untuk reset;
+  tombol zoom/reset di toolbar atas juga selalu tersedia pada kedua mode;
+- `ListView` vertikal lama tetap menjadi pemilik scroll atas-bawah. Saat zoom,
+  lebar kanvas benar-benar membesar dan `SingleChildScrollView` terpisah hanya
+  menangani geser kanan-kiri, jadi lazy-list, key halaman, dan perhitungan
+  progres lama tidak diganti;
+- offset vertikal dan horizontal dihitung ulang terhadap titik double-tap.
+  Konten yang disentuh tetap berada di koordinat layar yang sama dan reset 1x
+  mengembalikan anchor secara terbalik, bukan lompat ke awal chapter;
+- request ID membatalkan restorasi anchor yang sudah basi saat user cepat
+  berganti chapter/mode. Zoom juga dibersihkan saat pindah chapter, lompat
+  bookmark, atau ganti arah baca;
+- decode strip pada zoom dibatasi maksimal 2.048 px dan tetap menghormati
+  resolusi asli/batas tinggi yang sudah ada. Jalur decode mode 1x tidak diubah.
+
+Test di `reader_screen_test.dart` menutup regresi berikut:
+- rumus anchor zoom masuk/keluar tepat;
+- bitmap tanpa metadata tidak melewati 2.048 px;
+- double-tap benar-benar membuat kanvas 2,5x lalu kembali 1x;
+- scroll vertikal tetap bergerak ketika zoom aktif dan tidak mematikan zoom.
+
+Verifikasi:
+- `flutter analyze`: nol issue.
+- `flutter test -j 1`: 121 lulus, 3 snapshot WebView safe-mode diskip.
+- build web FAKE_AUTH lulus. Smoke-test CanvasKit ukuran 412x915 membuka Reader
+  mode Gulir, lompat ke halaman 4/8, mengaktifkan zoom dari toolbar, dan
+  memastikan halaman tetap 4/8; toolbar tidak overflow dan console nol
+  warning/error.
+- APK profile berhasil dibangun 120,9 MB. Instalasi perangkat belum terjadi
+  pada titik pencatatan ini karena iQOO terputus dari ADB setelah build selesai.
+
+### 2026-08-06 — Pinch mode Gulir fleksibel dan Tes Sumber sinkron
+
+Sesudah zoom Gulir 2,5x dicoba di HP, user merasa kontrolnya masih kaku karena
+baru berupa toggle. User juga menemukan Shinigami bisa dibuka normal, tetapi
+dialog Tes Sumber justru merah dan bilang tidak dapat diakses.
+
+Root cause:
+- zoom Gulir sebelumnya memang sengaja hanya mengubah skala tetap lewat
+  double-tap/tombol, jadi belum mengikuti jarak dua jari seperti mode Halaman;
+- recognizer pinch biasa bisa kalah gesture arena dari scroll horizontal yang
+  sudah aktif. Akibatnya pinch-out pertama jalan, tetapi pinch-in berikutnya
+  kadang tidak diterima;
+- Tes Sumber menguji extension repository lebih dulu dan langsung berhenti saat
+  probe itu gagal. Jalur buka sumber sebenarnya masih bisa memakai parser native
+  Shinigami, sehingga hasil tes dan perilaku aplikasi tidak sinkron.
+
+Fix Reader di `reader_screen.dart`:
+- mode Gulir sekarang menerima pinch kontinu 1x-5x. Titik konten di bawah dua
+  jari tetap menjadi anchor, dan perpindahan focal point ikut menggeser kanvas
+  vertikal maupun horizontal;
+- satu jari tetap sepenuhnya untuk scroll baca. Recognizer khusus baru mengambil
+  gesture ketika jari kedua menyentuh layar, termasuk saat scroll horizontal
+  sedang aktif;
+- lebar layout tetap benar-benar diperbesar supaya lazy `ListView`, geometri
+  halaman, progres baca, dan scroll antargambar tidak diganti dengan transform
+  visual semu;
+- target decode tidak dihitung ulang pada setiap frame pinch. Gambar lama
+  diskalakan GPU selama gesture, lalu resolusi decode disegarkan sekali saat
+  pinch selesai agar gerakan lebih halus dan tidak memicu rebuild berat;
+- double-tap 2,5x/reset dan tombol toolbar tetap tersedia sebagai alternatif.
+
+Fix Tes Sumber:
+- `source_catalog.dart` menambah `probeSource()` untuk memvalidasi parser lewat
+  katalog populer yang benar-benar tidak kosong;
+- `add_source_screen.dart` sekarang mencoba parser built-in/native yang cocok
+  lebih dulu, baru extension repository, extension terpasang, lalu deteksi
+  generik;
+- kegagalan satu jalur tidak lagi langsung memberi hasil merah. Tes meneruskan
+  fallback yang sama seperti jalur buka sumber, jadi Shinigami tidak dianggap
+  mati hanya karena probe extension repository gagal.
+
+Test:
+- `reader_screen_test.dart` menjalankan gesture dua pointer sungguhan: pinch-out
+  menghasilkan skala antara (bukan loncat ke 2,5x), scroll satu jari tetap
+  bergerak saat zoom aktif, lalu pinch-in kembali tepat ke 1x;
+- rumus anchor juga dites saat focal point bergerak;
+- `source_catalog_test.dart` memastikan URL Shinigami dikenali native dan probe
+  hanya sukses untuk katalog yang tidak kosong.
+
+Verifikasi:
+- `flutter analyze`: nol issue.
+- `flutter test -j 1`: 124 lulus, 3 snapshot WebView safe-mode diskip.
+- build web FAKE_AUTH lulus. Smoke-test CanvasKit 412x915 membuka Reader mode
+  Gulir, mencoba zoom/reset toolbar, memastikan toolbar tidak overlap, dan
+  console nol warning/error. Gesture multitouch ditutup oleh widget test karena
+  driver browser hanya menyediakan satu pointer.
+- APK profile berhasil dibangun 120.874.523 byte; SHA-256
+  `4704cbf162099c2a4d38c9f32d91917734462dd95c28dcbb744eb3d3ba3f8655`.
+- APK profile terbaru berhasil dipasang ke iQOO I2508 lewat ADB.
+
+### 2026-08-06 — Cache chapter sementara dan zoom tanpa gambar berkedip
+
+Sesudah pinch kontinu dicoba di HP, user masih merasakan lag: ketika pinch
+selesai gambar sempat hilang lalu muncul lagi. User minta halaman chapter
+dianggap seperti download sementara selama Reader terbuka, lalu cache dibuang
+ketika keluar atau menutup aplikasi.
+
+Root cause:
+- saat pinch selesai, `_webtoonDecodeScale` meminta `cacheWidth` baru. Key
+  `ResizeImage` ikut berubah, jadi bitmap lebih tajam memang harus didecode;
+- source bitmap sebelumnya masih `NetworkImage` dan `gaplessPlayback` disetel
+  false. Flutter langsung mengganti frame lama dengan spinner sambil provider
+  ukuran baru mengambil/decode gambar, sehingga terlihat seperti gambar hilang;
+- precache lama hanya menyimpan bitmap hasil decode di `ImageCache`. Ia tidak
+  menyimpan file encoded chapter sebagai cache sesi yang terkontrol, jadi ukuran
+  decode lain tetap bisa menyentuh jaringan lagi.
+
+Fix cache di `reader_session_image_cache.dart`:
+- menambah `ReaderSessionImageCache` berbasis `cached_network_image` dan
+  `flutter_cache_manager`. File encoded asli disimpan di cache OS sementara,
+  sedangkan `ResizeImage` tetap mengatur ukuran bitmap RAM;
+- semua header gambar sumber tetap diteruskan, penting untuk CDN yang memeriksa
+  Referer/Cookie/User-Agent;
+- sesudah daftar halaman didapat, dua worker menghangatkan seluruh chapter di
+  background. Urutannya mulai dari halaman aktif, lalu bergantian halaman depan
+  dan belakang supaya bagian yang sedang dibaca siap lebih dulu;
+- warmup chapter lama dibatalkan secara generation-safe ketika chapter/sesi
+  berganti. Dua worker membatasi rebutan jaringan/CPU dengan scroll;
+- semua provider decode yang pernah dipakai di-evict dan cache file dikosongkan
+  ketika Reader terakhir ditutup atau lifecycle menjadi `detached`;
+- kalau aplikasi pernah mati paksa dan callback tutup tidak sempat berjalan,
+  clear pertama pada sesi Reader berikutnya membuang file sisa. Cache ini tidak
+  menjadi download permanen;
+- web tetap memakai `NetworkImage` karena build web cuma harness smoke-test.
+
+Fix tampilan di `reader_screen.dart`:
+- pembukaan cache berjalan paralel dengan fetch chapter/page, jadi clear awal
+  tidak menambah jeda tersendiri;
+- warmup dimulai sebelum `setState` membangun gambar. Permintaan widget dan
+  worker URL yang sama dideduplikasi oleh cache manager;
+- mode Gulir dan Halaman sekarang memakai provider sesi yang sama, lalu tetap
+  dibatasi `readerPageCacheWidth`/`readerMangaCacheWidth` agar bitmap RAM tidak
+  membengkak;
+- `StableReaderPageImage` mempertahankan rasio dan frame lama saat provider
+  resolusi zoom berubah. `gaplessPlayback` aktif dan spinner hanya ditampilkan
+  bila halaman itu benar-benar belum pernah punya frame;
+- perhitungan anchor, progres baca, lazy list, dan gesture pinch lama tidak
+  dirombak.
+
+Test:
+- urutan warmup halaman aktif/dekat ditutup unit test, termasuk center di luar
+  batas;
+- widget test mengganti provider yang sudah punya frame dengan provider baru
+  yang sengaja tidak pernah selesai. Frame lama tetap tampil dan placeholder
+  tidak muncul;
+- test pinch dua pointer, scroll, progres, parser, dan fitur lain tetap lulus.
+
+Verifikasi:
+- `flutter analyze`: nol issue.
+- `flutter test -j 1`: 126 lulus, 3 snapshot WebView safe-mode diskip.
+- build web FAKE_AUTH lulus. Smoke-test CanvasKit 412x915 membuka Library,
+  Detail, Reader mode Gulir, mengaktifkan zoom, melakukan scroll, memastikan
+  layout tidak overlap, dan console nol warning/error.
+- APK profile berhasil dibangun 121.415.195 byte; SHA-256
+  `6529b55ba9ba8f6d03c78f7213a9a3248fed15e5e401f073555a512791bef3ef`.
+- APK profile berhasil dipasang tanpa menghapus data ke iQOO I2508 dan proses
+  aplikasi aktif; log awal tidak berisi fatal exception, ANR, atau OOM.
+- iOS profile tanpa codesign berhasil membangun `Runner.app` 61,3 MB.
+
+### 2026-08-06 — Pinch GPU halus dan Tes Sumber Shinigami sinkron
+
+Sesudah cache chapter sementara masuk, zoom mode Gulir sudah tidak membuat
+gambar berkedip tetapi transisi pinch masih terasa patah-patah di HP. Tes
+Sumber milik user untuk Shinigami juga tetap merah walau sumbernya bisa dibuka.
+
+Root cause Reader:
+- event `PointerMove` masih mengubah `_webtoonZoomScale` lewat `setState` pada
+  setiap gerakan dua jari. Akibatnya lebar kanvas, geometri semua halaman yang
+  terlihat, `ListView`, dan offset scroll dihitung ulang berkali-kali selama
+  pinch;
+- koreksi anchor baru dijalankan sesudah layout. Satu frame sempat tergambar
+  memakai skala baru dengan offset lama sehingga transisi terasa meloncat;
+- pergantian target decode tepat saat jari dilepas ikut berebut pekerjaan
+  dengan commit layout terakhir.
+
+Fix Reader di `reader_screen.dart`:
+- selama dua jari masih bergerak, pinch sekarang hanya memperbarui satu
+  `Transform` matriks di paint/GPU lewat `ValueNotifier`; tidak ada `setState`,
+  perubahan lebar kanvas, atau relayout daftar pada setiap `PointerMove`;
+- matriks menjaga titik konten di bawah focal point awal tetap tepat di bawah
+  focal point terbaru, jadi pinch sekaligus pan tetap mengikuti jari;
+- skala layout final hanya dikomit sekali ketika gesture selesai. Koreksi anchor
+  dititipkan ke `_AnchoredScrollPosition.correctForNewDimensions`, sehingga
+  offset sudah benar di fase layout sebelum frame baru dipaint;
+- physics horizontal dibuat stabil agar `ScrollPosition` tidak dibuat ulang
+  tepat ketika koreksi anchor masih pending;
+- decode resolusi tinggi ditunda 140 ms sesudah commit layout. Frame cache lama
+  tetap tampil, lalu gambar tajam menggantikannya tanpa berebut frame penutup
+  gesture;
+- double-tap dan tombol zoom memakai koreksi anchor layout yang sama. Lazy list,
+  progres baca, cache chapter, dan metode reader lama tidak dirombak.
+
+Root cause Shinigami:
+- sumber aktual milik user bernama `Shinigami` memakai mirror
+  `11.shinigami.asia`, sedangkan pencocokan URL katalog hanya mengenali host
+  built-in `g.shinigami.asia`;
+- jalur buka sumber tetap berhasil karena resolver juga mengenali nama sumber,
+  tetapi Tes Sumber hanya memakai URL. Itu yang membuat indikator tes dan
+  perilaku buka sumber tidak sinkron.
+
+Fix Shinigami:
+- `source_catalog.dart` mengenali keluarga host `shinigami.asia`, `shngm.io`,
+  dan `shngm.id`, termasuk subdomain mirror bernomor;
+- menambah `matchByName()` sebagai fallback nama yang setara dengan resolver;
+- `add_source_screen.dart` sekarang memakai kecocokan URL lalu nama sebelum
+  melanjutkan fallback repo/extension/generik yang sudah ada;
+- endpoint native `api.shngm.io` dicek langsung dan merespons HTTP 200 dengan
+  30 data manga valid.
+
+Test:
+- rumus matriks pinch dites agar focal point awal tepat berpindah ke focal point
+  terbaru;
+- widget test dua pointer memastikan selama jari belum dilepas extent layout
+  masih 0 dan hanya `Transform` GPU yang membesar; sesudah dilepas skala layout
+  kontinu dikomit, scroll satu jari tetap jalan, lalu pinch-in kembali ke 1x;
+- katalog sumber dites untuk `11.shinigami.asia` dan fallback nama Shinigami
+  pada domain mirror baru.
+
+Verifikasi:
+- `flutter analyze`: nol issue.
+- `flutter test -j 1`: 128 lulus, 3 snapshot WebView safe-mode diskip.
+- build web FAKE_AUTH lulus. Smoke-test CanvasKit 412x915 membuka Library,
+  Detail, Reader mode Gulir, zoom, dan scroll; layout tidak overlap dan console
+  nol error. Multitouch ditutup widget test karena driver browser satu pointer.
+- APK profile berhasil dibangun 121.415.195 byte; SHA-256
+  `f0cecce02b6972d94b79f600ae5c06104d89039e92a3f275ad97e03ce37b9b6b`.
+- APK profile dipasang tanpa menghapus data ke iQOO I2508 dan proses aktif;
+  log tidak berisi fatal exception, ANR, atau OOM.
+- iOS profile tanpa codesign berhasil membangun `Runner.app` 61,3 MB.
+
+### 2026-08-07 — Rail zoom stabil dan fallback parser Ikiru/Madara
+
+Sesudah pinch GPU dan cache sesi masuk, zoom mode Gulir tetap terasa kurang
+nyaman di HP: focal point jari bergerak sedikit saja bisa membuat posisi teks
+terlihat berpindah, sementara user lebih butuh kontrol yang presisi buat baca
+huruf kecil. Ikiru juga masih menampilkan isi Populer dan Terbaru yang sama,
+dan sumber berbasis Madara/MangaBooth belum punya fallback khusus.
+
+Root cause Reader:
+- pinch tetap memakai focal point dua jari yang terus berubah. Secara rumus
+  posisi memang mengikuti jari, tetapi gerakan jari kecil di layar nyata terasa
+  seperti halaman melompat dari teks yang sedang dibaca;
+- kontrol zoom lama masih mencampur gestur, commit layout, dan perpindahan
+  anchor. Buat kebutuhan baca presisi, user meminta satu titik anchor yang tidak
+  berubah dan kontrol yang tidak bergantung pada kestabilan dua jari;
+- pengaturan Reader belum punya pilihan untuk mengaktifkan pola kontrol ini.
+
+Fix Reader:
+- `reader_settings.dart` menambah `sideZoomControls`, disimpan ke Firestore dan
+  SharedPreferences dengan default false supaya perilaku user lama tidak ikut
+  berubah;
+- `reader_settings_sheet.dart` menambah toggle `Kontrol zoom samping`. Isi sheet
+  sekarang bisa di-scroll dan dibatasi 78% tinggi layar supaya tetap aman di HP
+  kecil;
+- `reader_screen.dart` menambah rail tipis di sisi kanan berisi zoom masuk,
+  slider 100–500%, zoom keluar, dan reset. Rail tetap bisa dipakai ketika
+  toolbar Reader disembunyikan;
+- saat mode rail aktif, pinch dan double-tap dimatikan. Slider memakai pusat
+  viewport sebagai anchor tetap, jadi titik baca tidak mengikuti gerakan jari;
+- mode Gulir hanya mengubah matriks paint/GPU selama slider digeser, lalu commit
+  layout tepat sekali ketika jari dilepas. Mode Halaman menjaga scene point di
+  pusat viewport sambil mempertahankan pan yang sudah dilakukan;
+- kontrol zoom lama, pinch, double-tap, cache chapter, progres, dan lazy list
+  tetap utuh saat toggle rail tidak aktif.
+
+Root cause Ikiru:
+- `NatsuIdSource.fetchPopular()` dan `fetchLatest()` sebelumnya sama-sama
+  memanggil daftar WP REST tanpa parameter urutan berbeda, jadi hasil keduanya
+  memang identik;
+- extension NatsuId terbaru tidak memakai daftar REST itu untuk katalog. Ia
+  mengambil nonce dari `admin-ajax.php`, lalu mengirim multipart
+  `advanced_search` dengan `orderby=popular` atau `orderby=updated`;
+- built-in masih menunjuk mirror `06.ikiru.wtf`, sedangkan metadata extension
+  upstream sudah memakai `07.ikiru.wtf`.
+
+Fix Ikiru di `natsuid_source.dart` dan `source_catalog.dart`:
+- port alur nonce + multipart `advanced_search` untuk Populer, Terbaru, dan
+  pencarian, termasuk retry nonce, urutan slug, anti-XSSI JSON, decode judul,
+  filter Novel, serta deteksi halaman berikutnya;
+- WP REST lama tetap dipertahankan sebagai fallback, dengan Terbaru memakai
+  `orderby=modified&order=desc`;
+- built-in Ikiru mengikuti `07.ikiru.wtf`, mengenali seluruh mirror bernomor,
+  dan tetap menyimpan domain aktif/lama sebagai kandidat fallback;
+- dari jaringan Mac saat verifikasi, mirror 06/07 sedang membalas sertifikat
+  kedaluwarsa dan halaman `Access Blocked`. Karena itu isi live Ikiru belum bisa
+  dibuktikan dari jaringan ini; bentuk request parser dites terhadap perilaku
+  extension upstream dan fixture lokal.
+
+Fallback parser tambahan:
+- menambah `MadaraSource` sebagai strategi terakhir, jadi metode lama yang sudah
+  berhasil tetap selalu didahulukan;
+- mendukung arsip `m_orderby=views/latest`, `madara_load_more`, pencarian,
+  detail, dua varian chapter AJAX (`manga_get_chapters` dan `/ajax/chapters`),
+  tanggal relatif/absolut, selector gambar Reader, dan header Referer;
+- `AdaptiveSource`, `AlternativeSourceMethods`, dan runtime extension sekarang
+  mencoba Madara setelah strategi lama habis;
+- bila signature judul Terbaru persis sama dengan Populer, adaptive/runtime
+  meneruskan ke fallback lain dan memilih hasil berbeda. Hasil duplikat awal
+  tetap disimpan sebagai jalan terakhir kalau tidak ada metode lain yang hidup;
+- kandidat Universal HTML menaruh arsip standar `/manga` dan parameter Madara
+  lebih dulu supaya redirect route palsu ke homepage tidak salah dianggap
+  katalog valid. Jalur khusus Toongod tetap diprioritaskan hanya untuk Toongod.
+
+Test:
+- widget test rail memastikan double-tap tidak aktif, layout belum berubah saat
+  slider masih digeser, transform GPU sudah membesar, commit anchor baru terjadi
+  saat pointer dilepas, dan reset kembali ke 1x;
+- unit test matriks mode Halaman memastikan scene point yang sama tetap berada
+  di focal tetap;
+- test NatsuId memeriksa nonce, multipart Populer/Terbaru yang berbeda,
+  pencarian, slug berulang, urutan detail, dan JSON berawalan junk;
+- test Madara memeriksa urutan katalog, load-more, chapter AJAX tersembunyi, dan
+  gambar Reader;
+- test adaptive/runtime memastikan hasil Terbaru yang sama dengan Populer
+  diteruskan ke fallback berbeda; test katalog dan Universal HTML menutup mirror
+  Ikiru serta parameter Madara.
+
+Verifikasi:
+- `flutter analyze`: nol issue.
+- `flutter test -j 1`: 139 lulus, 3 snapshot WebView safe-mode diskip.
+- build web FAKE_AUTH lulus. Smoke-test CanvasKit di 412x915 dan 320x700
+  membuka Library, Detail, Reader, mengaktifkan rail zoom, mencoba zoom masuk,
+  memastikan double-tap tidak mengubah skala, rail tidak overlap, dan console
+  nol error. Gerak slider aktif/commit anchor ditutup widget test karena driver
+  browser tidak merekam multitouch atau kelancaran frame perangkat asli.
+- APK profile berhasil dibangun 121.644.571 byte; SHA-256
+  `863c2ac49f6a5736b6740dee2b6b005b2abea2658ce34ab494a90b58ee35df48`.
+- APK profile berhasil dipasang tanpa menghapus data ke iQOO I2508 dan Kizen
+  berhasil diluncurkan lewat ADB.
+- iOS profile tanpa codesign berhasil membangun `Runner.app` 61,4 MB.
+
+### 2026-08-07 — Zoom rail paint-only tanpa pinch, relayout, atau loncat halaman
+
+Sesudah rail zoom pertama dicoba di HP, hasilnya masih kurang halus dan posisi
+baca tetap bisa berpindah. User minta pinch serta double-tap dibuang seluruhnya,
+lalu rail samping dijadikan satu-satunya cara mengubah skala.
+
+Root cause:
+- implementasi rail sebelumnya cuma memakai transform GPU selama slider masih
+  disentuh. Begitu dilepas, lebar setiap gambar, tinggi halaman, gap, header,
+  footer, dan extent seluruh lazy `ListView` tetap dikalikan skala;
+- koreksi offset lama menganggap seluruh extent sudah terukur dan semuanya
+  berubah secara seragam. Pada chapter panjang, banyak item belum terpasang,
+  estimasi extent bisa berubah belakangan, dan gambar tanpa metadata juga baru
+  mengetahui rasio setelah decode. Akibatnya titik baca dapat jatuh ke halaman
+  lain walaupun rumus offset global terlihat benar di unit test;
+- slider memakai 16 pembagian tetap, tombol `+/-` meloncat 0,5x tanpa animasi,
+  lalu target decode/layout ikut berubah ketika commit. Kombinasi ini terasa
+  patah pada layar 120 Hz;
+- smoke-test pertama engine baru menemukan kasus tambahan: spacer tepi lazy
+  sedang tidak terpasang, jadi `maxScrollExtent` belum berubah dan koreksi yang
+  menunggu perubahan dimensi tidak dijalankan. Halaman bergeser tepat sebesar
+  tinggi spacer.
+
+Referensi perilaku:
+- implementasi `WebtoonRecyclerView` Mihon terbaru dibaca langsung dari repo
+  resminya. Untuk zoom masuk, Mihon mempertahankan ukuran item RecyclerView dan
+  mengubah `scaleX/scaleY` serta translasi layer, dengan `ValueAnimator` 200 ms;
+- Kizen mengikuti prinsip paint-scale itu memakai kompositor Flutter supaya
+  tetap satu implementasi untuk Android dan iOS, bukan menyalin komponen native
+  Android yang tidak tersedia di iOS.
+
+Fix `reader_screen.dart`:
+- mode Gulir sekarang mempertahankan lebar/tinggi asli seluruh halaman. Satu
+  `Transform` permanen menskalakan viewport lewat `ValueNotifier`, jadi drag
+  slider tidak memanggil `setState`, tidak merelayout list, tidak mengganti
+  `ScrollPosition`, dan tidak menyentuh provider gambar;
+- scene point di pusat viewport ditangkap sekali ketika zoom mulai. Setiap nilai
+  skala menghitung translasi dari scene point yang sama, jadi area di bawah
+  pusat layar tetap berada di sana dan tidak pindah ke halaman lain;
+- pan horizontal mengubah translasi layer dan dijepit ke batas gambar. Scroll
+  vertikal tetap dimiliki `ListView`, termasuk ketika skala aktif;
+- spacer simetris kecil hanya dikomit ketika zoom selesai supaya awal/akhir
+  chapter tetap bisa dijangkau. Offset dinaikkan/diturunkan sebesar delta spacer
+  secara sinkron sesudah `setState`, sebelum frame berikutnya dicat. Ini tidak
+  lagi bergantung pada estimasi extent lazy list;
+- decode tajam tetap ditunda sampai gerakan selesai. Frame/provider lama tetap
+  tampil lewat `gaplessPlayback`, jadi slider dan animasi tidak memunculkan
+  spinner atau gambar kosong;
+- slider 100–500% sekarang kontinu tanpa `divisions`. Tombol masuk/keluar
+  berubah 0,25x dan tombol reset memakai animasi `easeOutCubic` 200 ms;
+- mode Halaman memakai animasi rail yang sama dan mempertahankan scene point
+  serta pan aktif melalui `TransformationController`;
+- semua handler pinch, quick-scale, double-tap, tombol zoom toolbar, controller
+  horizontal berbasis relayout, dan recognizer dua jari lama dibuang. Kalau rail
+  disembunyikan dari pengaturan, zoom aktif direset supaya Reader tidak tersisa
+  dalam skala yang tidak bisa dikontrol;
+- rail menjadi default untuk data pengaturan baru/lama yang belum punya field
+  `sideZoomControls`. Nilai false yang memang pernah disimpan tetap dihormati.
+
+Test:
+- test pure memastikan matriks paint memetakan scene point ke focal yang sama,
+  translasi tidak keluar viewport, dan spacer tepi dihitung dari skala;
+- widget test memastikan pinch dan double-tap tidak mengubah skala walaupun rail
+  disembunyikan, baik di mode Gulir maupun Halaman;
+- test rail memastikan selama slider bergerak offset, lebar layout, dan extent
+  list tidak berubah; sesudah dilepas hanya spacer yang ditambah dan offset
+  bergeser sebesar delta yang sama;
+- test yang sama menjalankan scroll vertikal saat zoom, pan horizontal, animasi
+  reset di tengah durasi, dan animasi tombol sampai tepat 1,25x.
+
+Verifikasi:
+- `flutter analyze`: nol issue.
+- `flutter test -j 1`: 138 lulus, 3 snapshot WebView safe-mode diskip.
+- build web FAKE_AUTH lulus. Smoke-test CanvasKit 412x915 awalnya menangkap bug
+  spacer lazy, lalu diulang sesudah fix: PAGE 2 tetap pada anchor ketika berubah
+  100% → 125%, zoom lanjut 175%, scroll vertikal, pan horizontal, dan reset 100%
+  berjalan tanpa blank/overlap. Ukuran 320x700 juga rapi dan console nol error.
+- APK profile berhasil dibangun 121.611.803 byte; SHA-256
+  `bee74380c039937274f8f0520ed4f538f9835afc27ce5368bdc4cf75ebc56d57`.
+- belum dipasang ke HP karena tidak ada perangkat yang terdeteksi ADB pada akhir
+  verifikasi.
+- iOS profile tanpa codesign berhasil membangun `Runner.app` 61,4 MB.

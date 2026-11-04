@@ -4,11 +4,14 @@ import 'extension_runtime_source.dart';
 import 'komiku_source.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
+import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
 import 'shinigami_source.dart';
 import 'sveltekit_comic_source.dart';
 import 'universal_html_source.dart';
+
+import '../data/source_url.dart';
 
 /// Sumber yang punya parser native (lihat file lain di `lib/sources/`),
 /// dicocokkan dari URL yang diketik user di Add Source. Situs di luar
@@ -20,26 +23,50 @@ abstract final class SourceCatalog {
     ShinigamiSource(),
     KomikuSource(),
     MangaThemesiaSource(name: 'Komikindo', baseUrl: 'https://komikindo.ch'),
-    NatsuIdSource(name: 'Ikiru', baseUrl: 'https://06.ikiru.wtf'),
+    NatsuIdSource(name: 'Ikiru', baseUrl: 'https://07.ikiru.wtf'),
   ];
 
   static const Map<String, List<String>> _hostAliases = {
     'Asura Scans': ['asurascans.com', 'asuracomic.net'],
+    // Shinigami rutin memakai subdomain bernomor (contoh yang tersimpan di HP
+    // user: 11.shinigami.asia), sedangkan parser API kanonis memakai
+    // g.shinigami.asia. Cocokkan domain induknya supaya keduanya satu sumber.
+    'Shinigami': ['shinigami.asia', 'shngm.io', 'shngm.id'],
+    'Ikiru': ['ikiru.wtf'],
   };
 
   /// Cari parser yang host base URL-nya cocok dengan [url] yang diketik user.
-  static MangaSource? matchByUrl(String url) {
+  static MangaSource? matchByUrl(
+    String url, {
+    Iterable<String> fallbackBaseUrls = const [],
+  }) {
     final normalized = url.trim().toLowerCase();
     if (normalized.isEmpty) return null;
     for (final source in sources) {
-      final host = Uri.parse(source.baseUrl).host.toLowerCase();
+      final host = Uri.tryParse(source.baseUrl)?.host.toLowerCase() ?? '';
       final aliases = _hostAliases[source.name] ?? const <String>[];
-      if (normalized.contains(host) ||
+      if ((host.isNotEmpty && normalized.contains(host)) ||
           aliases.any((alias) => normalized.contains(alias))) {
-        return source;
+        return buildAutomatic(
+          source.name,
+          _originFromUrl(url),
+          fallbackBaseUrls: fallbackBaseUrls,
+        );
       }
     }
     return null;
+  }
+
+  /// Jalur buka sumber juga mengenali parser bawaan dari NAMA sumber. Tes
+  /// Sumber wajib punya fallback yang sama agar domain mirror/nomor baru tidak
+  /// merah padahal komiknya bisa dibuka lewat parser native.
+  static MangaSource? matchByName(String name, String url) {
+    final normalizedName = name.trim().toLowerCase();
+    final source = sources
+        .where((candidate) => candidate.name.toLowerCase() == normalizedName)
+        .firstOrNull;
+    if (source == null) return null;
+    return buildAutomatic(source.name, _originFromUrl(url));
   }
 
   /// Parser TEMA GENERIK — bukan situs spesifik, tapi pola/struktur HTML
@@ -53,6 +80,7 @@ abstract final class SourceCatalog {
     'mangathemesia',
     'natsuid',
     'universal-html',
+    'madara',
   ];
 
   /// Bangun instance parser generik dari [kind] (hasil [detectGeneric]
@@ -63,6 +91,7 @@ abstract final class SourceCatalog {
     String name,
     String baseUrl, {
     String? lang,
+    Iterable<String> fallbackBaseUrls = const [],
   }) {
     // Berlaku juga buat source lama yang telanjur tersimpan sebagai
     // universal-html/extension-runtime sebelum parser API ini tersedia.
@@ -82,6 +111,7 @@ abstract final class SourceCatalog {
         packageName: packageName,
         baseUrl: baseUrl,
         lang: lang,
+        fallbackBaseUrls: fallbackBaseUrls,
       );
     }
     return switch (kind) {
@@ -93,10 +123,11 @@ abstract final class SourceCatalog {
       'sveltekit-comic' => SvelteKitComicSource(name: name, baseUrl: baseUrl),
       'mangathemesia' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
       'natsuid' => NatsuIdSource(name: name, baseUrl: baseUrl),
+      'madara' => MadaraSource(name: name, baseUrl: baseUrl),
       'universal-html' => UniversalHtmlSource(
         name: name,
         baseUrl: baseUrl,
-        enableBrowserSessionFallback: _isToongod(baseUrl),
+        enableBrowserSessionFallback: true,
       ),
       _ => null,
     };
@@ -108,11 +139,6 @@ abstract final class SourceCatalog {
         host?.endsWith('.soulscans.asia') == true;
   }
 
-  static bool _isToongod(String url) {
-    final host = Uri.tryParse(url)?.host.toLowerCase();
-    return host == 'toongod.org' || host?.endsWith('.toongod.org') == true;
-  }
-
   static bool _isMangaFire(String url) {
     final host = Uri.tryParse(url)?.host.toLowerCase();
     return host == 'mangafire.to' || host?.endsWith('.mangafire.to') == true;
@@ -121,11 +147,92 @@ abstract final class SourceCatalog {
   /// Parser otomatis untuk sumber custom yang belum punya parserKind. Ini
   /// dipakai supaya URL baru tidak langsung dilempar ke WebView sebelum
   /// semua parser generik dicoba.
-  static MangaSource buildAutomatic(String name, String baseUrl) =>
-      AdaptiveSource(name: name, baseUrl: baseUrl);
+  static MangaSource buildAutomatic(
+    String name,
+    String baseUrl, {
+    String? preferredKind,
+    String? lang,
+    Iterable<String> fallbackBaseUrls = const [],
+  }) {
+    final normalizedBase = normalizeSourceBaseUrl(baseUrl);
+    final normalizedFallbacks = fallbackBaseUrls
+        .map(normalizeSourceBaseUrl)
+        .where((url) => url.isNotEmpty && url != normalizedBase)
+        .toSet();
+    normalizedFallbacks.addAll(
+      _knownMirrorFallbacks(
+        name,
+        normalizedBase,
+      ).where((url) => url.isNotEmpty && url != normalizedBase),
+    );
+    final preferred = <MangaSource>[
+      if (preferredKind != null)
+        ?buildGeneric(
+          preferredKind,
+          name,
+          normalizedBase,
+          lang: lang,
+          fallbackBaseUrls: normalizedFallbacks,
+        ),
+      ?_knownPreferredSource(name, normalizedBase),
+    ];
+    // Extension runtime sudah punya urutan APK -> parser HTML -> alternatif
+    // sendiri. Pertahankan tipe konkretnya supaya bridge native dan kontrak
+    // instal/update extension tidak berubah.
+    final extension = preferred.whereType<ExtensionRuntimeSource>().firstOrNull;
+    if (extension != null) return extension;
+    return AdaptiveSource(
+      name: name,
+      baseUrl: normalizedBase,
+      preferredStrategies: preferred,
+      fallbackBaseUrls: normalizedFallbacks,
+    );
+  }
+
+  static MangaSource? _knownPreferredSource(String name, String baseUrl) {
+    return switch (name.trim().toLowerCase()) {
+      'asura scans' => AsuraSource(),
+      'shinigami' => ShinigamiSource(),
+      'komiku' => KomikuSource(),
+      'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
+      'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
+      _ => null,
+    };
+  }
+
+  /// Mirror kanonis yang sudah diumumkan extension upstream. Ini hanya masuk
+  /// sebagai fallback paling belakang; URL aktif user dan alias repository
+  /// tetap dicoba lebih dulu.
+  static Iterable<String> _knownMirrorFallbacks(
+    String name,
+    String baseUrl,
+  ) sync* {
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
+    if (name.trim().toLowerCase() == 'ikiru' ||
+        host == 'ikiru.wtf' ||
+        host.endsWith('.ikiru.wtf')) {
+      yield 'https://07.ikiru.wtf';
+    }
+  }
+
+  static String _originFromUrl(String raw) {
+    final normalized = normalizeSourceBaseUrl(raw);
+    final uri = Uri.tryParse(normalized);
+    if (uri == null || uri.host.isEmpty) return normalized;
+    return uri.replace(path: '', query: null, fragment: null).toString();
+  }
 
   /// Probe nyata untuk source repository. Metadata APK saja belum berarti
   /// source bisa mengambil daftar: Cloudflare/login bisa tetap memblokirnya.
+  static Future<bool> probeSource(MangaSource source) async {
+    try {
+      final page = await source.fetchPopular(1);
+      return page.mangas.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> probeGeneric(
     String kind,
     String name,
@@ -134,12 +241,7 @@ abstract final class SourceCatalog {
   }) async {
     final source = buildGeneric(kind, name, baseUrl, lang: lang);
     if (source == null) return false;
-    try {
-      final page = await source.fetchPopular(1);
-      return page.mangas.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
+    return probeSource(source);
   }
 
   /// Coba tiap parser tema generik terhadap [baseUrl] — "banyak metode

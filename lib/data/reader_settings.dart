@@ -18,6 +18,7 @@ class ReaderSettings {
     this.gap = 10,
     this.brightness = 100,
     this.keepScreenOn = true,
+    this.sideZoomControls = true,
   });
 
   final ReadingDirection direction;
@@ -33,6 +34,10 @@ class ReaderSettings {
 
   final bool keepScreenOn;
 
+  /// Tampilkan rail zoom di sisi Reader. Rail adalah satu-satunya cara mengubah
+  /// skala; pinch dan double-tap sengaja tidak dipakai lagi.
+  final bool sideZoomControls;
+
   bool get isWebtoon => direction == ReadingDirection.vertical;
 
   ReaderSettings copyWith({
@@ -41,6 +46,7 @@ class ReaderSettings {
     int? gap,
     int? brightness,
     bool? keepScreenOn,
+    bool? sideZoomControls,
   }) {
     return ReaderSettings(
       direction: direction ?? this.direction,
@@ -48,17 +54,19 @@ class ReaderSettings {
       gap: gap ?? this.gap,
       brightness: brightness ?? this.brightness,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+      sideZoomControls: sideZoomControls ?? this.sideZoomControls,
     );
   }
 
   /// Mapping ke `users/{uid}/settings/reader` — lihat docs/DATABASE.md.
   Map<String, dynamic> toMap() => {
-        'direction': direction.name,
-        'bg': '#${bg.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
-        'gap': gap,
-        'brightness': brightness,
-        'keepScreenOn': keepScreenOn,
-      };
+    'direction': direction.name,
+    'bg': '#${bg.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+    'gap': gap,
+    'brightness': brightness,
+    'keepScreenOn': keepScreenOn,
+    'sideZoomControls': sideZoomControls,
+  };
 
   factory ReaderSettings.fromMap(Map<String, dynamic> map) {
     final bgHex = map['bg'] as String?;
@@ -73,6 +81,7 @@ class ReaderSettings {
       gap: (map['gap'] as num?)?.toInt() ?? 10,
       brightness: (map['brightness'] as num?)?.toInt() ?? 100,
       keepScreenOn: map['keepScreenOn'] as bool? ?? true,
+      sideZoomControls: map['sideZoomControls'] as bool? ?? true,
     );
   }
 }
@@ -83,6 +92,7 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettings> {
   static const _kGap = 'reader_gap';
   static const _kBrightness = 'reader_brightness';
   static const _kKeepOn = 'reader_keep_on';
+  static const _kSideZoomControls = 'reader_side_zoom_controls';
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
 
@@ -116,6 +126,7 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettings> {
       gap: prefs.getInt(_kGap) ?? 10,
       brightness: prefs.getInt(_kBrightness) ?? 100,
       keepScreenOn: prefs.getBool(_kKeepOn) ?? true,
+      sideZoomControls: prefs.getBool(_kSideZoomControls) ?? true,
     );
   }
 
@@ -126,6 +137,7 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettings> {
     await prefs.setInt(_kGap, settings.gap);
     await prefs.setInt(_kBrightness, settings.brightness);
     await prefs.setBool(_kKeepOn, settings.keepScreenOn);
+    await prefs.setBool(_kSideZoomControls, settings.sideZoomControls);
   }
 
   Future<void> update(ReaderSettings settings) async {
@@ -141,4 +153,5 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettings> {
 
 final readerSettingsProvider =
     NotifierProvider<ReaderSettingsNotifier, ReaderSettings>(
-        ReaderSettingsNotifier.new);
+      ReaderSettingsNotifier.new,
+    );

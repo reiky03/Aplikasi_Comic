@@ -61,6 +61,32 @@ void main() {
       expect(decision.latestChanged, isFalse);
       expect(decision.deltaUnread, 0);
     });
+
+    test('pergantian domain chapter yang sama bukan update baru', () {
+      final entry = UpdateEntry(
+        comicId: 'comic-1',
+        title: 'Comic',
+        src: 'Source',
+        hue: 10,
+        ch: 16,
+        detectedAt: DateTime(2026),
+        chapterLabel: 'Chapter 16',
+        chapterUrl: 'https://domain-lama.test/chapter/16',
+      );
+      final decision = decideLatestChapterUpdate(
+        knownLatestUrl: 'https://domain-lama.test/chapter/16',
+        knownTotal: 16,
+        currentEntry: entry,
+        fetchedTotal: 16,
+        fetchedLatestUrl: 'https://domain-baru.test/chapter/16',
+        fetchedLatestName: 'Chapter 16',
+        coverUrl: null,
+      );
+
+      expect(decision.hasNew, isFalse);
+      expect(decision.latestChanged, isFalse);
+      expect(decision.deltaUnread, 0);
+    });
   });
 
   test('UpdateEntry preserves chapter identity and cover metadata', () {
@@ -80,5 +106,35 @@ void main() {
     expect(restored.chapterUrl, '/chapter-16');
     expect(restored.chapterLabel, 'Chapter 16');
     expect(restored.coverUrl, 'https://example.com/cover.jpg');
+  });
+
+  test('filter kalender hanya mencocokkan hari lokal yang dipilih', () {
+    final entries = [
+      UpdateEntry(
+        comicId: 'hari-ini',
+        title: 'Hari Ini',
+        src: 'Source',
+        hue: 1,
+        ch: 2,
+        detectedAt: DateTime(2026, 7, 21, 23, 59),
+      ),
+      UpdateEntry(
+        comicId: 'kemarin',
+        title: 'Kemarin',
+        src: 'Source',
+        hue: 2,
+        ch: 3,
+        detectedAt: DateTime(2026, 7, 20, 23, 59),
+      ),
+    ];
+
+    expect(filterUpdatesByDate(entries, null), hasLength(2));
+    expect(
+      filterUpdatesByDate(
+        entries,
+        DateTime(2026, 7, 21, 0, 1),
+      ).map((entry) => entry.comicId),
+      ['hari-ini'],
+    );
   });
 }

@@ -74,9 +74,11 @@ class HistoryEntry {
   /// jam".
   String get dateGroup {
     final now = DateTime.now();
-    final diff = DateTime(now.year, now.month, now.day)
-        .difference(DateTime(readAt.year, readAt.month, readAt.day))
-        .inDays;
+    final diff = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).difference(DateTime(readAt.year, readAt.month, readAt.day)).inDays;
     if (diff <= 0) return 'Hari ini';
     if (diff == 1) return 'Kemarin';
     if (diff < 7) return '$diff hari lalu';
@@ -211,6 +213,17 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
       batch.delete(d.reference);
     }
     await batch.commit();
+  }
+
+  /// Hapus satu posisi baca tanpa menyentuh komik Library atau progres
+  /// per-chapter yang tersimpan terpisah di `library.chapterProgress`.
+  Future<void> remove(String comicId) async {
+    final col = _col;
+    if (col == null) {
+      state = state.where((entry) => entry.comicId != comicId).toList();
+      return;
+    }
+    await col.doc(comicId).delete();
   }
 
   /// Update/buat posisi baca terakhir (dipanggil dari Reader, debounced).

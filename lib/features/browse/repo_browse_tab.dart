@@ -117,6 +117,9 @@ class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab> {
     setState(() => _refreshing = true);
     final result = await ref.read(repositoriesProvider.notifier).refreshAll();
     ref.invalidate(installedExtensionPackagesProvider);
+    final synced = await ref
+        .read(sourcesProvider.notifier)
+        .syncWithRepositories(ref.read(repositoriesProvider));
     if (!mounted) return;
     setState(() => _refreshing = false);
     if (silent) return;
@@ -126,6 +129,11 @@ class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab> {
       AppToast.show(
         context,
         '${result.updated} repository diperbarui, ${result.failed} gagal',
+      );
+    } else if (synced > 0) {
+      AppToast.show(
+        context,
+        'Semua repository diperbarui & $synced sumber diselaraskan',
       );
     } else {
       AppToast.show(context, 'Semua repository sudah terbaru');
@@ -218,6 +226,43 @@ class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab> {
     final totalVisible =
         rowsByLang.values.fold<int>(0, (sum, rows) => sum + rows.length) +
         installedRows.length;
+    final listEntries = <_RepoListEntry>[];
+    if (query.isNotEmpty && totalVisible == 0) {
+      listEntries.add(
+        const _RepoListEntry.message(
+          'Sumber repository tidak ditemukan',
+          largeGap: true,
+        ),
+      );
+    }
+    if (installedRows.isNotEmpty) {
+      listEntries.add(
+        _RepoListEntry.header(
+          'TERPASANG · ${installedRows.length}',
+          installed: true,
+        ),
+      );
+      listEntries.addAll(installedRows.map(_RepoListEntry.source));
+      listEntries.add(const _RepoListEntry.spacer());
+    }
+    for (final lang in orderedLangs) {
+      final items = rowsByLang[lang] ?? const <_RepoSourceRowData>[];
+      if (query.isNotEmpty && items.isEmpty) continue;
+      final label = _langGroupNames[lang] ?? lang;
+      listEntries.add(
+        _RepoListEntry.header('${label.toUpperCase()} · ${items.length}'),
+      );
+      if (items.isEmpty) {
+        listEntries.add(
+          _RepoListEntry.message(
+            'Belum ada sumber $label dari repository terpasang.',
+          ),
+        );
+      } else {
+        listEntries.addAll(items.map(_RepoListEntry.source));
+      }
+      listEntries.add(const _RepoListEntry.spacer());
+    }
 
     return Column(
       children: [
@@ -231,93 +276,65 @@ class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab> {
           ),
         ),
         Expanded(
-          child: ListView(
+          child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 120),
-            children: [
-              if (query.isNotEmpty && totalVisible == 0)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(30, 42, 30, 0),
-                  child: Text(
-                    'Sumber repository tidak ditemukan',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.jakarta(
-                      size: 14,
-                      weight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
+            itemCount: listEntries.length,
+            itemBuilder: (context, index) {
+              final entry = listEntries[index];
+              return switch (entry.kind) {
+                _RepoListEntryKind.source => _RepoSourceRow(
+                  key: ValueKey(entry.row!.savedId),
+                  data: entry.row!,
                 ),
-              if (installedRows.isNotEmpty) ...[
-                Padding(
+                _RepoListEntryKind.header => Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
                   child: Row(
                     children: [
-                      const Icon(
-                        LucideIcons.packageCheck,
-                        size: 13,
-                        color: AppColors.success,
-                      ),
-                      const SizedBox(width: 6),
+                      if (entry.installed) ...[
+                        const Icon(
+                          LucideIcons.packageCheck,
+                          size: 13,
+                          color: AppColors.success,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       Text(
-                        'TERPASANG · ${installedRows.length}',
+                        entry.text!,
                         style: AppTypography.jakarta(
                           size: 12,
                           weight: FontWeight.w800,
                           letterSpacing: 0.6,
-                          color: AppColors.success,
+                          color: entry.installed
+                              ? AppColors.success
+                              : AppColors.textMuted,
                         ),
                       ),
                     ],
                   ),
                 ),
-                for (final row in installedRows) _RepoSourceRow(data: row),
-                const SizedBox(height: 9),
-              ],
-              for (final lang in orderedLangs) ...[
-                Builder(
-                  builder: (context) {
-                    final items =
-                        rowsByLang[lang] ?? const <_RepoSourceRowData>[];
-                    final label = _langGroupNames[lang] ?? lang;
-                    if (query.isNotEmpty && items.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-                          child: Text(
-                            '${label.toUpperCase()} · ${items.length}',
-                            style: AppTypography.jakarta(
-                              size: 12,
-                              weight: FontWeight.w800,
-                              letterSpacing: 0.6,
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ),
-                        if (items.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 10),
-                            child: Text(
-                              'Belum ada sumber $label dari repository terpasang.',
-                              style: AppTypography.jakarta(
-                                size: 12.5,
-                                weight: FontWeight.w400,
-                                color: AppColors.textFaint,
-                              ),
-                            ),
-                          )
-                        else
-                          for (final row in items) _RepoSourceRow(data: row),
-                        const SizedBox(height: 9),
-                      ],
-                    );
-                  },
+                _RepoListEntryKind.message => Padding(
+                  padding: entry.largeGap
+                      ? const EdgeInsets.fromLTRB(30, 42, 30, 0)
+                      : const EdgeInsets.fromLTRB(4, 10, 4, 10),
+                  child: Text(
+                    entry.text!,
+                    textAlign: entry.largeGap
+                        ? TextAlign.center
+                        : TextAlign.start,
+                    style: AppTypography.jakarta(
+                      size: entry.largeGap ? 14 : 12.5,
+                      weight: entry.largeGap
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: entry.largeGap
+                          ? AppColors.textSecondary
+                          : AppColors.textFaint,
+                    ),
+                  ),
                 ),
-              ],
-            ],
+                _RepoListEntryKind.spacer => const SizedBox(height: 9),
+              };
+            },
           ),
         ),
       ],
@@ -492,11 +509,45 @@ class _RepoSourceRowData {
         : 'extension-runtime:${source.pkg}',
     repoPackage: source.pkg,
     repoSourceId: source.id,
+    urlAliases: source.baseUrlAliases,
   );
 }
 
+enum _RepoListEntryKind { header, source, message, spacer }
+
+class _RepoListEntry {
+  const _RepoListEntry.header(this.text, {this.installed = false})
+    : kind = _RepoListEntryKind.header,
+      row = null,
+      largeGap = false;
+
+  const _RepoListEntry.source(this.row)
+    : kind = _RepoListEntryKind.source,
+      text = null,
+      installed = false,
+      largeGap = false;
+
+  const _RepoListEntry.message(this.text, {this.largeGap = false})
+    : kind = _RepoListEntryKind.message,
+      row = null,
+      installed = false;
+
+  const _RepoListEntry.spacer()
+    : kind = _RepoListEntryKind.spacer,
+      row = null,
+      text = null,
+      installed = false,
+      largeGap = false;
+
+  final _RepoListEntryKind kind;
+  final _RepoSourceRowData? row;
+  final String? text;
+  final bool installed;
+  final bool largeGap;
+}
+
 class _RepoSourceRow extends ConsumerWidget {
-  const _RepoSourceRow({required this.data});
+  const _RepoSourceRow({super.key, required this.data});
 
   final _RepoSourceRowData data;
 
@@ -644,9 +695,13 @@ class _ExtensionInstallButtonState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !_refreshOnResume) return;
-    _refreshOnResume = false;
+    if (state != AppLifecycleState.resumed) return;
     ref.invalidate(installedExtensionPackagesProvider);
+    ref
+        .read(sourcesProvider.notifier)
+        .syncWithRepositories(ref.read(repositoriesProvider));
+    if (!_refreshOnResume) return;
+    _refreshOnResume = false;
   }
 
   Future<void> _install() async {
@@ -669,6 +724,9 @@ class _ExtensionInstallButtonState
       if (!mounted) return;
       _refreshOnResume = true;
       ref.invalidate(installedExtensionPackagesProvider);
+      ref
+          .read(sourcesProvider.notifier)
+          .syncWithRepositories(ref.read(repositoriesProvider));
       AppToast.show(
         context,
         widget.updateAvailable

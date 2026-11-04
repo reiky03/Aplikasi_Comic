@@ -1,4 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/widgets.dart';
+
+import 'source_url.dart';
 
 /// Progres parsial per chapter di Library.
 ///
@@ -34,6 +37,29 @@ class ChapterProgress {
   );
 }
 
+/// Bentuk URL chapter yang cukup stabil buat pencocokan data lama/baru.
+/// Fragment browser dan slash penutup tidak mengubah identitas chapter.
+String? normalizeChapterIdentity(String? url) {
+  final trimmed = url?.trim();
+  if (trimmed == null || trimmed.isEmpty) return null;
+  var value = trimmed;
+  final fragmentAt = value.indexOf('#');
+  if (fragmentAt >= 0) value = value.substring(0, fragmentAt);
+  while (value.length > 1 && value.endsWith('/')) {
+    value = value.substring(0, value.length - 1);
+  }
+  return value.isEmpty ? null : value;
+}
+
+bool sameChapterIdentity(String? first, String? second) {
+  final normalizedFirst = normalizeChapterIdentity(first);
+  final normalizedSecond = normalizeChapterIdentity(second);
+  return normalizedFirst != null &&
+      normalizedSecond != null &&
+      (normalizedFirst == normalizedSecond ||
+          sameSourceResourceIdentity(normalizedFirst, normalizedSecond));
+}
+
 /// Komik di library / hasil discover.
 class Comic {
   const Comic({
@@ -49,8 +75,10 @@ class Comic {
     this.coverHeaders = const {},
     this.sourceMangaUrl,
     this.readChapters = const {},
+    this.readChapterUrls = const {},
     this.chapterProgress = const {},
     this.lastChapterUrl,
+    this.addedAt,
   });
 
   final String id;
@@ -90,10 +118,15 @@ class Comic {
   /// chapter terbaru duluan), bukan cuma urut dari chapter 1.
   final Set<int> readChapters;
 
+  /// URL chapter sumber asli yang sudah selesai dibaca. Berbeda dari
+  /// [readChapters], URL tetap menunjuk chapter yang sama walau situs
+  /// menyisipkan chapter baru dan seluruh nomor sintetis bergeser.
+  final Set<String> readChapterUrls;
+
   /// Progress parsial per chapter yang belum tentu selesai dibaca.
-  /// Key = nomor chapter sintetis app (sama dengan nomor chapter di Comic
-  /// Detail). Dipakai agar chapter 300 "Hal 3/16" tidak hilang saat user
-  /// lanjut baca chapter 298 "Hal 4/16".
+  /// Key biasanya nomor chapter sintetis app. Kalau nomor yang sama sudah
+  /// ditempati URL lain setelah daftar bergeser, notifier memakai slot negatif
+  /// internal; lookup tampilan selalu mendahulukan [ChapterProgress.chapterUrl].
   final Map<int, ChapterProgress> chapterProgress;
 
   /// URL chapter TERBARU yang diketahui saat terakhir kali chapter list
@@ -105,6 +138,40 @@ class Comic {
   /// sungguhan) — cek "chapter TERBARU beda dari yang terakhir diketahui"
   /// jauh lebih akurat sebagai sinyal, terlepas dari noise pada hitungan.
   final String? lastChapterUrl;
+
+  /// Waktu komik pertama kali disimpan ke Library. Dipakai buat urutan
+  /// "Terakhir ditambahkan" dan tidak berubah saat progres baca diperbarui.
+  final DateTime? addedAt;
+
+  /// Cari progres dengan URL dulu. Nomor cuma dipakai untuk komik lokal atau
+  /// data lama yang belum sempat menyimpan URL; progress ber-URL lain pada
+  /// nomor yang sama tidak boleh dianggap milik chapter ini.
+  ChapterProgress? progressForChapter(int chapterNum, {String? chapterUrl}) {
+    final identity = normalizeChapterIdentity(chapterUrl);
+    if (identity != null) {
+      for (final progress in chapterProgress.values) {
+        if (sameChapterIdentity(progress.chapterUrl, identity)) {
+          return progress;
+        }
+      }
+      final legacy = chapterProgress[chapterNum];
+      return normalizeChapterIdentity(legacy?.chapterUrl) == null
+          ? legacy
+          : null;
+    }
+    return chapterProgress[chapterNum];
+  }
+
+  bool isChapterRead(int chapterNum, {String? chapterUrl}) {
+    final identity = normalizeChapterIdentity(chapterUrl);
+    if (identity != null &&
+        readChapterUrls.any((url) => sameChapterIdentity(url, identity))) {
+      return true;
+    }
+    // `readChapters` dipertahankan sebagai fallback buat data sebelum URL
+    // disimpan dan buat komik demo/lokal yang memang tidak punya URL.
+    return readChapters.contains(chapterNum);
+  }
 
   String get initial => title.isEmpty ? '?' : title[0];
 
@@ -119,8 +186,11 @@ class Comic {
     bool clearCol = false,
     Map<String, String>? coverHeaders,
     Set<int>? readChapters,
+    Set<String>? readChapterUrls,
     Map<int, ChapterProgress>? chapterProgress,
     String? lastChapterUrl,
+    DateTime? addedAt,
+    String? sourceMangaUrl,
   }) {
     return Comic(
       id: id,
@@ -133,10 +203,12 @@ class Comic {
       col: clearCol ? null : (col ?? this.col),
       coverUrl: coverUrl,
       coverHeaders: coverHeaders ?? this.coverHeaders,
-      sourceMangaUrl: sourceMangaUrl,
+      sourceMangaUrl: sourceMangaUrl ?? this.sourceMangaUrl,
       readChapters: readChapters ?? this.readChapters,
+      readChapterUrls: readChapterUrls ?? this.readChapterUrls,
       chapterProgress: chapterProgress ?? this.chapterProgress,
       lastChapterUrl: lastChapterUrl ?? this.lastChapterUrl,
+      addedAt: addedAt ?? this.addedAt,
     );
   }
 
@@ -153,6 +225,7 @@ class Comic {
     'coverHeaders': coverHeaders,
     'sourceMangaUrl': sourceMangaUrl,
     'readChapters': readChapters.toList()..sort(),
+    'readChapterUrls': readChapterUrls.toList()..sort(),
     'chapterProgress': {
       for (final e in chapterProgress.entries) '${e.key}': e.value.toMap(),
     },
@@ -189,8 +262,16 @@ class Comic {
               ?.map((e) => (e as num).toInt())
               .toSet() ??
           const {},
+      readChapterUrls:
+          (map['readChapterUrls'] as List?)
+              ?.whereType<String>()
+              .map(normalizeChapterIdentity)
+              .whereType<String>()
+              .toSet() ??
+          const {},
       chapterProgress: progressMap,
       lastChapterUrl: map['lastChapterUrl'] as String?,
+      addedAt: _dateTime(map['addedAt']),
     );
   }
 }
@@ -227,4 +308,10 @@ Map<String, String> _stringMap(Object? value) {
   return value.map(
     (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
   )..removeWhere((key, value) => key.isEmpty || value.isEmpty);
+}
+
+DateTime? _dateTime(Object? value) {
+  if (value is DateTime) return value;
+  if (value is Timestamp) return value.toDate();
+  return null;
 }

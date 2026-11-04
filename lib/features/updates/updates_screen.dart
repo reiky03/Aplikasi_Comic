@@ -20,6 +20,22 @@ class UpdatesScreen extends ConsumerStatefulWidget {
 class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
   bool _refreshing = false;
   bool _autoRefreshScheduled = false;
+  DateTime? _selectedDate;
+
+  Future<void> _pickDate() async {
+    final now = DateUtils.dateOnly(DateTime.now());
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      helpText: 'Pilih tanggal update',
+      cancelText: 'Batal',
+      confirmText: 'Pilih',
+    );
+    if (!mounted || picked == null) return;
+    setState(() => _selectedDate = DateUtils.dateOnly(picked));
+  }
 
   Future<void> _refresh({bool silent = false}) async {
     if (_refreshing) return;
@@ -44,10 +60,11 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
   Widget build(BuildContext context) {
     final library = ref.watch(libraryProvider);
     final libraryById = {for (final comic in library) comic.id: comic};
-    final entries = ref
+    final allEntries = ref
         .watch(updatesProvider)
         .where((entry) => libraryById.containsKey(entry.comicId))
         .toList();
+    final entries = filterUpdatesByDate(allEntries, _selectedDate);
 
     if (!_autoRefreshScheduled && library.isNotEmpty) {
       _autoRefreshScheduled = true;
@@ -68,6 +85,11 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                 Expanded(
                   child: Text('Updates', style: AppTypography.screenTitle),
                 ),
+                AppHeaderIconButton(
+                  icon: LucideIcons.calendarDays,
+                  onTap: _pickDate,
+                ),
+                const SizedBox(width: 8),
                 if (_refreshing)
                   Container(
                     width: 40,
@@ -91,9 +113,14 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
               ],
             ),
           ),
+          if (_selectedDate case final date?)
+            _DateFilterBar(
+              label: _formatDate(date),
+              onClear: () => setState(() => _selectedDate = null),
+            ),
           Expanded(
             child: entries.isEmpty
-                ? _buildEmptyState()
+                ? _buildEmptyState(filtered: _selectedDate != null)
                 : _buildFeed(entries, libraryById),
           ),
         ],
@@ -147,12 +174,16 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return const AppEmptyState(
-      icon: Icon(AppIcons.updates),
-      title: 'Belum ada update terbaru',
+  Widget _buildEmptyState({required bool filtered}) {
+    return AppEmptyState(
+      icon: const Icon(AppIcons.updates),
+      title: filtered
+          ? 'Tidak ada update di tanggal ini'
+          : 'Belum ada update terbaru',
       description: TextSpan(
-        text: 'Chapter baru dari komik di library-mu akan muncul di sini.',
+        text: filtered
+            ? 'Pilih tanggal lain atau hapus filter untuk melihat semua update.'
+            : 'Chapter baru dari komik di library-mu akan muncul di sini.',
       ),
     );
   }
@@ -179,6 +210,75 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
       MaterialPageRoute<void>(
         builder: (_) =>
             ComicDetailScreen(comic: comic, initialChapter: entry.ch),
+      ),
+    );
+  }
+}
+
+String _formatDate(DateTime date) {
+  const months = [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
+  ];
+  return '${date.day} ${months[date.month - 1]} ${date.year}';
+}
+
+class _DateFilterBar extends StatelessWidget {
+  const _DateFilterBar({required this.label, required this.onClear});
+
+  final String label;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 6),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.only(left: 12, right: 4),
+        decoration: BoxDecoration(
+          color: AppColors.accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              LucideIcons.calendarCheck,
+              size: 17,
+              color: AppColors.accentText,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.jakarta(
+                  size: 12.5,
+                  weight: FontWeight.w700,
+                  color: AppColors.accentText,
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: onClear,
+              tooltip: 'Hapus filter tanggal',
+              icon: const Icon(LucideIcons.x, size: 18),
+              color: AppColors.textSecondary,
+            ),
+          ],
+        ),
       ),
     );
   }

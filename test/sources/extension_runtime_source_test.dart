@@ -94,6 +94,33 @@ void main() {
     expect(chapters.single.name, 'Chapter 1');
   });
 
+  test('extension menerima URL manga lama yang sudah di-rebase', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'fetchChapterListFromExtension');
+          final arguments = Map<Object?, Object?>.from(call.arguments as Map);
+          expect(
+            arguments['mangaUrl'],
+            'https://domain-baru.example/manga/solo',
+          );
+          return [
+            {'url': '/chapter-1', 'name': 'Chapter 1', 'dateUpload': 0},
+          ];
+        });
+    final source = ExtensionRuntimeSource(
+      name: 'Test',
+      packageName: 'extension.test',
+      baseUrl: 'https://domain-baru.example',
+      fallback: const _FallbackSource(),
+    );
+
+    final chapters = await source.fetchChapterList(
+      'https://domain-lama.example/manga/solo',
+    );
+
+    expect(chapters.single.name, 'Chapter 1');
+  });
+
   test('semua parser gagal mengembalikan URL untuk WebView', () async {
     final source = ExtensionRuntimeSource(
       name: 'Test',
@@ -135,6 +162,29 @@ void main() {
     final pages = await source.fetchPageList('/chapter/1');
 
     expect(pages.single.imageUrl, 'https://reader.example/images/1.jpg');
+  });
+
+  test('domain mirror dicoba paling akhir dengan URL yang di-rebase', () async {
+    final mirror = _MirrorSource();
+    final source = ExtensionRuntimeSource(
+      name: 'Test',
+      packageName: 'extension.test',
+      baseUrl: 'https://domain-baru.example',
+      fallback: const _EmptySource(),
+      alternatives: AlternativeSourceMethods(
+        name: 'Test',
+        baseUrl: 'https://domain-baru.example',
+        strategies: const [_EmptySource()],
+      ),
+      fallbackSources: [mirror],
+    );
+
+    final pages = await source.fetchPageList(
+      'https://domain-lama.example/chapter/1',
+    );
+
+    expect(mirror.lastChapterUrl, 'https://mirror.example/chapter/1');
+    expect(pages.single.imageUrl, 'https://mirror.example/images/1.jpg');
   });
 
   test(
@@ -224,6 +274,48 @@ void main() {
       expect(page.mangas.single.title, 'Fallback Manga');
     },
   );
+
+  test(
+    'latest extension yang sama dengan populer mencoba parser tambahan',
+    () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            expect(
+              call.method,
+              anyOf('fetchPopularFromExtension', 'fetchLatestFromExtension'),
+            );
+            return {
+              'source': <String, Object?>{},
+              'mangas': [
+                for (var i = 0; i < 20; i++)
+                  {
+                    'url': '/manga/sama-$i',
+                    'title': 'Sama $i',
+                    'thumbnailUrl': null,
+                    'headers': <String, String>{},
+                  },
+              ],
+              'hasNextPage': true,
+            };
+          });
+      final source = ExtensionRuntimeSource(
+        name: 'Ikiru',
+        packageName: 'extension.test',
+        baseUrl: 'https://ikiru.example',
+        fallback: const _DistinctLatestSource(),
+        alternatives: AlternativeSourceMethods(
+          name: 'Ikiru',
+          baseUrl: 'https://ikiru.example',
+          strategies: const [_EmptySource()],
+        ),
+      );
+
+      await source.fetchPopular(1);
+      final latest = await source.fetchLatest(1);
+
+      expect(latest.mangas.single.title, 'Benar Terbaru');
+    },
+  );
 }
 
 class _FallbackSource implements MangaSource {
@@ -299,4 +391,34 @@ class _ExpandedLatestSource extends _FallbackSource {
     ],
     hasNextPage: true,
   );
+}
+
+class _DistinctLatestSource extends _FallbackSource {
+  const _DistinctLatestSource();
+
+  @override
+  Future<SourceMangaPage> fetchLatest(int page) async => const SourceMangaPage(
+    mangas: [
+      SourceManga(
+        url: 'https://reader.example/manga/benar-terbaru',
+        title: 'Benar Terbaru',
+      ),
+    ],
+    hasNextPage: false,
+  );
+}
+
+class _MirrorSource extends _EmptySource {
+  String? lastChapterUrl;
+
+  @override
+  String get baseUrl => 'https://mirror.example';
+
+  @override
+  Future<List<SourcePage>> fetchPageList(String chapterUrl) async {
+    lastChapterUrl = chapterUrl;
+    return const [
+      SourcePage(index: 0, imageUrl: 'https://mirror.example/images/1.jpg'),
+    ];
+  }
 }

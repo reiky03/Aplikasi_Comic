@@ -94,6 +94,24 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       _installedExtensionMatch = null;
     });
 
+    final normalizedUrl = url.startsWith('http') ? url : 'https://$url';
+    final name = _nameController.text.trim().isEmpty
+        ? url
+        : _nameController.text.trim();
+
+    // Parser native yang sudah terbukti dipakai saat sumber dibuka harus ikut
+    // menentukan hasil tes. Sebelumnya repository didahulukan dan kegagalan
+    // satu extension langsung mengembalikan merah, walau parser Shinigami
+    // native di aplikasi sebenarnya masih bisa memuat katalog dengan normal.
+    final builtIn =
+        SourceCatalog.matchByUrl(url) ??
+        SourceCatalog.matchByName(name, normalizedUrl);
+    if (builtIn != null && await SourceCatalog.probeSource(builtIn)) {
+      if (!mounted) return;
+      setState(() => _testState = _TestState.ok);
+      return;
+    }
+
     final repoMatch = findRepoSource(
       repositories: ref.read(repositoriesProvider),
       rawUrl: url,
@@ -108,25 +126,16 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
         lang: repoMatch.source.lang,
       );
       if (!mounted) return;
-      setState(() {
-        _repoMatch = repoMatch;
-        _detectedParserKind = 'extension-runtime:$packageName';
-        _testState = readable ? _TestState.ok : _TestState.error;
-      });
-      return;
-    }
-
-    final builtIn = SourceCatalog.matchByUrl(url);
-    if (builtIn != null) {
-      try {
-        await builtIn.fetchPopular(1);
-        if (!mounted) return;
-        setState(() => _testState = _TestState.ok);
-      } catch (_) {
-        if (!mounted) return;
-        setState(() => _testState = _TestState.error);
+      if (readable) {
+        setState(() {
+          _repoMatch = repoMatch;
+          _detectedParserKind = 'extension-runtime:$packageName';
+          _testState = _TestState.ok;
+        });
+        return;
       }
-      return;
+      // Jangan putus di sini. Extension bisa usang sementara parser native,
+      // extension terpasang lain, atau parser tema generik masih berhasil.
     }
 
     try {
@@ -154,10 +163,6 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       // Lanjut ke parser tema jika APK terpasang tetapi source sedang gagal.
     }
 
-    final name = _nameController.text.trim().isEmpty
-        ? url
-        : _nameController.text.trim();
-    final normalizedUrl = url.startsWith('http') ? url : 'https://$url';
     final kind = await SourceCatalog.detectGeneric(name, normalizedUrl);
     if (!mounted) return;
     setState(() {
@@ -185,11 +190,15 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
     final isBuiltIn = SourceCatalog.matchByUrl(rawUrl) != null;
     final initial = widget.initialSource;
     final sameUrl = initial?.url == cleanUrl;
+    final newName = _nameController.text.trim();
+    final sameLogicalSource =
+        initial != null &&
+        initial.name.trim().toLowerCase() == newName.toLowerCase();
     final repoMatch = findRepoSource(
       repositories: ref.read(repositoriesProvider),
       rawUrl: rawUrl,
-      packageName: sameUrl ? initial?.repoPackage : null,
-      sourceId: sameUrl ? initial?.repoSourceId : null,
+      packageName: sameLogicalSource ? initial.repoPackage : null,
+      sourceId: sameLogicalSource ? initial.repoSourceId : null,
     );
     var installedMatch = _installedExtensionMatch;
     if (repoMatch?.source.pkg == null &&
@@ -202,11 +211,11 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
     final extensionPackage =
         repoMatch?.source.pkg ??
         installedMatch?.package.packageName ??
-        (sameUrl ? initial?.repoPackage : null);
+        (sameLogicalSource ? initial.repoPackage : null);
     final extensionSourceId =
         repoMatch?.source.id ??
         installedMatch?.source.id.toString() ??
-        (sameUrl ? initial?.repoSourceId : null);
+        (sameLogicalSource ? initial.repoSourceId : null);
     var parserKind = extensionPackage == null
         ? (isBuiltIn ? null : _detectedParserKind)
         : 'extension-runtime:$extensionPackage';
@@ -226,9 +235,17 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       if (!mounted) return;
       if (parserKind != null) status = SourceStatus.normal;
     }
+    final nameAliases = <String>{
+      ...?initial?.nameAliases,
+      if (initial != null && initial.name != newName) initial.name,
+    }.toList();
+    final urlAliases = <String>{
+      ...?initial?.urlAliases,
+      if (initial != null && !sameUrl) initial.url,
+    }.toList();
     final source = ComicSource(
       id: initial?.id ?? 's${DateTime.now().millisecondsSinceEpoch}',
-      name: _nameController.text.trim(),
+      name: newName,
       url: cleanUrl,
       lang: _lang,
       hue: initial?.hue ?? 200 + math.Random().nextInt(140),
@@ -238,6 +255,8 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       parserKind: parserKind,
       repoPackage: extensionPackage,
       repoSourceId: extensionSourceId,
+      nameAliases: nameAliases,
+      urlAliases: urlAliases,
     );
     final notifier = ref.read(sourcesProvider.notifier);
     if (_isEdit) {

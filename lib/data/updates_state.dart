@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_scope.dart';
 import 'library_state.dart';
+import 'models.dart';
 import 'repository_state.dart';
 import 'source_resolver.dart';
+import 'source_url.dart';
 import 'sources_state.dart';
 
 /// Satu entri chapter baru di feed Updates — satu dokumen per komik
@@ -109,6 +111,23 @@ class UpdateCheckResult {
   final int failed;
 }
 
+/// Filter tanggal murni di client. Query Firestore tetap tanpa `orderBy` dan
+/// tanpa range filter, jadi dokumen pending `serverTimestamp()` tidak hilang.
+List<UpdateEntry> filterUpdatesByDate(
+  Iterable<UpdateEntry> entries,
+  DateTime? selectedDate,
+) {
+  if (selectedDate == null) return entries.toList();
+  return entries
+      .where(
+        (entry) =>
+            entry.detectedAt.year == selectedDate.year &&
+            entry.detectedAt.month == selectedDate.month &&
+            entry.detectedAt.day == selectedDate.day,
+      )
+      .toList();
+}
+
 typedef LatestChapterDecision = ({
   bool hasNew,
   bool latestChanged,
@@ -127,12 +146,12 @@ LatestChapterDecision decideLatestChapterUpdate({
 }) {
   final hasNew = knownLatestUrl == null
       ? fetchedTotal > knownTotal
-      : fetchedLatestUrl != knownLatestUrl;
+      : !sameChapterIdentity(fetchedLatestUrl, knownLatestUrl);
   return (
     hasNew: hasNew,
     latestChanged:
         currentEntry == null ||
-        currentEntry.chapterUrl != fetchedLatestUrl ||
+        !sameChapterIdentity(currentEntry.chapterUrl, fetchedLatestUrl) ||
         currentEntry.ch != fetchedTotal ||
         currentEntry.chapterLabel != fetchedLatestName ||
         currentEntry.coverUrl != coverUrl,
@@ -236,8 +255,12 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
       if (source == null) continue;
       checked++;
       try {
-        final chapters = await source.fetchChapterList(mangaUrl);
+        final activeMangaUrl = rebaseSourceUrl(mangaUrl, source.baseUrl);
+        final chapters = await source.fetchChapterList(activeMangaUrl);
         if (chapters.isEmpty) continue;
+        if (activeMangaUrl != mangaUrl) {
+          await libraryNotifier.updateSourceMangaUrl(comic.id, activeMangaUrl);
+        }
         final newest = chapters.first;
         final currentEntry = state
             .where((entry) => entry.comicId == comic.id)

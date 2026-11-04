@@ -1,5 +1,6 @@
 package com.reikypratama.aplikasi_komik.extensions
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -16,6 +17,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import dalvik.system.DexClassLoader
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -174,10 +176,16 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         }
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     private fun renderHtmlWithWebView(call: MethodCall, result: MethodChannel.Result) {
         val url = call.argument<String>("url")
         if (url.isNullOrBlank()) {
             result.error("bad_args", "url kosong", null)
+            return
+        }
+        val lower = url.trim().lowercase()
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            result.error("bad_args", "Hanya URL http/https yang diizinkan: $url", null)
             return
         }
         Handler(Looper.getMainLooper()).post {
@@ -229,21 +237,20 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 }
 
                 webView = WebView(context)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    manager.setAcceptThirdPartyCookies(webView, true)
-                }
+                manager.setAcceptThirdPartyCookies(webView, true)
                 webView.settings.apply {
+                    // Snapshot DOM memang perlu JavaScript. WebView ini tidak
+                    // mengekspos JavascriptInterface dan gambar diblokir.
                     javaScriptEnabled = true
                     domStorageEnabled = true
-                    databaseEnabled = true
+                    allowFileAccess = false
+                    allowContentAccess = false
                     loadsImagesAutomatically = false
                     blockNetworkImage = true
                     userAgentString = sessionHeaders.entries.firstOrNull {
                         it.key.equals("User-Agent", ignoreCase = true)
                     }?.value ?: WebSettings.getDefaultUserAgent(context)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                    }
+                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 }
                 webView.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, finishedUrl: String) {
@@ -327,7 +334,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
 
         try {
             val intent = Intent(Intent.ACTION_DELETE).apply {
-                data = Uri.parse("package:$packageName")
+                data = "package:$packageName".toUri()
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
@@ -446,7 +453,14 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                         source.instance.call(parseMethod, response)
                             ?: throw IllegalStateException("$parseMethod mengembalikan null")
                     }.getOrElse { parseError ->
-                        if (packageName.contains("doujindesu") && mode != "search") {
+                        // Extension Doujindesu memakai kotlinx-serialization
+                        // buat semua response katalog, termasuk pencarian.
+                        // Di runtime host kita parse itu kadang gagal walau
+                        // interceptor APK sudah berhasil mendekripsi body jadi
+                        // JSON array yang valid. Pakai fallback yang sama untuk
+                        // search; sebelumnya search sengaja dikecualikan dan
+                        // langsung berakhir sebagai "gagal mengparse".
+                        if (packageName.contains("doujindesu")) {
                             val fallback = parseDoujindesuMangas(
                                 responsePreview,
                                 sessionHeaders,
@@ -636,7 +650,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
 
         fun normalized(value: String?): String = value.orEmpty().trim().lowercase()
         fun host(value: String?): String = runCatching {
-            Uri.parse(value.orEmpty()).host.orEmpty().lowercase()
+            value.orEmpty().toUri().host.orEmpty().lowercase()
         }.getOrDefault("")
         val wantedName = normalized(sourceName)
         val wantedLang = normalized(sourceLang)

@@ -1,5 +1,7 @@
 import '../data/extension_runtime.dart';
 import '../data/source_session_store.dart';
+import '../data/source_url.dart';
+import 'adaptive_source.dart';
 import 'alternative_source_methods.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
@@ -15,13 +17,22 @@ class ExtensionRuntimeSource implements MangaSource {
     ExtensionRuntimeBridge? bridge,
     MangaSource? fallback,
     AlternativeSourceMethods? alternatives,
+    Iterable<String> fallbackBaseUrls = const [],
+    List<MangaSource>? fallbackSources,
   }) : _bridge = bridge ?? const ExtensionRuntimeBridge(),
        _fallback =
            fallback ??
            _defaultFallback(name: name, baseUrl: baseUrl, lang: lang),
        _alternatives =
            alternatives ??
-           AlternativeSourceMethods(name: name, baseUrl: baseUrl);
+           AlternativeSourceMethods(name: name, baseUrl: baseUrl),
+       _fallbackSources =
+           fallbackSources ??
+           _buildFallbackSources(
+             name: name,
+             baseUrl: baseUrl,
+             fallbackBaseUrls: fallbackBaseUrls,
+           );
 
   @override
   final String name;
@@ -36,6 +47,24 @@ class ExtensionRuntimeSource implements MangaSource {
   final ExtensionRuntimeBridge _bridge;
   final MangaSource _fallback;
   final AlternativeSourceMethods _alternatives;
+  final List<MangaSource> _fallbackSources;
+  final Map<int, String> _popularSignatures = {};
+
+  static List<MangaSource> _buildFallbackSources({
+    required String name,
+    required String baseUrl,
+    required Iterable<String> fallbackBaseUrls,
+  }) {
+    final primary = normalizeSourceBaseUrl(baseUrl);
+    return [
+      for (final fallback
+          in fallbackBaseUrls
+              .map(normalizeSourceBaseUrl)
+              .where((url) => url.isNotEmpty && url != primary)
+              .toSet())
+        AdaptiveSource(name: name, baseUrl: fallback),
+    ];
+  }
 
   static MangaSource _defaultFallback({
     required String name,
@@ -75,18 +104,27 @@ class ExtensionRuntimeSource implements MangaSource {
         sessionHeaders: SourceSessionStore.headersFor(baseUrl),
       );
       final mapped = _toPage(result);
-      if (mapped.mangas.isNotEmpty) return mapped;
+      if (mapped.mangas.isNotEmpty) return _rememberPopular(page, mapped);
     } catch (_) {
       // Extension missing/incompatible/site changed: use adaptive HTML parser.
     }
     try {
       final result = await _fallback.fetchPopular(page);
-      if (result.mangas.isNotEmpty) return result;
+      if (result.mangas.isNotEmpty) return _rememberPopular(page, result);
     } catch (_) {
       // Parser HTML utama gagal: lanjut ke parser alternatif.
     }
-    final result = await _alternatives.fetchPopular(page);
-    if (result.mangas.isNotEmpty) return result;
+    try {
+      final result = await _alternatives.fetchPopular(page);
+      if (result.mangas.isNotEmpty) return _rememberPopular(page, result);
+    } catch (_) {
+      // Semua parser domain utama gagal: baru coba mirror/domain lama.
+    }
+    final mirrored = await _firstFallback(
+      (source) => source.fetchPopular(page),
+      (result) => result.mangas.isNotEmpty,
+    );
+    if (mirrored != null) return _rememberPopular(page, mirrored);
     throw _webViewError(baseUrl);
   }
 
@@ -96,14 +134,21 @@ class ExtensionRuntimeSource implements MangaSource {
   /// tanpa mengganggu extension yang sudah mengembalikan daftar normal.
   Future<SourceMangaPage?> _largerLatestFallback(
     int page,
-    SourceMangaPage current,
-  ) async {
+    SourceMangaPage current, {
+    bool preferDistinctCatalog = false,
+  }) async {
     final preferFreshCatalog = _prefersFreshCatalogLatest;
-    if (!preferFreshCatalog && current.mangas.length >= 20) return null;
+    if (!preferFreshCatalog &&
+        !preferDistinctCatalog &&
+        current.mangas.length >= 20) {
+      return null;
+    }
     try {
       final fallback = await _fallback.fetchLatest(page);
       if (fallback.mangas.isNotEmpty &&
           (preferFreshCatalog ||
+              (preferDistinctCatalog &&
+                  _catalogSignature(fallback) != _catalogSignature(current)) ||
               fallback.mangas.length > current.mangas.length)) {
         return fallback;
       }
@@ -114,11 +159,25 @@ class ExtensionRuntimeSource implements MangaSource {
       final alternative = await _alternatives.fetchLatest(page);
       if (alternative.mangas.isNotEmpty &&
           (preferFreshCatalog ||
+              (preferDistinctCatalog &&
+                  _catalogSignature(alternative) !=
+                      _catalogSignature(current)) ||
               alternative.mangas.length > current.mangas.length)) {
         return alternative;
       }
     } catch (_) {
       // Pertahankan hasil extension yang sudah valid.
+    }
+    final mirrored = await _firstFallback(
+      (source) => source.fetchLatest(page),
+      (result) => result.mangas.isNotEmpty,
+    );
+    if (mirrored != null &&
+        (preferFreshCatalog ||
+            (preferDistinctCatalog &&
+                _catalogSignature(mirrored) != _catalogSignature(current)) ||
+            mirrored.mangas.length > current.mangas.length)) {
+      return mirrored;
     }
     return null;
   }
@@ -136,20 +195,44 @@ class ExtensionRuntimeSource implements MangaSource {
       );
       final mapped = _toPage(result);
       if (mapped.mangas.isNotEmpty) {
-        final expanded = await _largerLatestFallback(page, mapped);
+        final expanded = await _largerLatestFallback(
+          page,
+          mapped,
+          preferDistinctCatalog: _matchesPopular(page, mapped),
+        );
         return expanded ?? mapped;
       }
     } catch (_) {
       // Continue to fallback.
     }
+    SourceMangaPage? duplicateFallback;
     try {
       final result = await _fallback.fetchLatest(page);
-      if (result.mangas.isNotEmpty) return result;
+      if (result.mangas.isNotEmpty) {
+        if (!_matchesPopular(page, result)) return result;
+        duplicateFallback ??= result;
+      }
     } catch (_) {
       // Lanjut ke parser alternatif.
     }
-    final result = await _alternatives.fetchLatest(page);
-    if (result.mangas.isNotEmpty) return result;
+    try {
+      final result = await _alternatives.fetchLatest(page);
+      if (result.mangas.isNotEmpty) {
+        if (!_matchesPopular(page, result)) return result;
+        duplicateFallback ??= result;
+      }
+    } catch (_) {
+      // Lanjut ke mirror/domain lama.
+    }
+    final mirrored = await _firstFallback(
+      (source) => source.fetchLatest(page),
+      (result) => result.mangas.isNotEmpty,
+    );
+    if (mirrored != null) {
+      if (!_matchesPopular(page, mirrored)) return mirrored;
+      duplicateFallback ??= mirrored;
+    }
+    if (duplicateFallback != null) return duplicateFallback;
     throw _webViewError(baseUrl);
   }
 
@@ -176,22 +259,32 @@ class ExtensionRuntimeSource implements MangaSource {
     } catch (_) {
       // Lanjut ke parser alternatif.
     }
-    final result = await _alternatives.fetchSearch(query, page);
-    if (result.mangas.isNotEmpty) return result;
+    try {
+      final result = await _alternatives.fetchSearch(query, page);
+      if (result.mangas.isNotEmpty) return result;
+    } catch (_) {
+      // Lanjut ke mirror/domain lama.
+    }
+    final mirrored = await _firstFallback(
+      (source) => source.fetchSearch(query, page),
+      (result) => result.mangas.isNotEmpty,
+    );
+    if (mirrored != null) return mirrored;
     throw _webViewError(baseUrl);
   }
 
   @override
   Future<SourceMangaDetails> fetchMangaDetails(String mangaUrl) async {
+    final currentMangaUrl = rebaseSourceUrl(mangaUrl, baseUrl);
     try {
       final manga = await _bridge.fetchMangaDetailsFromExtension(
         packageName,
-        mangaUrl: mangaUrl,
+        mangaUrl: currentMangaUrl,
         title: '',
         sourceName: name,
         sourceLang: lang,
         baseUrl: baseUrl,
-        sessionHeaders: _sessionHeadersFor(mangaUrl),
+        sessionHeaders: _sessionHeadersFor(currentMangaUrl),
       );
       final details = SourceMangaDetails(
         description: manga.description,
@@ -211,27 +304,38 @@ class ExtensionRuntimeSource implements MangaSource {
       // Continue to fallback.
     }
     try {
-      final details = await _fallback.fetchMangaDetails(mangaUrl);
+      final details = await _fallback.fetchMangaDetails(currentMangaUrl);
       if (_hasDetails(details)) return details;
     } catch (_) {
       // Lanjut ke parser alternatif.
     }
-    final details = await _alternatives.fetchMangaDetails(mangaUrl);
-    if (_hasDetails(details)) return details;
-    throw _webViewError(mangaUrl);
+    try {
+      final details = await _alternatives.fetchMangaDetails(currentMangaUrl);
+      if (_hasDetails(details)) return details;
+    } catch (_) {
+      // Lanjut ke mirror/domain lama.
+    }
+    final mirrored = await _firstFallbackWithUrl(
+      currentMangaUrl,
+      (source, url) => source.fetchMangaDetails(url),
+      _hasDetails,
+    );
+    if (mirrored != null) return mirrored;
+    throw _webViewError(currentMangaUrl);
   }
 
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
+    final currentMangaUrl = rebaseSourceUrl(mangaUrl, baseUrl);
     try {
       final chapters = await _bridge.fetchChapterListFromExtension(
         packageName,
-        mangaUrl: mangaUrl,
+        mangaUrl: currentMangaUrl,
         title: '',
         sourceName: name,
         sourceLang: lang,
         baseUrl: baseUrl,
-        sessionHeaders: _sessionHeadersFor(mangaUrl),
+        sessionHeaders: _sessionHeadersFor(currentMangaUrl),
       );
       final mapped = chapters
           .map(
@@ -249,27 +353,38 @@ class ExtensionRuntimeSource implements MangaSource {
       // Continue to fallback.
     }
     try {
-      final chapters = await _fallback.fetchChapterList(mangaUrl);
+      final chapters = await _fallback.fetchChapterList(currentMangaUrl);
       if (chapters.isNotEmpty) return chapters;
     } catch (_) {
       // Lanjut ke parser alternatif.
     }
-    final chapters = await _alternatives.fetchChapterList(mangaUrl);
-    if (chapters.isNotEmpty) return chapters;
-    throw _webViewError(mangaUrl);
+    try {
+      final chapters = await _alternatives.fetchChapterList(currentMangaUrl);
+      if (chapters.isNotEmpty) return chapters;
+    } catch (_) {
+      // Lanjut ke mirror/domain lama.
+    }
+    final mirrored = await _firstFallbackWithUrl(
+      currentMangaUrl,
+      (source, url) => source.fetchChapterList(url),
+      (chapters) => chapters.isNotEmpty,
+    );
+    if (mirrored != null) return mirrored;
+    throw _webViewError(currentMangaUrl);
   }
 
   @override
   Future<List<SourcePage>> fetchPageList(String chapterUrl) async {
+    final currentChapterUrl = rebaseSourceUrl(chapterUrl, baseUrl);
     try {
       final pages = await _bridge.fetchPageListFromExtension(
         packageName,
-        chapterUrl: chapterUrl,
+        chapterUrl: currentChapterUrl,
         chapterName: '',
         sourceName: name,
         sourceLang: lang,
         baseUrl: baseUrl,
-        sessionHeaders: _sessionHeadersFor(chapterUrl),
+        sessionHeaders: _sessionHeadersFor(currentChapterUrl),
       );
       if (pages.isNotEmpty) {
         return [
@@ -285,22 +400,56 @@ class ExtensionRuntimeSource implements MangaSource {
       // Continue to fallback.
     }
     try {
-      final pages = await _fallback.fetchPageList(chapterUrl);
+      final pages = await _fallback.fetchPageList(currentChapterUrl);
       if (pages.isNotEmpty) return pages;
     } catch (_) {
       // Lanjut ke parser alternatif.
     }
-    final pages = await _alternatives.fetchPageList(chapterUrl);
-    if (pages.isNotEmpty) return pages;
-    throw _webViewError(chapterUrl);
+    try {
+      final pages = await _alternatives.fetchPageList(currentChapterUrl);
+      if (pages.isNotEmpty) return pages;
+    } catch (_) {
+      // Lanjut ke mirror/domain lama.
+    }
+    final mirrored = await _firstFallbackWithUrl(
+      currentChapterUrl,
+      (source, url) => source.fetchPageList(url),
+      (pages) => pages.isNotEmpty,
+    );
+    if (mirrored != null) return mirrored;
+    throw _webViewError(currentChapterUrl);
   }
+
+  Future<T?> _firstFallback<T>(
+    Future<T> Function(MangaSource source) request,
+    bool Function(T result) usable,
+  ) async {
+    for (final source in _fallbackSources) {
+      try {
+        final result = await request(source);
+        if (usable(result)) return result;
+      } catch (_) {
+        // Mirror ini gagal, lanjut ke mirror berikutnya.
+      }
+    }
+    return null;
+  }
+
+  Future<T?> _firstFallbackWithUrl<T>(
+    String rawUrl,
+    Future<T> Function(MangaSource source, String url) request,
+    bool Function(T result) usable,
+  ) => _firstFallback(
+    (source) => request(source, rebaseSourceUrl(rawUrl, source.baseUrl)),
+    usable,
+  );
 
   MangaSourceWebViewException _webViewError(
     String url,
   ) => MangaSourceWebViewException(
     message:
         'Semua metode parser $name sudah dicoba. Buka lewat WebView untuk melanjutkan.',
-    url: _absUrl(url),
+    url: rebaseSourceUrl(_absUrl(url), baseUrl),
   );
 
   bool _hasDetails(SourceMangaDetails details) =>
@@ -329,19 +478,40 @@ class ExtensionRuntimeSource implements MangaSource {
     return headers;
   }
 
-  String _absUrl(String url) => Uri.parse(baseUrl).resolve(url).toString();
+  String _absUrl(String url) =>
+      rebaseSourceUrl(Uri.parse(baseUrl).resolve(url).toString(), baseUrl);
 
-  Map<String, String> _sessionHeadersFor(String url) => {
-    ...SourceSessionStore.headersFor(baseUrl),
-    ...SourceSessionStore.headersFor(_absUrl(url)),
-  };
+  Map<String, String> _sessionHeadersFor(String url) {
+    final shouldSend = _sameSite(url);
+    return {
+      if (shouldSend) ...SourceSessionStore.headersFor(baseUrl),
+      if (shouldSend) ...SourceSessionStore.headersFor(_absUrl(url)),
+    };
+  }
 
   bool _sameSite(String imageUrl) {
-    final imageHost = Uri.tryParse(_absUrl(imageUrl))?.host;
-    final baseHost = Uri.tryParse(baseUrl)?.host;
-    if (imageHost == null || baseHost == null) return false;
+    final abs = _absUrl(imageUrl);
+    final imageHost = Uri.tryParse(abs)?.host.toLowerCase();
+    final baseHost =
+        Uri.tryParse(normalizeSourceBaseUrl(baseUrl))?.host.toLowerCase();
+    if (imageHost == null || baseHost == null || baseHost.isEmpty) return false;
     return imageHost == baseHost || imageHost.endsWith('.$baseHost');
   }
+
+  SourceMangaPage _rememberPopular(int page, SourceMangaPage result) {
+    _popularSignatures[page] = _catalogSignature(result);
+    return result;
+  }
+
+  bool _matchesPopular(int page, SourceMangaPage result) {
+    final popular = _popularSignatures[page];
+    return popular != null && popular == _catalogSignature(result);
+  }
+
+  String _catalogSignature(SourceMangaPage page) => page.mangas
+      .take(24)
+      .map((manga) => manga.title.trim().toLowerCase())
+      .join('\n');
 
   SourceMangaPage _toPage(ExtensionMangaPage result) => SourceMangaPage(
     mangas: [

@@ -1,5 +1,7 @@
+import '../data/source_url.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
+import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
 import 'sveltekit_comic_source.dart';
@@ -12,20 +14,16 @@ class AdaptiveSource implements MangaSource {
     required this.name,
     required this.baseUrl,
     List<MangaSource>? strategies,
+    List<MangaSource> preferredStrategies = const [],
+    Iterable<String> fallbackBaseUrls = const [],
   }) : _strategies =
            strategies ??
-           [
-             if (_isMangaFire(baseUrl))
-               MangaFireSource(name: name, baseUrl: baseUrl),
-             SvelteKitComicSource(name: name, baseUrl: baseUrl),
-             UniversalHtmlSource(
-               name: name,
-               baseUrl: baseUrl,
-               enableBrowserSessionFallback: _isToongod(baseUrl),
-             ),
-             MangaThemesiaSource(name: name, baseUrl: baseUrl),
-             NatsuIdSource(name: name, baseUrl: baseUrl),
-           ];
+           _buildStrategies(
+             name,
+             baseUrl,
+             preferredStrategies,
+             fallbackBaseUrls,
+           );
 
   @override
   final String name;
@@ -34,11 +32,48 @@ class AdaptiveSource implements MangaSource {
   final String baseUrl;
 
   final List<MangaSource> _strategies;
+  final Map<int, String> _popularSignatures = {};
 
-  static bool _isToongod(String url) {
-    final host = Uri.tryParse(url)?.host.toLowerCase();
-    return host == 'toongod.org' || host?.endsWith('.toongod.org') == true;
+  static final Map<String, int> _preferredStrategyIndexes = {};
+
+  static List<MangaSource> _buildStrategies(
+    String name,
+    String baseUrl,
+    List<MangaSource> preferred,
+    Iterable<String> fallbackBaseUrls,
+  ) {
+    final normalizedBaseUrl = normalizeSourceBaseUrl(baseUrl);
+    final fallbackBases = fallbackBaseUrls
+        .map(normalizeSourceBaseUrl)
+        .where((url) => url.isNotEmpty && url != normalizedBaseUrl)
+        .toSet();
+    final candidates = <MangaSource>[
+      ...preferred,
+      ..._genericStrategies(name, normalizedBaseUrl),
+      for (final fallbackBase in fallbackBases)
+        ..._genericStrategies(name, fallbackBase),
+    ];
+    final seen = <String>{};
+    return [
+      for (final source in candidates)
+        if (seen.add('${source.runtimeType}|${source.baseUrl}')) source,
+    ];
   }
+
+  static List<MangaSource> _genericStrategies(String name, String baseUrl) => [
+    if (_isMangaFire(baseUrl)) MangaFireSource(name: name, baseUrl: baseUrl),
+    SvelteKitComicSource(name: name, baseUrl: baseUrl),
+    UniversalHtmlSource(
+      name: name,
+      baseUrl: baseUrl,
+      enableBrowserSessionFallback: true,
+    ),
+    MangaThemesiaSource(name: name, baseUrl: baseUrl),
+    NatsuIdSource(name: name, baseUrl: baseUrl),
+    // Strategi tambahan paling belakang: tidak menggeser parser lama yang
+    // sudah berhasil, tetapi menutup katalog/chapter WordPress Madara AJAX.
+    MadaraSource(name: name, baseUrl: baseUrl),
+  ];
 
   static bool _isMangaFire(String url) {
     final host = Uri.tryParse(url)?.host.toLowerCase();
@@ -47,18 +82,27 @@ class AdaptiveSource implements MangaSource {
 
   @override
   Future<SourceMangaPage> fetchPopular(int page) async {
-    return await _first(
+    final result =
+        await _first(
           (source) => source.fetchPopular(page),
           (result) => result.mangas.isNotEmpty,
+          operationKey: 'popular',
         ) ??
         _throwWebView(baseUrl);
+    _popularSignatures[page] = _catalogSignature(result);
+    return result;
   }
 
   @override
   Future<SourceMangaPage> fetchLatest(int page) async {
-    return await _first(
+    final popularSignature = _popularSignatures[page];
+    return await _first<SourceMangaPage>(
           (source) => source.fetchLatest(page),
           (result) => result.mangas.isNotEmpty,
+          operationKey: 'latest',
+          prefer: popularSignature == null
+              ? null
+              : (result) => _catalogSignature(result) != popularSignature,
         ) ??
         _throwWebView(baseUrl);
   }
@@ -68,50 +112,116 @@ class AdaptiveSource implements MangaSource {
     return await _first(
           (source) => source.fetchSearch(query, page),
           (result) => result.mangas.isNotEmpty,
+          operationKey: 'search',
         ) ??
         _throwWebView(baseUrl);
   }
 
   @override
   Future<SourceMangaDetails> fetchMangaDetails(String mangaUrl) async {
-    return await _first(
-          (source) => source.fetchMangaDetails(mangaUrl),
+    return await _firstWithUrl(
+          mangaUrl,
+          (source, url) => source.fetchMangaDetails(url),
           _hasDetails,
+          operationKey: 'details',
         ) ??
         _throwWebView(mangaUrl);
   }
 
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
-    return await _first(
-          (source) => source.fetchChapterList(mangaUrl),
+    return await _firstWithUrl(
+          mangaUrl,
+          (source, url) => source.fetchChapterList(url),
           (chapters) => chapters.isNotEmpty,
+          operationKey: 'chapters',
         ) ??
         _throwWebView(mangaUrl);
   }
 
   @override
   Future<List<SourcePage>> fetchPageList(String chapterUrl) async {
-    return await _first(
-          (source) => source.fetchPageList(chapterUrl),
+    return await _firstWithUrl(
+          chapterUrl,
+          (source, url) => source.fetchPageList(url),
           (pages) => pages.isNotEmpty,
+          operationKey: 'pages',
         ) ??
         _throwWebView(chapterUrl);
   }
 
   Future<T?> _first<T>(
-    Future<T> Function(MangaSource source) operation,
-    bool Function(T result) usable,
-  ) async {
-    for (final strategy in _strategies) {
+    Future<T> Function(MangaSource source) request,
+    bool Function(T result) usable, {
+    required String operationKey,
+    bool Function(T result)? prefer,
+  }) async {
+    final cacheKey = _cacheKey(operationKey);
+    final preferred = _preferredStrategyIndexes[cacheKey];
+    final indexes = <int>[
+      if (preferred != null && preferred < _strategies.length) preferred,
+      for (var index = 0; index < _strategies.length; index++)
+        if (index != preferred) index,
+    ];
+    T? firstUsable;
+    int? firstUsableIndex;
+    for (final index in indexes) {
+      final strategy = _strategies[index];
       try {
-        final result = await operation(strategy);
-        if (usable(result)) return result;
+        final result = await request(strategy);
+        if (usable(result)) {
+          if (prefer == null || prefer(result)) {
+            _rememberStrategy(cacheKey, index);
+            return result;
+          }
+          firstUsable ??= result;
+          firstUsableIndex ??= index;
+        }
       } catch (_) {
         // Struktur/network tidak cocok: lanjut ke metode berikutnya.
       }
     }
-    return null;
+    if (firstUsableIndex != null) {
+      _rememberStrategy(cacheKey, firstUsableIndex);
+    }
+    return firstUsable;
+  }
+
+  String _catalogSignature(SourceMangaPage page) => page.mangas
+      .take(24)
+      .map((manga) => manga.title.trim().toLowerCase())
+      .join('\n');
+
+  Future<T?> _firstWithUrl<T>(
+    String rawUrl,
+    Future<T> Function(MangaSource source, String url) request,
+    bool Function(T result) usable, {
+    required String operationKey,
+  }) async {
+    final rebased = await _first(
+      (source) => request(source, rebaseSourceUrl(rawUrl, source.baseUrl)),
+      usable,
+      operationKey: operationKey,
+    );
+    if (rebased != null || rebaseSourceUrl(rawUrl, baseUrl) == rawUrl) {
+      return rebased;
+    }
+    return _first(
+      (source) => request(source, rawUrl),
+      usable,
+      operationKey: operationKey,
+    );
+  }
+
+  String _cacheKey(String operation) =>
+      '$name|$baseUrl|$operation|'
+      '${_strategies.map((s) => '${s.runtimeType}@${s.baseUrl}').join(',')}';
+
+  void _rememberStrategy(String key, int index) {
+    _preferredStrategyIndexes[key] = index;
+    while (_preferredStrategyIndexes.length > 128) {
+      _preferredStrategyIndexes.remove(_preferredStrategyIndexes.keys.first);
+    }
   }
 
   bool _hasDetails(SourceMangaDetails details) =>
@@ -125,7 +235,7 @@ class AdaptiveSource implements MangaSource {
   Never _throwWebView(String url) => throw MangaSourceWebViewException(
     message:
         'Semua metode parser $name sudah dicoba. Buka lewat WebView untuk melanjutkan.',
-    url: _absoluteUrl(url),
+    url: rebaseSourceUrl(_absoluteUrl(url), baseUrl),
   );
 
   String _absoluteUrl(String raw) {

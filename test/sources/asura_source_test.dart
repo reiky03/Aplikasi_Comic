@@ -60,6 +60,14 @@ void main() {
 </body></html>
 ''';
 
+  String browseHtml(String title, String slug) =>
+      '''
+<html><body>
+<astro-island props='{"initialSeries":[1,[[0,{"slug":[0,"$slug"],"title":[0,"$title"],"cover":[0,"https://cdn.asura/covers/$slug.webp"],"public_url":[0,"/comics/$slug"]}]]],"totalCount":[0,1]}'>
+</astro-island>
+</body></html>
+''';
+
   setUp(() {
     source = AsuraSource(
       client: MockClient((request) async {
@@ -96,6 +104,34 @@ void main() {
       'https://cdn.asura/covers/murim.webp',
     );
   });
+
+  test(
+    'populer dan terbaru memakai parameter sort Asura yang berbeda',
+    () async {
+      final requestedUrls = <Uri>[];
+      final browseSource = AsuraSource(
+        client: MockClient((request) async {
+          requestedUrls.add(request.url);
+          final sort = request.url.queryParameters['sort'];
+          return html(
+            sort == 'popular'
+                ? browseHtml('Popular Asura', 'popular-asura')
+                : browseHtml('Latest Asura', 'latest-asura'),
+          );
+        }),
+      );
+
+      final popular = await browseSource.fetchPopular(1);
+      final latest = await browseSource.fetchLatest(1);
+
+      expect(popular.mangas.single.title, 'Popular Asura');
+      expect(latest.mangas.single.title, 'Latest Asura');
+      expect(requestedUrls[0].queryParameters['sort'], 'popular');
+      expect(requestedUrls[1].queryParameters['sort'], 'update');
+      expect(requestedUrls[0].queryParameters, isNot(contains('order')));
+      expect(requestedUrls[1].queryParameters, isNot(contains('order')));
+    },
+  );
 
   test('fetchMangaDetails mengurai props Astro', () async {
     final details = await source.fetchMangaDetails(

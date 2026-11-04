@@ -1,17 +1,20 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_scope.dart';
+import 'models.dart';
 
 /// Satu bookmark — "momen epic" yang ditandai user di halaman tertentu
 /// suatu chapter, biar gampang ditemukan lagi lain kali. Beda dari
 /// `history` (posisi baca TERAKHIR, satu per komik) — bookmark bisa
 /// banyak per komik/chapter, dan tidak berubah/tertimpa oleh progres baca
-/// biasa. doc id = `{comicId}_ch{chNum}_p{page}` (deterministik, jadi
-/// toggle on/off = set/delete dokumen yang sama, tidak ada duplikat).
+/// biasa. Bookmark baru dari sumber asli memakai hash URL chapter pada doc id;
+/// bookmark lama tetap dikenali lewat `{comicId}_ch{chNum}_p{page}`.
 class BookmarkEntry {
   const BookmarkEntry({
     required this.id,
@@ -47,16 +50,16 @@ class BookmarkEntry {
   final String? chapterUrl;
 
   Map<String, dynamic> toMap() => {
-        'comicId': comicId,
-        'title': title,
-        'sourceName': src,
-        'hue': hue,
-        'chapter': chNum,
-        'chapterLabel': chapterLabel,
-        'page': page,
-        'pages': pages,
-        'chapterUrl': ?chapterUrl,
-      };
+    'comicId': comicId,
+    'title': title,
+    'sourceName': src,
+    'hue': hue,
+    'chapter': chNum,
+    'chapterLabel': chapterLabel,
+    'page': page,
+    'pages': pages,
+    'chapterUrl': ?chapterUrl,
+  };
 
   factory BookmarkEntry.fromMap(String id, Map<String, dynamic> map) {
     final ts = map['createdAt'];
@@ -91,24 +94,57 @@ class BookmarksNotifier extends Notifier<List<BookmarkEntry>> {
     // history: field `createdAt` pakai FieldValue.serverTimestamp(),
     // yang bisa bikin dokumen sempat hilang dari hasil orderBy selagi
     // tulisannya masih pending. Lihat docs/DATABASE.md & PROGRESS.md.
-    _sub = col.snapshots().listen(
-      (snap) {
-        final list = snap.docs
-            .map((d) => BookmarkEntry.fromMap(d.id, d.data()))
-            .toList()
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        state = list;
-      },
-      onError: (Object e) => debugPrint('bookmarks stream error: $e'),
-    );
+    _sub = col.snapshots().listen((snap) {
+      final list =
+          snap.docs.map((d) => BookmarkEntry.fromMap(d.id, d.data())).toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      state = list;
+    }, onError: (Object e) => debugPrint('bookmarks stream error: $e'));
     return const [];
   }
 
-  static String idFor(String comicId, int chNum, int page) =>
-      '${comicId}_ch${chNum}_p$page';
+  static String idFor(
+    String comicId,
+    int chNum,
+    int page, {
+    String? chapterUrl,
+  }) {
+    final identity = normalizeChapterIdentity(chapterUrl);
+    if (identity == null) return '${comicId}_ch${chNum}_p$page';
+    final digest = sha256.convert(utf8.encode(identity)).toString();
+    return '${comicId}_url${digest.substring(0, 24)}_p$page';
+  }
 
-  bool isBookmarked(String comicId, int chNum, int page) =>
-      state.any((b) => b.id == idFor(comicId, chNum, page));
+  static bool matchesChapter(
+    BookmarkEntry entry, {
+    required String comicId,
+    required int chapterNum,
+    String? chapterUrl,
+  }) {
+    if (entry.comicId != comicId) return false;
+    final identity = normalizeChapterIdentity(chapterUrl);
+    final savedIdentity = normalizeChapterIdentity(entry.chapterUrl);
+    if (identity != null && savedIdentity != null) {
+      return sameChapterIdentity(savedIdentity, identity);
+    }
+    return entry.chNum == chapterNum;
+  }
+
+  bool isBookmarked(
+    String comicId,
+    int chNum,
+    int page, {
+    String? chapterUrl,
+  }) => state.any(
+    (entry) =>
+        entry.page == page &&
+        matchesChapter(
+          entry,
+          comicId: comicId,
+          chapterNum: chNum,
+          chapterUrl: chapterUrl,
+        ),
+  );
 
   List<BookmarkEntry> forComic(String comicId) =>
       state.where((b) => b.comicId == comicId).toList();
@@ -125,11 +161,23 @@ class BookmarksNotifier extends Notifier<List<BookmarkEntry>> {
     required int pages,
     String? chapterUrl,
   }) async {
-    final id = idFor(comicId, chNum, page);
-    final exists = state.any((b) => b.id == id);
+    final existing = state
+        .where(
+          (entry) =>
+              entry.page == page &&
+              matchesChapter(
+                entry,
+                comicId: comicId,
+                chapterNum: chNum,
+                chapterUrl: chapterUrl,
+              ),
+        )
+        .firstOrNull;
+    final id =
+        existing?.id ?? idFor(comicId, chNum, page, chapterUrl: chapterUrl);
     final col = _col;
     if (col == null) {
-      state = exists
+      state = existing != null
           ? state.where((b) => b.id != id).toList()
           : [
               BookmarkEntry(
@@ -149,7 +197,7 @@ class BookmarksNotifier extends Notifier<List<BookmarkEntry>> {
             ];
       return;
     }
-    if (exists) {
+    if (existing != null) {
       await col.doc(id).delete();
     } else {
       await col.doc(id).set({
@@ -179,4 +227,5 @@ class BookmarksNotifier extends Notifier<List<BookmarkEntry>> {
 
 final bookmarksProvider =
     NotifierProvider<BookmarksNotifier, List<BookmarkEntry>>(
-        BookmarksNotifier.new);
+      BookmarksNotifier.new,
+    );

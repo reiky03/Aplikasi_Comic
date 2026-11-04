@@ -1,6 +1,8 @@
 import 'manga_source.dart';
+import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
+import 'sveltekit_comic_source.dart';
 
 /// Kumpulan parser tambahan yang dicoba SETELAH parser utama gagal.
 ///
@@ -16,8 +18,13 @@ class AlternativeSourceMethods implements MangaSource {
   }) : _strategies =
            strategies ??
            [
+             // Banyak source modern berpindah dari WordPress ke frontend/API
+             // SvelteKit. Ini hanya dicoba setelah extension + fallback utama
+             // gagal, jadi jalur lama yang sudah berhasil tetap tidak berubah.
+             SvelteKitComicSource(name: name, baseUrl: baseUrl),
              MangaThemesiaSource(name: name, baseUrl: baseUrl),
              NatsuIdSource(name: name, baseUrl: baseUrl),
+             MadaraSource(name: name, baseUrl: baseUrl),
            ];
 
   @override

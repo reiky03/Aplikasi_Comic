@@ -82,6 +82,24 @@ void main() {
     expect(page.hasNextPage, isTrue);
   });
 
+  test('archive Madara generik memakai sort views dan latest', () async {
+    final requested = <Uri>[];
+    final madaraLike = UniversalHtmlSource(
+      name: 'Madara Generic',
+      baseUrl: 'https://madara.example',
+      client: MockClient((request) async {
+        requested.add(request.url);
+        return html(listHtml);
+      }),
+    );
+
+    await madaraLike.fetchPopular(1);
+    await madaraLike.fetchLatest(1);
+
+    expect(requested[0].queryParameters['m_orderby'], 'views');
+    expect(requested[1].queryParameters['m_orderby'], 'latest');
+  });
+
   test('fetchPopular mencoba katalog Toongod /webtoons lebih dulu', () async {
     final requestedUrls = <Uri>[];
     final toongodSource = UniversalHtmlSource(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/repository_state.dart';
 import '../../data/source_resolver.dart';
+import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
 import '../reader/reader_screen.dart';
@@ -67,9 +69,10 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
       _error = null;
     });
     try {
+      final activeMangaUrl = rebaseSourceUrl(mangaUrl, source.baseUrl);
       final results = await Future.wait([
-        source.fetchMangaDetails(mangaUrl),
-        source.fetchChapterList(mangaUrl),
+        source.fetchMangaDetails(activeMangaUrl),
+        source.fetchChapterList(activeMangaUrl),
       ]);
       if (!mounted) return;
       setState(() {
@@ -77,6 +80,18 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         _realChapters = results[1] as List<SourceChapter>;
         _loading = false;
       });
+      if (activeMangaUrl != mangaUrl) {
+        unawaited(
+          ref
+              .read(libraryProvider.notifier)
+              .updateSourceMangaUrl(widget.comic.id, activeMangaUrl)
+              .catchError(
+                (Object error) => debugPrint(
+                  'Gagal simpan domain baru ${widget.comic.title}: $error',
+                ),
+              ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -131,13 +146,17 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     // penting untuk komik dengan ratusan chapter.
                     delegate: SliverChildBuilderDelegate(
                       (context, i) => _ChapterRow(
-                        key: ValueKey(orderedChapters[i].num),
+                        key: ValueKey(
+                          orderedChapters[i].sourceUrl ??
+                              orderedChapters[i].num,
+                        ),
                         comic: current,
                         chapter: orderedChapters[i],
                         onTap: () => _openReader(
                           context,
                           current,
                           orderedChapters[i].num,
+                          orderedChapters[i].sourceUrl,
                         ),
                       ),
                       childCount: orderedChapters.length,
@@ -565,8 +584,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     final bookmarked = ref
         .watch(bookmarksProvider)
         .where((b) => b.comicId == comic.id)
-        .map((b) => b.chNum)
-        .toSet();
+        .toList();
     final real = _realChapters;
     if (real == null) return _makeDemoChapters(comic, progress, bookmarked);
     final total = real.length;
@@ -576,6 +594,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
           num: total - i,
           title: real[i].name,
           date: _relativeDate(real[i].dateUpload),
+          chapterUrl: real[i].url,
           comic: comic,
           progress: progress,
           bookmarked: bookmarked,
@@ -595,12 +614,17 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     required int num,
     required String title,
     required String date,
+    String? chapterUrl,
     required Comic comic,
     required HistoryEntry? progress,
-    required Set<int> bookmarked,
+    required List<BookmarkEntry> bookmarked,
   }) {
-    final isCurrent = progress != null && progress.chNum == num;
-    final savedProgress = comic.chapterProgress[num];
+    final isCurrent =
+        progress != null &&
+        (chapterUrl != null && progress.chapterUrl != null
+            ? sameChapterIdentity(progress.chapterUrl, chapterUrl)
+            : progress.chNum == num);
+    final savedProgress = comic.progressForChapter(num, chapterUrl: chapterUrl);
     final effectiveProgress = isCurrent
         ? ChapterProgress(
             page: progress.page,
@@ -615,7 +639,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     // buka yang lama sama sekali. Pakai [Comic.readChapters] (per-chapter,
     // ditandai saat halaman terakhirnya benar-benar tercapai).
     final fullyRead =
-        comic.readChapters.contains(num) ||
+        comic.isChapterRead(num, chapterUrl: chapterUrl) ||
         (effectiveProgress != null &&
             effectiveProgress.pages > 0 &&
             effectiveProgress.page >= effectiveProgress.pages);
@@ -623,6 +647,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
       num: num,
       title: title,
       date: date,
+      sourceUrl: chapterUrl,
       read: fullyRead,
       progressLabel:
           (effectiveProgress != null &&
@@ -631,7 +656,14 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
               effectiveProgress.pages > 0)
           ? 'Hal ${effectiveProgress.page}/${effectiveProgress.pages}'
           : null,
-      hasBookmark: bookmarked.contains(num),
+      hasBookmark: bookmarked.any(
+        (entry) => BookmarksNotifier.matchesChapter(
+          entry,
+          comicId: comic.id,
+          chapterNum: num,
+          chapterUrl: chapterUrl,
+        ),
+      ),
     );
   }
 
@@ -648,7 +680,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   List<_Chapter> _makeDemoChapters(
     Comic comic,
     HistoryEntry? progress,
-    Set<int> bookmarked,
+    List<BookmarkEntry> bookmarked,
   ) {
     final total = comic.ch;
     return [
@@ -668,16 +700,12 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     ];
   }
 
-  /// URL chapter asli untuk nomor sintetis [num] (lihat [_chaptersToShow]).
-  String? _urlForChapterNum(int num) {
-    final chapters = _realChapters;
-    if (chapters == null) return null;
-    final index = chapters.length - num;
-    if (index < 0 || index >= chapters.length) return null;
-    return chapters[index].url;
-  }
-
-  void _openReader(BuildContext context, Comic comic, int chapter) {
+  void _openReader(
+    BuildContext context,
+    Comic comic,
+    int chapter, [
+    String? chapterUrl,
+  ]) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ReaderScreen(
@@ -685,10 +713,18 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
           chapter: chapter,
           fromDetail: true,
           sourceChapters: _realChapters,
-          initialChapterUrl: _urlForChapterNum(chapter),
+          initialChapterUrl: chapterUrl ?? _urlForChapterNum(chapter),
         ),
       ),
     );
+  }
+
+  String? _urlForChapterNum(int chapter) {
+    final chapters = _realChapters;
+    if (chapters == null) return null;
+    final index = chapters.length - chapter;
+    if (index < 0 || index >= chapters.length) return null;
+    return chapters[index].url;
   }
 
   Future<void> _openCollectionPicker(
@@ -800,12 +836,14 @@ class _Chapter {
     required this.date,
     required this.read,
     required this.hasBookmark,
+    this.sourceUrl,
     this.progressLabel,
   });
 
   final int num;
   final String title;
   final String date;
+  final String? sourceUrl;
   final bool read;
 
   /// Progres baca yang belum tuntas, mis. "Hal 10/40" — null kalau sudah

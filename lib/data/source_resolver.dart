@@ -1,5 +1,6 @@
 import '../sources/manga_source.dart';
 import '../sources/source_catalog.dart';
+import 'library_state.dart';
 import 'repository_state.dart';
 import 'sources_state.dart';
 
@@ -19,11 +20,16 @@ MangaSource? resolveMangaSource(
   List<ComicSource> customSources,
   List<ComicRepository> repositories,
 ) {
-  final builtIn = SourceCatalog.sources
-      .where((s) => s.name == sourceName)
+  // Sumber yang diedit user harus menang atas domain built-in hardcode.
+  // Sebelumnya nama seperti "Ikiru" selalu mengambil instance lama dulu,
+  // sehingga URL baru yang sudah disimpan user justru tidak pernah dipakai.
+  final custom = customSources
+      .where(
+        (source) =>
+            source.matchesName(sourceName) ||
+            sameLibraryTitle(source.name, sourceName),
+      )
       .firstOrNull;
-  if (builtIn != null) return builtIn;
-  final custom = customSources.where((s) => s.name == sourceName).firstOrNull;
   if (custom != null) {
     final customBaseUrl = custom.url.startsWith('http')
         ? custom.url
@@ -33,19 +39,25 @@ MangaSource? resolveMangaSource(
       rawUrl: customBaseUrl,
       packageName: custom.repoPackage,
       sourceId: custom.repoSourceId,
+      name: custom.name,
+      nameAliases: custom.nameAliases,
+      urlAliases: custom.urlAliases,
     );
     final baseUrl = repoMatch?.source.baseUrl ?? customBaseUrl;
     final kind = repoMatch?.source.pkg == null
-        ? custom.parserKind
+        ? (repoMatch?.source.parserKind ?? custom.parserKind)
         : 'extension-runtime:${repoMatch!.source.pkg}';
-    if (kind == null) {
-      return SourceCatalog.buildAutomatic(custom.name, customBaseUrl);
-    }
-    return SourceCatalog.buildGeneric(
-      kind,
+    final fallbackBaseUrls = <String>{
+      ...custom.urlAliases,
+      if (baseUrl != customBaseUrl) customBaseUrl,
+      ...?repoMatch?.source.baseUrlAliases,
+    };
+    return SourceCatalog.buildAutomatic(
       custom.name,
       baseUrl,
-      lang: repoMatch?.source.lang,
+      preferredKind: kind,
+      lang: repoMatch?.source.lang ?? custom.lang,
+      fallbackBaseUrls: fallbackBaseUrls,
     );
   }
 
@@ -55,7 +67,11 @@ MangaSource? resolveMangaSource(
   // reader tetap memakai extension runtime yang sama.
   for (final repository in repositories) {
     final repoSource = repository.sources
-        .where((source) => source.name == sourceName)
+        .where(
+          (source) =>
+              source.matchesName(sourceName) ||
+              sameLibraryTitle(source.name, sourceName),
+        )
         .firstOrNull;
     if (repoSource == null || repoSource.baseUrl == null) continue;
     final baseUrl = repoSource.baseUrl!.startsWith('http')
@@ -64,15 +80,22 @@ MangaSource? resolveMangaSource(
     final kind = repoSource.pkg == null
         ? repoSource.parserKind
         : 'extension-runtime:${repoSource.pkg}';
-    if (kind == null) {
-      return SourceCatalog.buildAutomatic(repoSource.name, baseUrl);
-    }
-    return SourceCatalog.buildGeneric(
-      kind,
+    return SourceCatalog.buildAutomatic(
       repoSource.name,
       baseUrl,
+      preferredKind: kind,
       lang: repoSource.lang,
+      fallbackBaseUrls: repoSource.baseUrlAliases,
     );
   }
-  return null;
+
+  final builtIn = SourceCatalog.sources
+      .where(
+        (source) =>
+            source.name == sourceName ||
+            sameLibraryTitle(source.name, sourceName),
+      )
+      .firstOrNull;
+  if (builtIn == null) return null;
+  return SourceCatalog.buildAutomatic(sourceName, builtIn.baseUrl);
 }

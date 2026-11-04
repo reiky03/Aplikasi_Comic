@@ -77,10 +77,10 @@ class AsuraSource implements MangaSource {
     return segments[index + 1];
   }
 
-  Future<SourceMangaPage> _browse(int page, String order) async {
+  Future<SourceMangaPage> _browse(int page, String sort) async {
     final url = Uri.parse(
       '$baseUrl/browse',
-    ).replace(queryParameters: {'page': '$page', 'order': order});
+    ).replace(queryParameters: {'page': '$page', 'sort': sort});
     final document = await _getHtml(url);
     final props = _propsWithKey(document, 'initialSeries');
     final series = (props['initialSeries'] as List? ?? const [])

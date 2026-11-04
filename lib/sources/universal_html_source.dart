@@ -495,6 +495,8 @@ class UniversalHtmlSource implements MangaSource {
               'per_page': '24',
               '_embed': '1',
               if (query.isNotEmpty) 'search': query,
+              if (order == 'update') 'orderby': 'modified',
+              if (order == 'update') 'order': 'desc',
             },
           ),
       base.resolve('/api/manga').replace(queryParameters: common),
@@ -516,6 +518,9 @@ class UniversalHtmlSource implements MangaSource {
     final base = Uri.parse(baseUrl);
     if (query.trim().isNotEmpty) {
       return [
+        base
+            .resolve('/')
+            .replace(queryParameters: {'s': query, 'post_type': 'wp-manga'}),
         base
             .resolve('/')
             .replace(
@@ -565,13 +570,26 @@ class UniversalHtmlSource implements MangaSource {
       // Toongod menaruh katalog manhwa di route khusus ini, bukan di
       // `/manga/`. Taruh paling awal supaya halaman katalog yang benar
       // dipakai sebelum fallback theme umum mencoba route lain.
+      // Bentuk archive resmi Madara/MangaBooth. Kandidat lama di bawah tetap
+      // dipertahankan, ini cuma menambah parameter sort yang benar.
+      base
+          .resolve(page <= 1 ? '/manga/' : '/manga/page/$page/')
+          .replace(
+            queryParameters: {
+              'm_orderby': order == 'update' ? 'latest' : 'views',
+            },
+          ),
+      base
+          .resolve('/manga/')
+          .replace(queryParameters: {'page': '$page', 'order': order}),
+      // Route tipe konten tetap dicoba, tetapi sesudah archive `/manga/`.
+      // Banyak WordPress mengalihkan route asing ke homepage dengan status
+      // 200; kalau ditaruh di depan, Populer dan Terbaru salah-sama membaca
+      // section homepage yang identik.
       base.resolve('/webtoons/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/webtoon/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/webton/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/manhwa/').replace(queryParameters: {'page': '$page'}),
-      base
-          .resolve('/manga/')
-          .replace(queryParameters: {'page': '$page', 'order': order}),
       base.resolve('/comics/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/comic/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/komik/').replace(queryParameters: {'page': '$page'}),
@@ -1754,8 +1772,13 @@ class UniversalHtmlSource implements MangaSource {
   ) {
     final pages = <SourcePage>[];
     final imgs = document.querySelectorAll(
-      '#readerarea img, .reading-content img, .chapter-content img, '
-      '.entry-content img, .separator img, .page-break img, article img, main img',
+      '#readerarea img, .reader-area img, .reading-content img, .chapter-content img, '
+      '.entry-content img, .separator img, .page-break img, article img, main img, '
+      '#chapter-content img, .read-content img, .comic-content img, .post-content img, '
+      '.chapter-image img, #image-container img, .reader-body img, .webtoon-image img, '
+      '.vung-doc img, .container-chapter-reader img, .reading-box img, '
+      'div[id*="reader"] img, div[class*="reader"] img, div[class*="reading"] img, '
+      'div[class*="chapter"] img, div[class*="page"] img, noscript img',
     );
     for (final img in imgs) {
       final url = _imgAttr(img);

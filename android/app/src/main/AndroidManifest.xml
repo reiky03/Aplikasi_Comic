@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Perlu eksplisit di manifest utama (bukan cuma debug/profile) supaya
          build release juga bisa akses jaringan: dipakai http/Firestore
          dan sekarang WebView (buka situs sumber langsung). -->
@@ -7,7 +8,9 @@
     <!-- Dipakai Extension Runtime untuk menemukan APK extension Tachiyomi/Mihon
          yang sudah terpasang di device. Ini bukan runtime permission, tapi
          perlu dipertimbangkan ulang kalau nanti app mau masuk Play Store. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission"/>
     <application
         android:label="Kizen"
         android:name="${applicationName}"

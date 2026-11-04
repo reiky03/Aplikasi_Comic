@@ -143,17 +143,68 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     });
   }
 
+  Future<void> moveToCollectionBatch(
+    Iterable<String> comicIds,
+    String? collectionId,
+  ) async {
+    final targets = comicIds.toSet();
+    if (targets.isEmpty) return;
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final c in state)
+          if (targets.contains(c.id))
+            c.copyWith(col: collectionId, clearCol: collectionId == null)
+          else
+            c,
+      ];
+      return;
+    }
+    final batch = FirebaseFirestore.instance.batch();
+    for (final id in targets) {
+      batch.update(col.doc(id), {
+        'collectionId': collectionId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
   /// Tambah komik baru ke library (paling depan, seperti prototipe).
   Future<void> add(Comic comic, {String? collectionId}) async {
     final col = _col;
     final withCol = comic.copyWith(col: collectionId);
     if (col == null) {
-      state = [withCol, ...state];
+      state = [withCol.copyWith(addedAt: DateTime.now()), ...state];
       return;
     }
     await col.doc(comic.id).set({
       ...withCol.toMap(),
       'addedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Simpan alamat manga terbaru setelah parser berhasil me-rebase URL lama
+  /// ke domain aktif. Identitas komik dan seluruh progres tetap sama.
+  Future<void> updateSourceMangaUrl(String comicId, String mangaUrl) async {
+    final normalized = mangaUrl.trim();
+    if (normalized.isEmpty) return;
+    final current = state.where((comic) => comic.id == comicId).firstOrNull;
+    if (current == null || current.sourceMangaUrl == normalized) return;
+    final col = _col;
+    if (col == null) {
+      state = [
+        for (final comic in state)
+          if (comic.id == comicId)
+            comic.copyWith(sourceMangaUrl: normalized)
+          else
+            comic,
+      ];
+      return;
+    }
+    await col.doc(comicId).update({
+      'sourceMangaUrl': normalized,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -174,7 +225,7 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     final col = _col;
     if (col == null) {
       state = [
-        withCol,
+        withCol.copyWith(addedAt: DateTime.now()),
         ...state.where(
           (saved) => saved.id != comic.id && !duplicateIds.contains(saved.id),
         ),
@@ -221,6 +272,34 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     await col.doc(comicId).delete();
   }
 
+  /// Hapus banyak komik sekaligus dalam satu batch operasi.
+  Future<void> removeBatch(Iterable<String> comicIds) async {
+    final targets = comicIds.toSet();
+    if (targets.isEmpty) return;
+    final col = _col;
+    if (col == null) {
+      state = state.where((c) => !targets.contains(c.id)).toList();
+      return;
+    }
+    final batch = FirebaseFirestore.instance.batch();
+    for (final id in targets) {
+      batch.delete(col.doc(id));
+    }
+    await batch.commit();
+  }
+
+  /// Hapus semua komik yang berasal dari nama sumber tertentu.
+  Future<void> removeBySource(String sourceName) async {
+    final ids = state
+        .where(
+          (c) =>
+              c.src.trim().toLowerCase() == sourceName.trim().toLowerCase(),
+        )
+        .map((c) => c.id)
+        .toList();
+    await removeBatch(ids);
+  }
+
   /// Lepas semua komik dari koleksi yang dihapus (komik tetap ada).
   Future<void> unassignCollection(String collectionId) async {
     final col = _col;
@@ -255,6 +334,7 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     int? pages,
     String? chapterUrl,
     String? chapterLabel,
+    bool completed = false,
   }) async {
     final current = state.where((c) => c.id == comicId).firstOrNull;
     if (current == null) return;
@@ -264,9 +344,26 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       chapterUrl: chapterUrl,
       chapterLabel: chapterLabel,
     );
-    final updatedProgress = chapterProgress == null
-        ? current.chapterProgress
-        : {...current.chapterProgress, read: chapterProgress};
+    final progressKeysToRemove = completed
+        ? _progressKeysForChapter(current.chapterProgress, read, chapterUrl)
+        : const <int>[];
+    final progressStorageKey = !completed && chapterProgress != null
+        ? _progressStorageKey(current.chapterProgress, read, chapterUrl)
+        : null;
+    final updatedProgress = {...current.chapterProgress};
+    for (final key in progressKeysToRemove) {
+      updatedProgress.remove(key);
+    }
+    if (progressStorageKey != null && chapterProgress != null) {
+      updatedProgress[progressStorageKey] = chapterProgress;
+    }
+    final chapterIdentity = normalizeChapterIdentity(chapterUrl);
+    final updatedReadChapters = completed && chapterIdentity == null
+        ? {...current.readChapters, read}
+        : current.readChapters;
+    final updatedReadChapterUrls = completed && chapterIdentity != null
+        ? {...current.readChapterUrls, chapterIdentity}
+        : current.readChapterUrls;
     final col = _col;
     if (col == null) {
       state = [
@@ -275,6 +372,8 @@ class LibraryNotifier extends Notifier<List<Comic>> {
             c.copyWith(
               read: read,
               unread: read >= c.ch ? 0 : c.unread,
+              readChapters: updatedReadChapters,
+              readChapterUrls: updatedReadChapterUrls,
               chapterProgress: updatedProgress,
             )
           else
@@ -282,13 +381,21 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       ];
       return;
     }
-    await col.doc(comicId).update(<Object, Object?>{
+    final patch = <Object, Object?>{
       'read': read,
       if (read >= current.ch) 'unread': 0,
-      if (chapterProgress != null)
-        FieldPath(['chapterProgress', '$read']): chapterProgress.toMap(),
+      if (completed && chapterIdentity == null)
+        'readChapters': FieldValue.arrayUnion([read]),
+      if (completed && chapterIdentity != null)
+        'readChapterUrls': FieldValue.arrayUnion([chapterIdentity]),
+      for (final key in progressKeysToRemove)
+        FieldPath(['chapterProgress', '$key']): FieldValue.delete(),
+      if (progressStorageKey != null && chapterProgress != null)
+        FieldPath(['chapterProgress', '$progressStorageKey']): chapterProgress
+            .toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    };
+    await col.doc(comicId).update(patch);
   }
 
   ChapterProgress? _chapterProgressFor({
@@ -308,30 +415,108 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     );
   }
 
+  /// Map progres lama memakai nomor sintetis sebagai key. Kalau nomor itu
+  /// sekarang sudah ditempati URL chapter lain, simpan ke slot negatif agar
+  /// kedua progres tetap utuh; lookup UI tetap memakai URL di value.
+  int _progressStorageKey(
+    Map<int, ChapterProgress> progress,
+    int chapterNum,
+    String? chapterUrl,
+  ) {
+    final identity = normalizeChapterIdentity(chapterUrl);
+    if (identity != null) {
+      for (final entry in progress.entries) {
+        if (sameChapterIdentity(entry.value.chapterUrl, identity)) {
+          return entry.key;
+        }
+      }
+      final occupied = progress[chapterNum];
+      if (occupied != null &&
+          normalizeChapterIdentity(occupied.chapterUrl) != null) {
+        var fallback = -1;
+        while (progress.containsKey(fallback)) {
+          fallback--;
+        }
+        return fallback;
+      }
+    }
+    return chapterNum;
+  }
+
+  List<int> _progressKeysForChapter(
+    Map<int, ChapterProgress> progress,
+    int chapterNum,
+    String? chapterUrl,
+  ) {
+    final identity = normalizeChapterIdentity(chapterUrl);
+    if (identity == null) {
+      return progress.containsKey(chapterNum) ? [chapterNum] : const [];
+    }
+    final matches = [
+      for (final entry in progress.entries)
+        if (sameChapterIdentity(entry.value.chapterUrl, identity)) entry.key,
+    ];
+    if (matches.isNotEmpty) return matches;
+    final legacy = progress[chapterNum];
+    return legacy != null && normalizeChapterIdentity(legacy.chapterUrl) == null
+        ? [chapterNum]
+        : const [];
+  }
+
   /// Tandai satu chapter [chapterNum] *selesai* dibaca (halaman terakhir
   /// tercapai) — beda dari [updateProgress] yang cuma mencatat "sedang di
   /// chapter berapa" (dipanggil tiap ganti halaman/chapter, walau belum
   /// tentu tamat). Idempotent — aman dipanggil berkali-kali.
-  Future<void> markChapterRead(String comicId, int chapterNum) async {
+  Future<void> markChapterRead(
+    String comicId,
+    int chapterNum, {
+    String? chapterUrl,
+  }) async {
     final current = state.where((c) => c.id == comicId).firstOrNull;
     if (current == null) return;
-    if (current.readChapters.contains(chapterNum)) return;
-    final updated = {...current.readChapters, chapterNum};
-    final updatedProgress = {...current.chapterProgress}..remove(chapterNum);
+    final identity = normalizeChapterIdentity(chapterUrl);
+    final alreadyRead = identity == null
+        ? current.readChapters.contains(chapterNum)
+        : current.readChapterUrls.any(
+            (url) => sameChapterIdentity(url, identity),
+          );
+    final progressKeys = _progressKeysForChapter(
+      current.chapterProgress,
+      chapterNum,
+      chapterUrl,
+    );
+    if (alreadyRead && progressKeys.isEmpty) return;
+    final updatedReadChapters = identity == null
+        ? {...current.readChapters, chapterNum}
+        : current.readChapters;
+    final updatedReadChapterUrls = identity == null
+        ? current.readChapterUrls
+        : {...current.readChapterUrls, identity};
+    final updatedProgress = {...current.chapterProgress};
+    for (final key in progressKeys) {
+      updatedProgress.remove(key);
+    }
     final col = _col;
     if (col == null) {
       state = [
         for (final c in state)
           if (c.id == comicId)
-            c.copyWith(readChapters: updated, chapterProgress: updatedProgress)
+            c.copyWith(
+              readChapters: updatedReadChapters,
+              readChapterUrls: updatedReadChapterUrls,
+              chapterProgress: updatedProgress,
+            )
           else
             c,
       ];
       return;
     }
-    await col.doc(comicId).update({
-      'readChapters': (updated.toList()..sort()),
-      FieldPath(['chapterProgress', '$chapterNum']): FieldValue.delete(),
+    await col.doc(comicId).update(<Object, Object?>{
+      if (identity == null) 'readChapters': FieldValue.arrayUnion([chapterNum]),
+      if (identity != null)
+        'readChapterUrls': FieldValue.arrayUnion([identity]),
+      for (final key in progressKeys)
+        FieldPath(['chapterProgress', '$key']): FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -439,3 +624,14 @@ final collectionsProvider =
     NotifierProvider<CollectionsNotifier, List<ComicCollection>>(
       CollectionsNotifier.new,
     );
+
+/// Kelompokkan komik berdasarkan sumber (nama situs / src denormalized).
+Map<String, List<Comic>> groupComicsBySource(List<Comic> comics) {
+  final groups = <String, List<Comic>>{};
+  for (final comic in comics) {
+    final src =
+        comic.src.trim().isEmpty ? 'Sumber Tidak Diketahui' : comic.src.trim();
+    groups.putIfAbsent(src, () => []).add(comic);
+  }
+  return groups;
+}
