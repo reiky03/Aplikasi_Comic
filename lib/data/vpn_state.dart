@@ -69,7 +69,7 @@ class VpnState {
 /// Notifier pengelola status VPN & Anti-Blokir Kizen
 class VpnNotifier extends Notifier<VpnState> {
   static bool currentVpnEnabled = true;
-  static String currentProviderId = 'hongkong';
+  static String currentProviderId = 'cloudflare';
 
   @override
   VpnState build() {
@@ -77,8 +77,8 @@ class VpnNotifier extends Notifier<VpnState> {
     _loadPreferences();
     return const VpnState(
       isEnabled: true, // Default aktif agar pengguna langsung bebas dari blokir
-      provider: VpnProvider.hongkong,
-      pingMs: 22,
+      provider: VpnProvider.cloudflare,
+      pingMs: 24,
       isConnecting: false,
     );
   }
@@ -87,7 +87,7 @@ class VpnNotifier extends Notifier<VpnState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final enabled = prefs.getBool(_kPrefVpnEnabled) ?? true;
-      final providerId = prefs.getString(_kPrefVpnProvider) ?? 'hongkong';
+      final providerId = prefs.getString(_kPrefVpnProvider) ?? 'cloudflare';
       final provider = VpnProvider.fromId(providerId);
 
       currentVpnEnabled = enabled;

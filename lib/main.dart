@@ -5,7 +5,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/app_theme.dart';
-import 'data/kizen_http_overrides.dart';
 import 'data/source_session_store.dart';
 import 'features/auth/auth_repository.dart';
 import 'features/onboarding/splash_screen.dart';
@@ -13,7 +12,6 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  installKizenHttpOverrides();
   await SourceSessionStore.initialize();
   SystemChrome.setSystemUIOverlayStyle(AppTheme.systemOverlayStyle);
   // FAKE_AUTH (web preview di sandbox) tidak butuh Firebase asli — lewati

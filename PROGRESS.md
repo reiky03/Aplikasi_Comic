@@ -27,6 +27,31 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.1.4: Hotfix Pemulihan Jaringan Aplikasi (Hapus Global HttpOverrides) & Rilis v1.1.4
+
+Permintaan user:
+"eh beb kok malah pada jadi gak bisa samsek diapa apain, komik apapun gak bisa dibuka, komik library juga jadi uknown dll, coba cek lagi apa ini, soalnya gagal memuat"
+
+Root cause:
+Pada v1.1.3, sempat dipasang `installKizenHttpOverrides()` via `HttpOverrides.global` di `lib/main.dart` untuk mencoba menangani DoH pada level socket Dart murni. Hal ini secara fatal membajak semua socket internal Dart di seluruh aplikasi, termasuk koneksi Firestore, Firebase Auth, Google Fonts, dan HTTP client bawaan. Akibatnya, pooling koneksi, session cache TLS, dan ALPN negotiation terganggu sehingga request network mengalami timeout atau `SocketException`. Di UI hal ini termanifestasi sebagai "Gagal memuat deskripsi", "Gagal memuat chapter", dan status komik di library menjadi "Unknown".
+
+Solusi & Perbaikan:
+1. Menghapus total `installKizenHttpOverrides()` dari `lib/main.dart` dan menghapus berkas `lib/data/kizen_http_overrides*.dart`. Seluruh networking Dart kembali berjalan normal, stabil, dan cepat tanpa interupsi global socket.
+2. Mengembalikan default VPN provider di `lib/data/vpn_state.dart` ke Cloudflare (1.1.1.1) yang terbukti paling stabil di Indonesia.
+3. Tetap mempertahankan semua penyempurnaan v1.1.3:
+   - Posisi tombol floating multi-select library yang melayang dinamis di atas navbar (`bottom: math.max(112.0, ...)`), tidak lagi mepet ke navbar.
+   - Parser Universal Doujin & Galeri (`/gallery/`, `/doujin/`, `/g/`, `.entry`, `.thumb`, auto-cookie E-Hentai, single-gallery fallback) di `UniversalHtmlSource`.
+   - Opsi lembar aksi "Copot Versi Lama & Pasang Ulang" pada tab repository jika instalasi ekstensi bentrok versi.
+   - Opsi server Hong Kong di layar VPN dan implementasi DoH native Android OkHttp.
+4. Menaikkan versi rilis ke `v1.1.4` (build 6) di `pubspec.yaml`, `settings_screen.dart`, `about_screen.dart`, dan `README.md`.
+
+Verifikasi:
+- `flutter analyze` bersih (0 issues).
+- `flutter test -j 1` lolos 155/155 test.
+- Build release APK `kizen-v1.1.4.apk` berhasil.
+- Rilis GitHub v1.1.4 dipublikasikan.
+
+
 ### 2026-11-04 — Kizen v1.1.2: In-App VPN Anti-Blokir (DNS-over-HTTPS) + Penyempurnaan Tab Library & Multi-Select Floating Action Button
 
 Permintaan user:
