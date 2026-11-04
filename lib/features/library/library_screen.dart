@@ -54,7 +54,7 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  String _activeTab = 'all';
+  String? _activeTab;
   bool _searchOpen = false;
   String _query = '';
   LibrarySort _sort = LibrarySort.recent;
@@ -101,7 +101,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     var items = library
         .where((c) => q.isEmpty || c.title.toLowerCase().contains(q))
         .toList();
-    if (_activeTab != 'all') {
+    if (_activeTab != null) {
       items = items.where((c) => c.col == _activeTab).toList();
     }
     if (_sourceFilter != null) {
@@ -121,178 +121,190 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final demoEmpty = ref.watch(demoLibEmptyProvider);
     final library = demoEmpty ? const <Comic>[] : ref.watch(libraryProvider);
     final collections = ref.watch(collectionsProvider);
+
+    if ((_activeTab == null ||
+            _activeTab == 'all' ||
+            !collections.any((c) => c.id == _activeTab)) &&
+        collections.isNotEmpty) {
+      _activeTab = collections.first.id;
+    }
+
     final visible = _visibleComics(library);
     final libraryEmpty = library.isEmpty;
 
     return SafeArea(
       bottom: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-            child: _selectionMode
-                ? Row(
-                    children: [
-                      AppHeaderIconButton(
-                        icon: LucideIcons.x,
-                        onTap: _exitSelectionMode,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: _selectionMode
+                    ? Row(
+                        children: [
+                          AppHeaderIconButton(
+                            icon: LucideIcons.x,
+                            onTap: _exitSelectionMode,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '${_selectedComicIds.length} dipilih',
+                              style: AppTypography.screenTitle,
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _toggleSelectAll(visible),
+                            icon: Icon(
+                              _selectedComicIds.length == visible.length &&
+                                      visible.isNotEmpty
+                                  ? LucideIcons.checkCheck
+                                  : LucideIcons.checkSquare,
+                              size: 16,
+                              color: AppColors.accentText,
+                            ),
+                            label: Text(
+                              _selectedComicIds.length == visible.length &&
+                                      visible.isNotEmpty
+                                  ? 'Batal Semua'
+                                  : 'Pilih Semua',
+                              style: AppTypography.jakarta(
+                                size: 12.5,
+                                weight: FontWeight.w700,
+                                color: AppColors.accentText,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: Text('Library', style: AppTypography.screenTitle),
+                          ),
+                          AppHeaderIconButton(
+                            icon: AppIcons.search,
+                            onTap: () => setState(() {
+                              _searchOpen = !_searchOpen;
+                              if (!_searchOpen) {
+                                _query = '';
+                                _searchController.clear();
+                              }
+                            }),
+                          ),
+                          const SizedBox(width: 6),
+                          AppHeaderIconButton(
+                            icon: LucideIcons.globe,
+                            onTap: () => _openSourcesManagementSheet(library),
+                          ),
+                          const SizedBox(width: 6),
+                          AppHeaderIconButton(
+                            icon: LucideIcons.listFilter,
+                            onTap: _openSortSheet,
+                          ),
+                          const SizedBox(width: 6),
+                          AppHeaderIconButton(
+                            icon: LucideIcons.checkSquare,
+                            onTap: () => setState(() => _selectionMode = true),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '${_selectedComicIds.length} dipilih',
-                          style: AppTypography.screenTitle,
-                        ),
+              ),
+              if (_searchOpen && !_selectionMode)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                  child: _SearchField(
+                    controller: _searchController,
+                    onChanged: (v) => setState(() => _query = v),
+                    onClose: () => setState(() {
+                      _searchOpen = false;
+                      _query = '';
+                      _searchController.clear();
+                    }),
+                  ),
+                ),
+              if (_sourceFilter case final sourceName?)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                  child: Container(
+                    height: 38,
+                    padding: const EdgeInsets.only(left: 12, right: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.accent.withValues(alpha: 0.35),
                       ),
-                      TextButton.icon(
-                        onPressed: () => _toggleSelectAll(visible),
-                        icon: Icon(
-                          _selectedComicIds.length == visible.length &&
-                                  visible.isNotEmpty
-                              ? LucideIcons.checkCheck
-                              : LucideIcons.checkSquare,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          LucideIcons.globe,
                           size: 16,
                           color: AppColors.accentText,
                         ),
-                        label: Text(
-                          _selectedComicIds.length == visible.length &&
-                                  visible.isNotEmpty
-                              ? 'Batal Semua'
-                              : 'Pilih Semua',
-                          style: AppTypography.jakarta(
-                            size: 12.5,
-                            weight: FontWeight.w700,
-                            color: AppColors.accentText,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Sumber: $sourceName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.jakarta(
+                              size: 12.5,
+                              weight: FontWeight.w700,
+                              color: AppColors.accentText,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: Text('Library', style: AppTypography.screenTitle),
-                      ),
-                      AppHeaderIconButton(
-                        icon: AppIcons.search,
-                        onTap: () => setState(() {
-                          _searchOpen = !_searchOpen;
-                          if (!_searchOpen) {
-                            _query = '';
-                            _searchController.clear();
-                          }
-                        }),
-                      ),
-                      const SizedBox(width: 6),
-                      AppHeaderIconButton(
-                        icon: LucideIcons.globe,
-                        onTap: () => _openSourcesManagementSheet(library),
-                      ),
-                      const SizedBox(width: 6),
-                      AppHeaderIconButton(
-                        icon: LucideIcons.listFilter,
-                        onTap: _openSortSheet,
-                      ),
-                      const SizedBox(width: 6),
-                      AppHeaderIconButton(
-                        icon: LucideIcons.checkSquare,
-                        onTap: () => setState(() => _selectionMode = true),
-                      ),
-                    ],
-                  ),
-          ),
-          if (_searchOpen && !_selectionMode)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-              child: _SearchField(
-                controller: _searchController,
-                onChanged: (v) => setState(() => _query = v),
-                onClose: () => setState(() {
-                  _searchOpen = false;
-                  _query = '';
-                  _searchController.clear();
-                }),
-              ),
-            ),
-          if (_sourceFilter case final sourceName?)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-              child: Container(
-                height: 38,
-                padding: const EdgeInsets.only(left: 12, right: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.accent.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      LucideIcons.globe,
-                      size: 16,
-                      color: AppColors.accentText,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Sumber: $sourceName',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.jakarta(
-                          size: 12.5,
-                          weight: FontWeight.w700,
-                          color: AppColors.accentText,
+                        IconButton(
+                          icon: const Icon(LucideIcons.x, size: 16),
+                          color: AppColors.textSecondary,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Hapus filter sumber',
+                          onPressed: () => setState(() => _sourceFilter = null),
                         ),
-                      ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(LucideIcons.x, size: 16),
-                      color: AppColors.textSecondary,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      tooltip: 'Hapus filter sumber',
-                      onPressed: () => setState(() => _sourceFilter = null),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (!libraryEmpty)
-            SizedBox(
-              height: 46,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
-                children: [
-                  _chip(
-                    name: 'Semua',
-                    count: library.length,
-                    active: _activeTab == 'all',
-                    onTap: () => setState(() => _activeTab = 'all'),
                   ),
-                  for (final col in collections) ...[
-                    const SizedBox(width: 8),
-                    _chip(
-                      name: col.name,
-                      count: library.where((c) => c.col == col.id).length,
-                      active: _activeTab == col.id,
-                      onTap: () => setState(() => _activeTab = col.id),
-                    ),
-                  ],
-                  const SizedBox(width: 8),
-                  _AddCollectionChip(onTap: _openManageCollections),
-                ],
+                ),
+              if (!libraryEmpty)
+                SizedBox(
+                  height: 46,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
+                    children: [
+                      for (var i = 0; i < collections.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        _chip(
+                          name: collections[i].name,
+                          count: library
+                              .where((c) => c.col == collections[i].id)
+                              .length,
+                          active: _activeTab == collections[i].id,
+                          onTap: () => setState(() => _activeTab = collections[i].id),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
+                      _AddCollectionChip(onTap: _openManageCollections),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: libraryEmpty ? _buildEmptyState() : _buildGrid(visible),
               ),
-            ),
-          Expanded(
-            child: libraryEmpty ? _buildEmptyState() : _buildGrid(visible),
+            ],
           ),
-          if (_selectionMode && _selectedComicIds.isNotEmpty)
-            _buildSelectionBottomBar(context, collections),
+          if (_selectionMode)
+            Positioned(
+              right: 18,
+              bottom: 86,
+              child: _buildFloatingSelectionAction(context, collections),
+            ),
         ],
       ),
     );
@@ -549,7 +561,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ],
       onDelete: (id) {
         ref.read(collectionsProvider.notifier).delete(id);
-        if (_activeTab == id) setState(() => _activeTab = 'all');
+        if (_activeTab == id) {
+          final remaining =
+              ref.read(collectionsProvider).where((c) => c.id != id).toList();
+          setState(() {
+            _activeTab = remaining.isNotEmpty ? remaining.first.id : null;
+          });
+        }
         AppToast.show(context, 'Koleksi dihapus');
       },
       onCreate: (name) async {
@@ -563,62 +581,257 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       },
     );
   }
-  Widget _buildSelectionBottomBar(
+
+  Widget _buildFloatingSelectionAction(
     BuildContext context,
     List<ComicCollection> collections,
   ) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        12,
-        20,
-        MediaQuery.paddingOf(context).bottom + 16,
-      ),
-      decoration: const BoxDecoration(
-        color: Color(0xF2141820),
-        border: Border(top: BorderSide(color: Color(0x33FFFFFF))),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 16,
-            offset: Offset(0, -4),
+    final count = _selectedComicIds.length;
+    final hasSelection = count > 0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          if (!hasSelection) {
+            AppToast.show(context, 'Pilih komik terlebih dahulu');
+            return;
+          }
+          _showSelectionActionSheet(context, collections);
+        },
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: hasSelection
+                ? const LinearGradient(
+                    colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+                  )
+                : const LinearGradient(
+                    colors: [Color(0xFF262C38), Color(0xFF1E232D)],
+                  ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: hasSelection
+                  ? const Color(0xFF60A5FA).withValues(alpha: 0.6)
+                  : const Color(0xFF3F4856),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: hasSelection
+                    ? const Color(0xFF2563EB).withValues(alpha: 0.45)
+                    : Colors.black.withValues(alpha: 0.35),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => _batchMoveToCollection(collections),
-              icon: const Icon(LucideIcons.folderInput, size: 16),
-              label: const Text('Pindahkan'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Color(0x44FFFFFF)),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                hasSelection
+                    ? LucideIcons.slidersHorizontal
+                    : LucideIcons.mousePointerClick,
+                size: 18,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                hasSelection ? '$count Dipilih' : 'Pilih Komik',
+                style: AppTypography.jakarta(
+                  size: 13,
+                  weight: FontWeight.w700,
+                  color: Colors.white,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: _batchDelete,
-              icon: const Icon(LucideIcons.trash2, size: 16),
-              label: const Text('Hapus'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.danger,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+              const SizedBox(width: 6),
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  LucideIcons.chevronUp,
+                  size: 14,
+                  color: Colors.white,
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  void _showSelectionActionSheet(
+    BuildContext context,
+    List<ComicCollection> collections,
+  ) {
+    final count = _selectedComicIds.length;
+    showAppSheet<void>(
+      context,
+      builder: (sheetContext) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      LucideIcons.checkSquare,
+                      size: 20,
+                      color: AppColors.accentText,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$count Komik Dipilih',
+                          style: AppTypography.jakarta(
+                            size: 16,
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          'Pilih tindakan untuk komik yang dipilih',
+                          style: AppTypography.jakarta(
+                            size: 12,
+                            weight: FontWeight.w500,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Color(0x1FFFFFFF), height: 16),
+            _actionSheetTile(
+              icon: LucideIcons.folderInput,
+              iconColor: AppColors.accentText,
+              iconBg: AppColors.accent.withValues(alpha: 0.15),
+              title: 'Pindahkan ke Koleksi Lain',
+              subtitle: 'Pindahkan $count komik ke koleksi bacaan lain',
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _batchMoveToCollection(collections);
+              },
+            ),
+            _actionSheetTile(
+              icon: LucideIcons.checkCheck,
+              iconColor: const Color(0xFF10B981),
+              iconBg: const Color(0xFF10B981).withValues(alpha: 0.15),
+              title: 'Tandai Selesai Dibaca',
+              subtitle: 'Tandai $count komik sebagai sudah tamat',
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _batchMarkFinished();
+              },
+            ),
+            _actionSheetTile(
+              icon: LucideIcons.trash2,
+              iconColor: AppColors.danger,
+              iconBg: AppColors.danger.withValues(alpha: 0.15),
+              title: 'Hapus dari Library',
+              subtitle: 'Hapus $count komik dari daftar koleksi',
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _batchDelete();
+              },
+            ),
+            _actionSheetTile(
+              icon: LucideIcons.x,
+              iconColor: AppColors.textSecondary,
+              iconBg: AppColors.surfaceAlt,
+              title: 'Batal & Selesai',
+              subtitle: 'Keluar dari mode pilih banyak',
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _exitSelectionMode();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _actionSheetTile({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 19, color: iconColor),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppTypography.jakarta(
+                      size: 14,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: AppTypography.jakarta(
+                      size: 11.5,
+                      weight: FontWeight.w500,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: AppColors.textMuted,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -679,6 +892,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         _exitSelectionMode();
       }
     }
+  }
+
+  Future<void> _batchMarkFinished() async {
+    final count = _selectedComicIds.length;
+    if (count == 0) return;
+    for (final id in _selectedComicIds) {
+      await ref.read(libraryProvider.notifier).markFinished(id);
+    }
+    if (!mounted) return;
+    AppToast.show(context, '$count komik ditandai selesai');
+    _exitSelectionMode();
   }
 
   void _openSourcesManagementSheet(List<Comic> library) {

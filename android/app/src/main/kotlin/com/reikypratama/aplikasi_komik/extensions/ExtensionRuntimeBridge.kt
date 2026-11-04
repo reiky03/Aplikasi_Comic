@@ -23,6 +23,8 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import java.io.File
+import java.net.InetAddress
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Headers
@@ -51,6 +53,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         when (call.method) {
             "runtimeInfo" -> result.success(runtimeInfo())
             "openVpnSettings" -> openVpnSettings(result)
+            "openPrivateDnsSettings" -> openPrivateDnsSettings(result)
+            "setVpnEnabled" -> setVpnEnabled(call, result)
+            "getVpnStatus" -> getVpnStatus(result)
             "probeUrl" -> probeUrl(call, result)
             "readWebViewSession" -> readWebViewSession(call, result)
             "renderHtmlWithWebView" -> renderHtmlWithWebView(call, result)
@@ -85,6 +90,52 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             "networkBridge" to true,
         ),
     )
+
+    @Volatile
+    private var vpnEnabled = true
+
+    @Volatile
+    private var vpnProvider = "cloudflare"
+
+    private fun setVpnEnabled(call: MethodCall, result: MethodChannel.Result) {
+        vpnEnabled = call.argument<Boolean>("enabled") ?: true
+        vpnProvider = call.argument<String>("provider") ?: "cloudflare"
+        Log.i(TAG, "VPN/DoH status changed: enabled=$vpnEnabled, provider=$vpnProvider")
+        result.success(true)
+    }
+
+    private fun getVpnStatus(result: MethodChannel.Result) {
+        result.success(
+            mapOf(
+                "enabled" to vpnEnabled,
+                "provider" to vpnProvider,
+            )
+        )
+    }
+
+    private fun openPrivateDnsSettings(result: MethodChannel.Result) {
+        try {
+            val intent = Intent(Settings.ACTION_WIRELESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            result.success(true)
+        } catch (e: Throwable) {
+            openVpnSettings(result)
+        }
+    }
+
+    private fun applyVpnDns(client: OkHttpClient): OkHttpClient {
+        if (!vpnEnabled) return client
+        return try {
+            client.newBuilder()
+                .dns(DohDns(vpnProvider))
+                .build()
+        } catch (e: Throwable) {
+            Log.w(TAG, "applyVpnDns error: ${e.message}")
+            client
+        }
+    }
 
     private fun openVpnSettings(result: MethodChannel.Result) {
         try {
@@ -126,11 +177,13 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     )
                     .get()
                     .build()
-                OkHttpClient.Builder()
-                    .followRedirects(true)
-                    .followSslRedirects(true)
-                    .build()
-                    .newCall(request)
+                val client = applyVpnDns(
+                    OkHttpClient.Builder()
+                        .followRedirects(true)
+                        .followSslRedirects(true)
+                        .build()
+                )
+                client.newCall(request)
                     .execute()
                     .use { response ->
                         val preview = response.peekBody(64L * 1024L).string()
@@ -601,8 +654,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     ) as Request
                     else -> source.instance.call("popularMangaRequest", page) as Request
                 }.withSessionHeaders(sessionHeaders)
-                val client = source.instance.callOrNull("getClient") as? OkHttpClient
+                val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
                     ?: OkHttpClient()
+                val client = applyVpnDns(baseClient)
                 client.newCall(request).execute().use { response ->
                     val responsePreview = response.peekBody(2L * 1024L * 1024L).string()
                     val parseMethod = when (mode) {
@@ -685,8 +739,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 val sessionHeaders = call.sessionHeaders()
                 val request = (source.instance.call("mangaDetailsRequest", manga) as Request)
                     .withSessionHeaders(sessionHeaders)
-                val client = source.instance.callOrNull("getClient") as? OkHttpClient
+                val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
                     ?: OkHttpClient()
+                val client = applyVpnDns(baseClient)
                 client.newCall(request).execute().use { response ->
                     val parsed = source.instance.call("mangaDetailsParse", response)
                         ?: throw IllegalStateException("mangaDetailsParse mengembalikan null")
@@ -719,8 +774,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 val manga = newManga(call).apply { url = mangaUrl }
                 val request = (source.instance.call("chapterListRequest", manga) as Request)
                     .withSessionHeaders(call.sessionHeaders())
-                val client = source.instance.callOrNull("getClient") as? OkHttpClient
+                val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
                     ?: OkHttpClient()
+                val client = applyVpnDns(baseClient)
                 client.newCall(request).execute().use { response ->
                     val chapters = source.instance.call("chapterListParse", response) as? List<*>
                         ?: constEmptyList
@@ -755,8 +811,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 val sessionHeaders = call.sessionHeaders()
                 val request = (source.instance.call("pageListRequest", chapter) as Request)
                     .withSessionHeaders(sessionHeaders)
-                val client = source.instance.callOrNull("getClient") as? OkHttpClient
+                val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
                     ?: OkHttpClient()
+                val client = applyVpnDns(baseClient)
                 client.newCall(request).execute().use { response ->
                     val pages = source.instance.call("pageListParse", response) as? List<*>
                         ?: constEmptyList
@@ -1231,5 +1288,64 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             })()
         """.trimIndent()
         private val constEmptyList = emptyList<Any?>()
+    }
+}
+
+/**
+ * DNS-over-HTTPS (DoH) resolver untuk membypass blokir ISP/Internet Positif
+ * di jaringan Indonesia secara otomatis tanpa memerlukan akses root.
+ */
+class DohDns(private val provider: String = "cloudflare") : Dns {
+    private val client by lazy {
+        OkHttpClient.Builder()
+            .callTimeout(java.time.Duration.ofSeconds(4))
+            .connectTimeout(java.time.Duration.ofSeconds(3))
+            .readTimeout(java.time.Duration.ofSeconds(3))
+            .build()
+    }
+
+    override fun lookup(hostname: String): List<InetAddress> {
+        if (hostname.matches(Regex("^[0-9.]+$")) || hostname.contains(":")) {
+            return InetAddress.getAllByName(hostname).toList()
+        }
+        try {
+            val url = when (provider) {
+                "google" -> "https://dns.google/resolve?name=$hostname&type=A"
+                "adguard" -> "https://dns.adguard-dns.com/dns-query?name=$hostname&type=A"
+                else -> "https://cloudflare-dns.com/dns-query?name=$hostname&type=A"
+            }
+            val request = Request.Builder()
+                .url(url)
+                .header("Accept", "application/dns-json")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body.string()
+                    val json = org.json.JSONObject(body)
+                    val answers = json.optJSONArray("Answer")
+                    if (answers != null && answers.length() > 0) {
+                        val addresses = mutableListOf<InetAddress>()
+                        for (i in 0 until answers.length()) {
+                            val ans = answers.getJSONObject(i)
+                            val type = ans.optInt("type", 1)
+                            if (type == 1) {
+                                val ip = ans.optString("data")
+                                if (!ip.isNullOrBlank()) {
+                                    addresses.addAll(InetAddress.getAllByName(ip))
+                                }
+                            }
+                        }
+                        if (addresses.isNotEmpty()) {
+                            return addresses
+                        }
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.w("KizenDoH", "DoH lookup failed for $hostname: ${e.message}")
+        }
+        return Dns.SYSTEM.lookup(hostname)
     }
 }

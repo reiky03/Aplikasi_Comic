@@ -15,6 +15,8 @@ import '../sync/sync_service.dart';
 import '../auth/auth_repository.dart';
 import '../onboarding/login_screen.dart';
 import '../reader/reader_settings_sheet.dart';
+import '../vpn/vpn_screen.dart';
+import '../../data/vpn_state.dart';
 import 'about_screen.dart';
 
 /// Tab Setelan — spek 14.
@@ -24,6 +26,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider);
+    final vpn = ref.watch(vpnProvider);
 
     final name = user?.name ?? 'Adin Pratama';
     final email = user?.email ?? 'adin.pratama@gmail.com';
@@ -119,6 +122,60 @@ class SettingsScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
+                _eyebrow('Koneksi & Anti-Blokir'),
+                _card([
+                  _menuRow(
+                    icon: LucideIcons.shieldCheck,
+                    label: 'Kizen VPN',
+                    subtitle: vpn.isEnabled
+                        ? 'Terhubung • ${vpn.provider.label}'
+                        : 'Mati • Tekan untuk menghubungkan',
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: vpn.isEnabled
+                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                : AppColors.surfaceAlt,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: vpn.isEnabled
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                                  : AppColors.border,
+                            ),
+                          ),
+                          child: Text(
+                            vpn.isEnabled ? 'ON' : 'OFF',
+                            style: AppTypography.jakarta(
+                              size: 11,
+                              weight: FontWeight.w700,
+                              color: vpn.isEnabled
+                                  ? const Color(0xFF10B981)
+                                  : AppColors.textMuted,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          AppIcons.forward,
+                          size: 16,
+                          color: AppColors.textFaint,
+                        ),
+                      ],
+                    ),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const VpnScreen(),
+                      ),
+                    ),
+                    showDivider: false,
+                  ),
+                ]),
                 _eyebrow('Aplikasi'),
                 _card([
                   _menuRow(
@@ -264,6 +321,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget _menuRow({
     required IconData icon,
     required String label,
+    String? subtitle,
     required Widget trailing,
     VoidCallback? onTap,
     bool showDivider = true,
@@ -284,9 +342,26 @@ class SettingsScreen extends ConsumerWidget {
             Icon(icon, size: 18, color: AppColors.accentText),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                label,
-                style: AppTypography.jakarta(size: 14, weight: FontWeight.w600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: AppTypography.jakarta(size: 14, weight: FontWeight.w600),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTypography.jakarta(
+                        size: 11.5,
+                        weight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             trailing,

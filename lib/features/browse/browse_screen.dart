@@ -8,6 +8,8 @@ import '../../data/models.dart';
 import '../../data/demo_state.dart';
 import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
+import '../../data/vpn_state.dart';
+import '../vpn/vpn_screen.dart';
 import 'add_source_screen.dart';
 import 'repo_browse_tab.dart';
 import 'repository_screens.dart';
@@ -59,6 +61,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   Widget build(BuildContext context) {
     final subTab = ref.watch(browseSubTabProvider);
     final activeLangs = ref.watch(activeLangsProvider);
+    final vpn = ref.watch(vpnProvider);
 
     return SafeArea(
       bottom: false,
@@ -87,6 +90,15 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                     ],
                   ),
                 ),
+                _VpnHeaderBadge(
+                  isEnabled: vpn.isEnabled,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const VpnScreen(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 _AccentIconButton(
                   onTap: _openLanguageSheet,
                   badgeCount: activeLangs.isEmpty ? null : activeLangs.length,
@@ -582,4 +594,60 @@ class RepoGlyphPainter extends CustomPainter {
   @override
   bool shouldRepaint(RepoGlyphPainter oldDelegate) =>
       color != oldDelegate.color || strokeWidth != oldDelegate.strokeWidth;
+}
+
+class _VpnHeaderBadge extends StatelessWidget {
+  const _VpnHeaderBadge({required this.isEnabled, required this.onTap});
+
+  final bool isEnabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isEnabled
+          ? const Color(0xFF10B981).withValues(alpha: 0.15)
+          : AppColors.surfaceAlt,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isEnabled
+                  ? const Color(0xFF10B981).withValues(alpha: 0.35)
+                  : AppColors.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isEnabled ? LucideIcons.shieldCheck : LucideIcons.shield,
+                size: 16,
+                color: isEnabled
+                    ? const Color(0xFF10B981)
+                    : AppColors.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isEnabled ? 'VPN ON' : 'VPN OFF',
+                style: AppTypography.jakarta(
+                  size: 11.5,
+                  weight: FontWeight.w700,
+                  color: isEnabled
+                      ? const Color(0xFF10B981)
+                      : AppColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

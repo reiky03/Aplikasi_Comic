@@ -331,6 +331,25 @@ class ExtensionRuntimeBridge {
     return opened ?? false;
   }
 
+  Future<bool> openPrivateDnsSettings() async {
+    final opened = await _channel.invokeMethod<bool>('openPrivateDnsSettings');
+    return opened ?? false;
+  }
+
+  Future<bool> setVpnEnabled({required bool enabled, String provider = 'cloudflare'}) async {
+    final res = await _channel.invokeMethod<bool>('setVpnEnabled', {
+      'enabled': enabled,
+      'provider': provider,
+    });
+    return res ?? false;
+  }
+
+  Future<Map<String, dynamic>> getVpnStatus() async {
+    final res = await _channel.invokeMapMethod<Object?, Object?>('getVpnStatus');
+    if (res == null) return const {};
+    return res.map((k, v) => MapEntry(k.toString(), v));
+  }
+
   Future<NetworkProbeResult> probeUrl(String url) async {
     final raw = await _channel.invokeMapMethod<Object?, Object?>('probeUrl', {
       'url': url,

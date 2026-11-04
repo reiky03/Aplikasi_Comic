@@ -27,6 +27,47 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — In-App VPN Anti-Blokir (DNS-over-HTTPS) + Penyempurnaan Tab Library & Multi-Select Floating Action Button
+
+Permintaan user:
+1. "didalam appnya bisa dikasih vpn gitu gak beb kayak ada 2 aplikasi gitu 1 komik 1 vpn lsg didalam 1 app kita, jadi kalau ada web yang diblokir di indo bisa pakai vpn buat lsg buka"
+2. "dan juga hapuskan pilihan semua di menu library beb, karena kurang kepakai"
+3. "lalu pilih banyak itu kok gak ada opsi selanjutnya, misal mau dibuat untuk dipindahkan kekoleksi lain atau dihapus gitu, ini malah hanya pilih doang, harusnya pas pilih banyak aktif, harusnya ada ikon kecil di bawah kanan diats navbar gitu mengapung buat lanjutin opsi selanjutnya dari yang dipilih beb"
+
+Root cause & kebutuhan teknis:
+1. Blokir situs komik di Indonesia (Internet Positif / Nawala / ISP DNS Hijacking) umumnya terjadi di tingkat DNS ISP. Pendekatan DNS-over-HTTPS (DoH) dengan Cloudflare 1.1.1.1, Google DNS 8.8.8.8, dan AdGuard Shield memecahkan blokir ini secara langsung di layer networking (OkHttp + Dart HTTP) tanpa membutuhkan permission VPN sistemik Android yang berat ataupun akses root.
+2. User menginginkan layar mandiri serasa "aplikasi kedua" yang terintegrasi di dalam Kizen: layar Kizen VPN lengkap dengan tombol power pulsing animasi besar, indikator terhubung/terputus, selector DNS server, pengukur ping riil, status pengecekan komik populer yang sering terblokir (Shinigami, Komiku, Komikindo, Asura), serta shortcut ke pengaturan Private DNS / VPN bawaan Android. Selain itu, quick badge status VPN ditambahkan di header Jelajahi dan kartu menu di Setelan.
+3. Tab "Semua" di library kurang terpakai menurut user. Default active tab harus langsung mengarah ke koleksi pertama yang tersedia (mis. "Sedang Dibaca"), dan penyaringan komik hanya menampilkan komik dari koleksi aktif tersebut.
+4. Pada mode pilih banyak (multi-select), panel aksi bawah lama berada di dalam Column yang terhalang/tertutup oleh `AppBottomNav` (yang posisinya floating di bottom stack). Dibutuhkan tombol floating action melayang di pojok kanan bawah tepat di atas navbar (`bottom: 86, right: 18`) yang responsif, menampilkan jumlah item terpilih, dan ketika ditekan memunculkan lembar opsi (Action Sheet) lengkap untuk: Pindahkan ke Koleksi Lain, Tandai Selesai Dibaca, Hapus dari Library, dan Batal.
+
+Fix per-file:
+1. `android/app/src/main/kotlin/com/reikypratama/aplikasi_komik/extensions/ExtensionRuntimeBridge.kt`:
+   - Menambahkan class `DohDns` yang mengimplementasikan `okhttp3.Dns` via DoH HTTP request ke Cloudflare (`cloudflare-dns.com`), Google (`dns.google`), atau AdGuard.
+   - Menambahkan helper `applyVpnDns` yang membungkus semua request OkHttp extension runtime (probe, popular, details, chapter list, page list).
+   - Menambahkan method channel `setVpnEnabled`, `getVpnStatus`, dan `openPrivateDnsSettings`.
+2. `lib/data/vpn_state.dart` & `lib/data/doh_resolver.dart`:
+   - Riverpod `vpnProvider` mengelola state VPN (`isEnabled`, `provider`, `pingMs`, `isConnecting`, `testedHosts`), tersinkronkan ke SharedPreferences dan native Android bridge.
+   - Resolver DoH otomatis untuk Dart/Flutter HTTP requests.
+3. `lib/features/vpn/vpn_screen.dart`:
+   - Layar khusus Kizen VPN dengan tombol power besar berdenyut (pulsing animation), status badge (Terhubung / Terputus), pemilih DNS provider, status ping, daftar host komik teruji, dan tombol shortcut setelan sistem.
+4. `lib/features/browse/browse_screen.dart` & `lib/features/settings/settings_screen.dart`:
+   - Menambahkan `_VpnHeaderBadge` di header Jelajahi yang menunjukkan status aktif/mati VPN secara instan dan dapat diketuk untuk membuka layar VPN.
+   - Menambahkan menu "Koneksi & Anti-Blokir" > "Kizen VPN" di Setelan dengan indikator badge ON/OFF dan subtitle status.
+5. `lib/features/library/library_screen.dart`:
+   - Menghapus chip tab "Semua" dari ListView kategori.
+   - Menetapkan default `_activeTab` ke `collections.first.id`.
+   - Mengubah struktur layout menjadi `Stack` dengan floating action button (`_buildFloatingSelectionAction`) di pojok kanan bawah di atas navbar (`bottom: 86, right: 18`).
+   - Menyediakan `_showSelectionActionSheet` dengan aksi: Pindahkan ke Koleksi Lain (`_batchMoveToCollection`), Tandai Selesai Dibaca (`_batchMarkFinished`), Hapus dari Library (`_batchDelete`), dan Batal (`_exitSelectionMode`).
+   - Memperbarui `_openManageCollections` agar fallback ke koleksi tersisa saat koleksi aktif dihapus.
+6. `test/features/library/library_screen_test.dart` & `test/data/vpn_state_test.dart`:
+   - Menambahkan widget test untuk verifikasi tidak adanya tab "Semua", default ke koleksi pertama, dan interaktivitas mode multi-select dengan floating button serta action sheet.
+   - Menambahkan unit test untuk VpnState, toggle status, dan pergantian provider.
+
+Verifikasi:
+- `flutter analyze`: Bersih (0 issues).
+- `flutter test -j 1`: 155 test lolos (100% pass, 3 skipped).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Lolos sanity check build web (50.2s).
+
 ### 2026-11-04 — Kizen v1.1.1: Pembaruan Langsung di Dalam Aplikasi (In-App APK Download & Install) + Halaman Rilis
 
 Permintaan user:
