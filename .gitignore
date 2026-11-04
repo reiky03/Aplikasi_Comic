@@ -13,6 +13,7 @@
 migrate_working_dir/
 graphify-out/
 *.png
+*.apk
 
 # IntelliJ related
 *.iml

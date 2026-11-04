@@ -56,6 +56,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             "renderHtmlWithWebView" -> renderHtmlWithWebView(call, result)
             "listInstalledExtensions" -> result.success(listInstalledExtensions())
             "installExtensionApk" -> installExtensionApk(call, result)
+            "downloadAndInstallAppUpdate" -> downloadAndInstallAppUpdate(call, result)
+            "cancelUpdateDownload" -> cancelUpdateDownload(result)
+            "openDownloadedUpdateInstaller" -> openDownloadedUpdateInstaller(call, result)
             "uninstallExtensionPackage" -> uninstallExtensionPackage(call, result)
             "inspectExtension" -> inspectExtension(call, result)
             "listExtensionSources" -> listExtensionSources(call, result)
@@ -317,6 +320,164 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             } catch (e: Throwable) {
                 Log.e(TAG, "installExtensionApk failed for $apkUrl", e)
                 result.error("install_failed", e.safeMessage(), e.stackTraceToString())
+            }
+        }.start()
+    }
+
+    @Volatile
+    private var updateDownloadCall: okhttp3.Call? = null
+
+    private fun cancelUpdateDownload(result: MethodChannel.Result) {
+        try {
+            updateDownloadCall?.cancel()
+            updateDownloadCall = null
+            result.success(true)
+        } catch (e: Throwable) {
+            result.error("cancel_failed", e.safeMessage(), null)
+        }
+    }
+
+    private fun openDownloadedUpdateInstaller(call: MethodCall, result: MethodChannel.Result) {
+        val rawFileName = call.argument<String>("fileName") ?: "kizen-update.apk"
+        val fileName = rawFileName
+            .substringAfterLast('/')
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .takeIf { it.endsWith(".apk", ignoreCase = true) }
+            ?: "kizen-update.apk"
+        val dir = File(context.cacheDir, "app-updates")
+        val apkFile = File(dir, fileName)
+        if (!apkFile.exists() || apkFile.length() == 0L) {
+            result.error("not_found", "File APK update belum diunduh", null)
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                apkFile,
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, APK_MIME_TYPE)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(intent)
+            Log.i(TAG, "openDownloadedUpdateInstaller opened installer for $fileName")
+            result.success(true)
+        } catch (e: Throwable) {
+            Log.e(TAG, "openDownloadedUpdateInstaller failed for $fileName", e)
+            result.error("install_failed", e.safeMessage(), e.stackTraceToString())
+        }
+    }
+
+    private fun downloadAndInstallAppUpdate(call: MethodCall, result: MethodChannel.Result) {
+        val apkUrl = call.argument<String>("apkUrl")
+        val rawFileName = call.argument<String>("fileName")
+        if (apkUrl.isNullOrBlank()) {
+            result.error("bad_args", "apkUrl kosong", null)
+            return
+        }
+
+        Thread {
+            try {
+                val fileName = rawFileName
+                    ?.substringAfterLast('/')
+                    ?.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    ?.takeIf { it.endsWith(".apk", ignoreCase = true) }
+                    ?: "kizen-update.apk"
+                val dir = File(context.cacheDir, "app-updates").apply { mkdirs() }
+                val apkFile = File(dir, fileName)
+                if (apkFile.exists()) {
+                    apkFile.delete()
+                }
+
+                val request = Request.Builder()
+                    .url(apkUrl)
+                    .header(
+                        "User-Agent",
+                        "Kizen-Android-App",
+                    )
+                    .get()
+                    .build()
+
+                val client = OkHttpClient.Builder()
+                    .followRedirects(true)
+                    .followSslRedirects(true)
+                    .build()
+
+                val okCall = client.newCall(request)
+                updateDownloadCall = okCall
+
+                okCall.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException("Download APK gagal: HTTP ${response.code}")
+                    }
+                    val body = response.body ?: throw IllegalStateException("Response body kosong")
+                    val totalBytes = body.contentLength()
+                    var receivedBytes = 0L
+
+                    val buffer = ByteArray(8192)
+                    var lastProgressUpdate = 0L
+
+                    apkFile.outputStream().use { output ->
+                        val inputStream = body.byteStream()
+                        var read: Int
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            receivedBytes += read
+
+                            val now = System.currentTimeMillis()
+                            if (now - lastProgressUpdate > 100 || receivedBytes == totalBytes) {
+                                lastProgressUpdate = now
+                                Handler(Looper.getMainLooper()).post {
+                                    channel.invokeMethod(
+                                        "onUpdateDownloadProgress",
+                                        mapOf(
+                                            "received" to receivedBytes,
+                                            "total" to totalBytes,
+                                            "completed" to false,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+                updateDownloadCall = null
+
+                Handler(Looper.getMainLooper()).post {
+                    channel.invokeMethod(
+                        "onUpdateDownloadProgress",
+                        mapOf(
+                            "received" to apkFile.length(),
+                            "total" to apkFile.length(),
+                            "completed" to true,
+                        ),
+                    )
+                }
+
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    apkFile,
+                )
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, APK_MIME_TYPE)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(intent)
+                Log.i(TAG, "downloadAndInstallAppUpdate opened installer for $fileName")
+                Handler(Looper.getMainLooper()).post {
+                    result.success(true)
+                }
+            } catch (e: Throwable) {
+                updateDownloadCall = null
+                Log.e(TAG, "downloadAndInstallAppUpdate failed for $apkUrl", e)
+                Handler(Looper.getMainLooper()).post {
+                    result.error("download_failed", e.safeMessage(), e.stackTraceToString())
+                }
             }
         }.start()
     }

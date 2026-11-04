@@ -381,6 +381,57 @@ class ExtensionRuntimeBridge {
     });
   }
 
+  /// Unduh update APK aplikasi Kizen langsung dari URL rilis dan buka installer native.
+  /// Callback [onProgress] memberi tahu progres bytes: `(receivedBytes, totalBytes, completed)`.
+  Future<void> downloadAndInstallAppUpdate({
+    required String apkUrl,
+    required String fileName,
+    void Function(int received, int total, bool completed)? onProgress,
+  }) async {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onUpdateDownloadProgress') {
+        final args = call.arguments;
+        if (args is Map) {
+          final received = (args['received'] as num?)?.toInt() ?? 0;
+          final total = (args['total'] as num?)?.toInt() ?? 0;
+          final completed = (args['completed'] as bool?) ?? false;
+          onProgress?.call(received, total, completed);
+        }
+      }
+    });
+
+    try {
+      await _channel.invokeMethod<void>('downloadAndInstallAppUpdate', {
+        'apkUrl': apkUrl,
+        'fileName': fileName,
+      });
+    } finally {
+      _channel.setMethodCallHandler(null);
+    }
+  }
+
+  /// Batalkan unduhan update APK jika sedang berjalan.
+  Future<void> cancelUpdateDownload() async {
+    try {
+      await _channel.invokeMethod<void>('cancelUpdateDownload');
+    } catch (_) {}
+  }
+
+  /// Buka kembali installer paket Android untuk file update yang sudah pernah diunduh.
+  Future<bool> openDownloadedUpdateInstaller({
+    required String fileName,
+  }) async {
+    try {
+      final res = await _channel.invokeMethod<bool>(
+        'openDownloadedUpdateInstaller',
+        {'fileName': fileName},
+      );
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> uninstallExtensionPackage(String packageName) async {
     await _channel.invokeMethod<void>('uninstallExtensionPackage', {
       'packageName': packageName,

@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.0/kizen-v1.1.0.apk">
-    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.1.0)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.1/kizen-v1.1.1.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.1.1)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
   <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
     <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru&style=for-the-badge" alt="Rilis Terbaru" />
@@ -31,6 +31,7 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## ✨ Fitur-Fitur Seru
 
+- 🚀 **In-App Direct Update & Install**: Cek pembaruan langsung di Pengaturan > Tentang, unduh APK rilis langsung di dalam aplikasi dengan progress bar real-time, dan pasang otomatis tanpa ribet bolak-balik browser.
 - 🌐 **Universal Web Parser**: Tinggal tempel link homepage web komik favorit kamu di *"Sumber Saya"*, Kizen bakal coba deteksi dan parse daftarnya otomatis (support MangaThemesia, Madara CMS, dan berbagai web custom).
 - 🧩 **Support Extension Repo (Tachiyomi / Mihon style)**: Punya link repository extension? Pasang di tab Repository dan langsung nikmati ribuan sumber komik dari berbagai bahasa.
 - 🔄 **Sinkronisasi Otomatis & Anti-Nabrak**: Sering nemu web komik tiba-tiba ganti domain atau extension di-update dari app lain? Kizen otomatis menyelaraskan domain terbaru, menyimpan URL lama sebagai alias, dan meng-upgrade runtime extension tanpa bikin data library rusak atau tabrakan.
@@ -48,8 +49,8 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## 📲 Cara Download & Pasang (Android)
 
-1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.0/kizen-v1.1.0.apk)** di atas, atau pilih versi lainnya di halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)**.
-2. Unduh file `kizen-v1.1.0.apk`.
+1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.1/kizen-v1.1.1.apk)** di atas, atau pilih versi lainnya di halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)**.
+2. Unduh file `kizen-v1.1.1.apk`.
 3. Buka file APK yang sudah didownload di HP kamu.
 4. Kalau ada peringatan *"Izinkan instalasi dari sumber tidak dikenal"*, centang izinkan/lanjutkan.
 5. Buka **Kizen** dan langsung nikmati baca komik tanpa gangguan!

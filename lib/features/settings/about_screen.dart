@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,9 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_update_checker.dart';
+import '../../data/extension_runtime.dart';
 
-const _appVersion = '1.1.0';
-const _appBuild = '2';
+const _appVersion = '1.1.1';
+const _appBuild = '3';
 const _repoOwner = 'reiky03';
 const _developerHandle = '@reiky03';
 
@@ -46,41 +48,10 @@ class _AboutScreenState extends State<AboutScreen> {
     if (result.hasUpdate) {
       await showAppSheet<void>(
         context,
-        builder: (sheetContext) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const AppSheetTitle('Versi baru tersedia', bottomGap: 8),
-            Text(
-              'Kizen v${result.latestVersion} sudah rilis di GitHub '
-              '(kamu sekarang pakai v$_appVersion).',
-              style: AppTypography.jakarta(
-                size: 13,
-                weight: FontWeight.w400,
-                height: 1.5,
-                color: AppColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 48,
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.pop(sheetContext);
-                  final url = result.releaseUrl;
-                  if (url != null) _openUrl(url);
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text('Buka halaman rilis'),
-              ),
-            ),
-          ],
+        builder: (sheetContext) => _AppUpdateSheet(
+          result: result,
+          currentVersion: _appVersion,
+          onOpenUrl: _openUrl,
         ),
       );
     } else {
@@ -363,6 +334,394 @@ class _BackButton extends StatelessWidget {
           child: Icon(AppIcons.back, size: 20, color: AppColors.textPrimary),
         ),
       ),
+    );
+  }
+}
+
+class _AppUpdateSheet extends StatefulWidget {
+  const _AppUpdateSheet({
+    required this.result,
+    required this.currentVersion,
+    required this.onOpenUrl,
+  });
+
+  final AppUpdateResult result;
+  final String currentVersion;
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  State<_AppUpdateSheet> createState() => _AppUpdateSheetState();
+}
+
+class _AppUpdateSheetState extends State<_AppUpdateSheet> {
+  final _bridge = const ExtensionRuntimeBridge();
+  bool _isDownloading = false;
+  double _progress = 0.0;
+  int _received = 0;
+  int _total = 0;
+  bool _completed = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    if (_isDownloading) {
+      _bridge.cancelUpdateDownload();
+    }
+    super.dispose();
+  }
+
+  Future<void> _startDownloadAndInstall() async {
+    final apkUrl = widget.result.apkUrl;
+    if (apkUrl == null || apkUrl.isEmpty) {
+      final releaseUrl = widget.result.releaseUrl;
+      if (releaseUrl != null) widget.onOpenUrl(releaseUrl);
+      return;
+    }
+
+    final isAndroid =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (!isAndroid) {
+      final releaseUrl = widget.result.releaseUrl;
+      if (releaseUrl != null) widget.onOpenUrl(releaseUrl);
+      return;
+    }
+
+    setState(() {
+      _isDownloading = true;
+      _errorMessage = null;
+      _progress = 0.0;
+      _received = 0;
+      _total = widget.result.apkSize ?? 0;
+      _completed = false;
+    });
+
+    final fileName =
+        widget.result.apkName ?? 'kizen-v${widget.result.latestVersion}.apk';
+
+    try {
+      await _bridge.downloadAndInstallAppUpdate(
+        apkUrl: apkUrl,
+        fileName: fileName,
+        onProgress: (received, total, completed) {
+          if (!mounted) return;
+          setState(() {
+            _received = received;
+            if (total > 0) _total = total;
+            _progress =
+                _total > 0 ? (_received / _total).clamp(0.0, 1.0) : 0.0;
+            if (completed) {
+              _completed = true;
+              _isDownloading = false;
+            }
+          });
+        },
+      );
+      if (mounted) {
+        setState(() {
+          _completed = true;
+          _isDownloading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _errorMessage =
+              e.toString().replaceFirst(RegExp(r'^Exception: '), '');
+        });
+      }
+    }
+  }
+
+  Future<void> _reopenInstaller() async {
+    final fileName =
+        widget.result.apkName ?? 'kizen-v${widget.result.latestVersion}.apk';
+    final ok = await _bridge.openDownloadedUpdateInstaller(fileName: fileName);
+    if (!ok && mounted) {
+      AppToast.show(context, 'Gagal membuka installer. Coba unduh ulang.');
+      setState(() => _completed = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final res = widget.result;
+    final isAndroid =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final sizeMb = res.apkSize != null
+        ? (res.apkSize! / (1024 * 1024)).toStringAsFixed(1)
+        : null;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                LucideIcons.packageCheck,
+                size: 20,
+                color: AppColors.accent,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AppSheetTitle('Pembaruan Tersedia', bottomGap: 2),
+                  Text(
+                    'Kizen v${res.latestVersion} (kamu v${widget.currentVersion})${sizeMb != null ? ' • $sizeMb MB' : ''}',
+                    style: AppTypography.jakarta(
+                      size: 12.5,
+                      weight: FontWeight.w500,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (res.releaseNotes != null && res.releaseNotes!.trim().isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'YANG BARU',
+            style: AppTypography.eyebrow,
+          ),
+          const SizedBox(height: 6),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 160),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: SingleChildScrollView(
+              child: Text(
+                res.releaseNotes!.trim(),
+                style: AppTypography.jakarta(
+                  size: 12,
+                  weight: FontWeight.w400,
+                  height: 1.45,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        if (_isDownloading) ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(14),
+              border:
+                  Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const AppSpinner(size: 14, strokeWidth: 2),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Mengunduh APK...',
+                          style: AppTypography.jakarta(
+                            size: 12.5,
+                            weight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '${(_progress * 100).toStringAsFixed(0)}%',
+                      style: AppTypography.jakarta(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: _progress > 0 ? _progress : null,
+                    minHeight: 7,
+                    backgroundColor: AppColors.bg,
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(AppColors.accent),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${(_received / (1024 * 1024)).toStringAsFixed(1)} MB / ${_total > 0 ? (_total / (1024 * 1024)).toStringAsFixed(1) : '?'} MB',
+                  textAlign: TextAlign.right,
+                  style: AppTypography.jakarta(
+                    size: 11,
+                    weight: FontWeight.w500,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ] else if (_completed) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF10B981).withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  LucideIcons.circleCheckBig,
+                  size: 18,
+                  color: Color(0xFF10B981),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Unduhan selesai! Membuka installer Android...',
+                    style: AppTypography.jakarta(
+                      size: 12,
+                      weight: FontWeight.w500,
+                      color: const Color(0xFF10B981),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ] else if (_errorMessage != null) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  LucideIcons.triangleAlert,
+                  size: 18,
+                  color: Colors.redAccent,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Gagal mengunduh: $_errorMessage',
+                    style: AppTypography.jakarta(
+                      size: 12,
+                      weight: FontWeight.w400,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        if (_completed)
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: _reopenInstaller,
+              icon: const Icon(LucideIcons.packageCheck, size: 18),
+              label: const Text('Buka Installer Kembali'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: _isDownloading
+                  ? null
+                  : (isAndroid && res.apkUrl != null
+                      ? _startDownloadAndInstall
+                      : () {
+                          Navigator.pop(context);
+                          if (res.releaseUrl != null) {
+                            widget.onOpenUrl(res.releaseUrl!);
+                          }
+                        }),
+              icon: Icon(
+                _isDownloading
+                    ? LucideIcons.refreshCw
+                    : (isAndroid && res.apkUrl != null
+                        ? LucideIcons.download
+                        : LucideIcons.externalLink),
+                size: 18,
+              ),
+              label: Text(
+                _isDownloading
+                    ? 'Sedang Mengunduh...'
+                    : (isAndroid && res.apkUrl != null
+                        ? 'Unduh & Pasang Langsung'
+                        : 'Buka Halaman Rilis'),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.surfaceAlt,
+                disabledForegroundColor: AppColors.textMuted,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 44,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              if (res.releaseUrl != null) widget.onOpenUrl(res.releaseUrl!);
+            },
+            icon: const Icon(LucideIcons.externalLink, size: 16),
+            label: const Text('Lihat Halaman Rilis di GitHub'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              side: const BorderSide(color: AppColors.border),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

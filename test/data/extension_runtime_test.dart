@@ -185,4 +185,53 @@ void main() {
       );
     },
   );
+
+  test('downloadAndInstallAppUpdate mengirim parameter dan memproses progress', () async {
+    final progressList = <int>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'downloadAndInstallAppUpdate') {
+            expect(call.arguments['apkUrl'], 'https://example.com/kizen.apk');
+            expect(call.arguments['fileName'], 'kizen.apk');
+            // Simulasi panggilan balik native progress
+            final message = const StandardMethodCodec().encodeMethodCall(
+              const MethodCall('onUpdateDownloadProgress', {
+                'received': 500,
+                'total': 1000,
+                'completed': false,
+              }),
+            );
+            await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+                .handlePlatformMessage('kizen/extension_runtime', message, (_) {});
+            return true;
+          }
+          return null;
+        });
+
+    await bridge.downloadAndInstallAppUpdate(
+      apkUrl: 'https://example.com/kizen.apk',
+      fileName: 'kizen.apk',
+      onProgress: (received, total, completed) {
+        progressList.add(received);
+      },
+    );
+
+    expect(progressList, contains(500));
+  });
+
+  test('cancelUpdateDownload dan openDownloadedUpdateInstaller berjalan normal', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'cancelUpdateDownload') return true;
+          if (call.method == 'openDownloadedUpdateInstaller') {
+            expect(call.arguments['fileName'], 'kizen.apk');
+            return true;
+          }
+          return null;
+        });
+
+    await bridge.cancelUpdateDownload();
+    final ok = await bridge.openDownloadedUpdateInstaller(fileName: 'kizen.apk');
+    expect(ok, isTrue);
+  });
 }

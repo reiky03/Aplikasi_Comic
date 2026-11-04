@@ -3,4 +3,10 @@
     <cache-path
         name="extension_apks"
         path="extension-apks/" />
+    <cache-path
+        name="app_updates"
+        path="app-updates/" />
+    <cache-path
+        name="cache"
+        path="." />
 </paths>

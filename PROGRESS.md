@@ -27,6 +27,51 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.1.1: Pembaruan Langsung di Dalam Aplikasi (In-App APK Download & Install) + Halaman Rilis
+
+Permintaan user:
+Pengaturan > Tentang > "Periksa Pembaruan" bisa langsung mengunduh file APK dan memicu pemasangan aplikasi Android secara otomatis langsung di dalam Kizen tanpa harus dialihkan keluar ke browser/GitHub, dengan tetap menyediakan tombol/akses ke halaman rilis GitHub untuk melihat catatan pembaruan. Versi aplikasi dinaikkan menjadi 1.1.1 (build 3).
+
+Root cause & kebutuhan teknis:
+1. Sebelumnya `checkForAppUpdate` hanya mengembalikan link HTML halaman rilis GitHub dan nomor versi string, sehingga saat ada rilis baru user hanya diberi tombol "Buka halaman rilis" yang membuka browser eksternal.
+2. File APK rilis dari GitHub Releases (`browser_download_url`) memerlukan penanganan unduhan streaming dengan indikator progres byte/persentase riil agar pengguna mengetahui status pengunduhan APK (~68MB).
+3. Setelah unduhan selesai di HP Android, sistem memerlukan pemicuan `Intent.ACTION_VIEW` dengan MIME `application/vnd.android.package-archive` dan `FileProvider` URI yang terdaftar dalam manifest aplikasi agar Package Installer Android langsung terbuka untuk memperbarui Kizen.
+
+Fix per-file:
+1. `lib/data/app_update_checker.dart`:
+   - Menambahkan field `apkUrl`, `apkName`, `apkSize`, `releaseTitle`, dan `releaseNotes` pada `AppUpdateResult`.
+   - Mengurai array `assets` dari respons GitHub Releases API untuk menemukan file berekstensi `.apk` beserta ukuran dan URL unduh langsungnya.
+2. `android/app/src/main/res/xml/file_paths.xml`:
+   - Mendaftarkan path `app-updates/` dan root `cache/` pada konfigurasi `FileProvider` agar file APK pembaruan aplikasi di direktori cache dapat dibagi dengan aman ke Package Installer Android.
+3. `android/app/src/main/kotlin/com/reikypratama/aplikasi_komik/extensions/ExtensionRuntimeBridge.kt`:
+   - Menambahkan method channel `downloadAndInstallAppUpdate`: mengunduh APK dengan OkHttpClient di background thread, melaporkan progres live (`received`, `total`, `completed`) ke Flutter via `onUpdateDownloadProgress`, dan otomatis meluncurkan `Intent.ACTION_VIEW` via `FileProvider`.
+   - Menambahkan method `cancelUpdateDownload` untuk membatalkan koneksi unduhan jika dibatalkan oleh pengguna.
+   - Menambahkan method `openDownloadedUpdateInstaller` untuk membuka kembali installer paket Android jika pengguna tidak sengaja menutup dialog sistem tanpa perlu mengunduh ulang file 68MB.
+4. `lib/data/extension_runtime.dart`:
+   - Menambahkan fungsi Dart wrapper `downloadAndInstallAppUpdate`, `cancelUpdateDownload`, dan `openDownloadedUpdateInstaller` dengan registrasi listener platform event yang aman dan pembersihan otomatis saat selesai.
+5. `lib/features/settings/about_screen.dart`:
+   - Mengganti dialog pembaruan lama dengan `_AppUpdateSheet` yang interaktif:
+     - Menampilkan info versi baru, badge ukuran file APK (MB).
+     - Menampilkan kotak ringkasan catatan pembaruan ("Yang Baru") scrollable dari release body GitHub.
+     - Progress bar animasi (`LinearProgressIndicator`) real-time beserta byte terunduh dan persentase saat proses unduh berlangsung.
+     - Tombol "Unduh & Pasang Langsung" di Android (otomatis membuka installer paket) atau tombol "Buka Installer Kembali" jika sudah terunduh.
+     - Tombol sekunder "Lihat Halaman Rilis di GitHub" agar user tetap bisa membaca catatan rilis lengkap dan changelog di web.
+   - Menaikkan konstanta versi menjadi `_appVersion = '1.1.1'` dan `_appBuild = '3'`.
+6. `lib/features/settings/settings_screen.dart`:
+   - Memperbarui teks versi footer menjadi `'Kizen v1.1.1'`.
+7. `pubspec.yaml`:
+   - Menaikkan versi menjadi `1.1.1+3`.
+8. `README.md`:
+   - Memperbarui badge versi download menjadi `v1.1.1`, link file APK menjadi `kizen-v1.1.1.apk`, dan mencatat fitur pembaruan in-app langsung di daftar fitur.
+9. `test/data/extension_runtime_test.dart` & `test/data/app_update_checker_test.dart`:
+   - Menambahkan unit test untuk alur parameter download, callback progress, pembatalan, dan parsing payload metadata rilis GitHub.
+
+Verifikasi:
+- `flutter analyze`: Bersih (0 issues).
+- `flutter test -j 1`: 151 test lolos (100% pass, 3 skipped).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Lolos sanity check build web (54.8s).
+- `flutter build apk --release`: Berhasil merilis `kizen-v1.1.1.apk` (68.8MB).
+
 ### 2026-11-04 — Fix Regresi Web Parsing: Mengembalikan Prioritas Parser Web & Menyelaraskan Fallback Extension Runtime
 
 Root cause:

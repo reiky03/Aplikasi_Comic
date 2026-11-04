@@ -9,6 +9,11 @@ class AppUpdateResult {
     required this.hasUpdate,
     this.latestVersion,
     this.releaseUrl,
+    this.apkUrl,
+    this.apkName,
+    this.apkSize,
+    this.releaseTitle,
+    this.releaseNotes,
     this.message,
   });
 
@@ -20,6 +25,21 @@ class AppUpdateResult {
   /// Link halaman rilis di GitHub, dibuka kalau user pilih "Buka rilis".
   final String? releaseUrl;
 
+  /// URL unduh langsung file APK rilis dari GitHub Releases asset.
+  final String? apkUrl;
+
+  /// Nama file APK (misal "kizen-v1.1.1.apk").
+  final String? apkName;
+
+  /// Ukuran file APK dalam bytes (misal 68729245 bytes ≈ 68.7 MB).
+  final int? apkSize;
+
+  /// Judul rilis dari GitHub (misal "Kizen v1.1.1 — ...").
+  final String? releaseTitle;
+
+  /// Catatan rilis / changelog (markdown dari GitHub release body).
+  final String? releaseNotes;
+
   /// Pesan buat ditampilkan user — kenapa tidak ada update, atau kenapa
   /// pengecekan gagal (offline, repo belum punya rilis, dst).
   final String? message;
@@ -29,7 +49,9 @@ class AppUpdateResult {
 /// tanpa perlu token) dan bandingkan dengan [currentVersion] aplikasi
 /// (`pubspec.yaml`). Repo ini belum tentu selalu punya rilis publik — kalau
 /// belum ada, dikasih tau apa adanya (bukan dianggap "sudah versi terbaru").
-Future<AppUpdateResult> checkForAppUpdate({required String currentVersion}) async {
+Future<AppUpdateResult> checkForAppUpdate({
+  required String currentVersion,
+}) async {
   final uri = Uri.parse(
     'https://api.github.com/repos/reiky03/Aplikasi_Comic/releases/latest',
   );
@@ -59,11 +81,37 @@ Future<AppUpdateResult> checkForAppUpdate({required String currentVersion}) asyn
       );
     }
     final isNewer = _isVersionNewer(latest, currentVersion);
+
+    // Cari aset file .apk dari daftar release assets
+    final assets = (data['assets'] as List<dynamic>?) ?? [];
+    Map<String, dynamic>? apkAsset;
+    for (final item in assets) {
+      if (item is Map<String, dynamic>) {
+        final name = (item['name'] as String? ?? '').toLowerCase();
+        if (name.endsWith('.apk')) {
+          apkAsset = item;
+          break;
+        }
+      }
+    }
+
+    final apkUrl = apkAsset?['browser_download_url'] as String?;
+    final apkName = apkAsset?['name'] as String?;
+    final apkSize = apkAsset?['size'] as int?;
+    final releaseTitle = data['name'] as String?;
+    final releaseNotes = data['body'] as String?;
+    final releaseUrl = data['html_url'] as String?;
+
     return AppUpdateResult(
       hasUpdate: isNewer,
       latestVersion: latest,
-      releaseUrl: data['html_url'] as String?,
-      message: isNewer ? null : 'Sudah pakai versi terbaru.',
+      releaseUrl: releaseUrl,
+      apkUrl: apkUrl,
+      apkName: apkName,
+      apkSize: apkSize,
+      releaseTitle: releaseTitle,
+      releaseNotes: releaseNotes,
+      message: isNewer ? null : 'Sudah pakai versi terbaru (v$currentVersion).',
     );
   } on TimeoutException {
     return const AppUpdateResult(
