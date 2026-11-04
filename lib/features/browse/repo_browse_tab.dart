@@ -106,11 +106,34 @@ class RepoBrowseTab extends ConsumerStatefulWidget {
   ConsumerState<RepoBrowseTab> createState() => _RepoBrowseTabState();
 }
 
-class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab> {
+class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab>
+    with WidgetsBindingObserver {
   String _search = '';
   final _searchController = TextEditingController();
   bool _refreshing = false;
   bool _autoRefreshScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    ref.invalidate(installedExtensionPackagesProvider);
+    ref
+        .read(sourcesProvider.notifier)
+        .syncWithRepositories(ref.read(repositoriesProvider));
+  }
 
   Future<void> _refreshRepositories({bool silent = false}) async {
     if (_refreshing) return;
@@ -140,11 +163,6 @@ class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab> {
     }
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -282,9 +300,11 @@ class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab> {
             itemBuilder: (context, index) {
               final entry = listEntries[index];
               return switch (entry.kind) {
-                _RepoListEntryKind.source => _RepoSourceRow(
-                  key: ValueKey(entry.row!.savedId),
-                  data: entry.row!,
+                _RepoListEntryKind.source => RepaintBoundary(
+                  child: _RepoSourceRow(
+                    key: ValueKey('${entry.row!.savedId}_$index'),
+                    data: entry.row!,
+                  ),
                 ),
                 _RepoListEntryKind.header => Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
@@ -676,33 +696,8 @@ class _ExtensionInstallButton extends ConsumerStatefulWidget {
 }
 
 class _ExtensionInstallButtonState
-    extends ConsumerState<_ExtensionInstallButton>
-    with WidgetsBindingObserver {
+    extends ConsumerState<_ExtensionInstallButton> {
   bool _busy = false;
-  bool _refreshOnResume = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
-    ref.invalidate(installedExtensionPackagesProvider);
-    ref
-        .read(sourcesProvider.notifier)
-        .syncWithRepositories(ref.read(repositoriesProvider));
-    if (!_refreshOnResume) return;
-    _refreshOnResume = false;
-  }
 
   Future<void> _install() async {
     if (_busy || (widget.installed && !widget.updateAvailable)) return;
@@ -722,7 +717,6 @@ class _ExtensionInstallButtonState
         fileName: apk,
       );
       if (!mounted) return;
-      _refreshOnResume = true;
       ref.invalidate(installedExtensionPackagesProvider);
       ref
           .read(sourcesProvider.notifier)
@@ -798,7 +792,6 @@ class _ExtensionInstallButtonState
         packageName,
       );
       if (!mounted) return;
-      _refreshOnResume = true;
       // Delay sejenak agar dialog uninstall selesai
       await Future<void>.delayed(const Duration(milliseconds: 1200));
       if (!mounted) return;
@@ -877,7 +870,6 @@ class _ExtensionInstallButtonState
         packageName,
       );
       if (!mounted) return;
-      _refreshOnResume = true;
       AppToast.show(context, 'Dialog hapus instal dibuka');
     } catch (e) {
       if (!mounted) return;

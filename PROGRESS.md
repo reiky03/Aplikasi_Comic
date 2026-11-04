@@ -4165,3 +4165,61 @@ Verifikasi:
 - `flutter analyze`: Nol issue (0 errors, 0 warnings).
 - `flutter test -j 1`: 169/169 unit & widget test lulus 100% (3 skipped).
 - GitHub Release audit: Semua tag rilis (v1.0.0 s.d. v1.2.4) terverifikasi bersih dari kata kunci eksplisit.
+
+
+---
+
+## 5 November 2026 — Rilis v1.2.5: Fix Force Close Scroll Repository, Auto-Stop VPN saat App Ditutup, Durasi Splash 3 Detik, & Notifikasi Pembaruan Otomatis
+
+### Latar Belakang & Keluhan User:
+1. Aplikasi tiba-tiba force close / crash ketika user melakukan scroll cepat di menu Jelajahi tab Repository.
+2. Halaman splash screen diminta dipersingkat menjadi 3 detik (sebelumnya ~5 detik).
+3. Tindakan pencegahan agar VPN tidak terus aktif setelah aplikasi ditutup: saat app ditutup dari Recent Apps / di-swipe away, VPN harus otomatis mati atau dapat dimatikan langsung dari notifikasi agar baterai hemat.
+4. Otomatisasi notifikasi pembaruan saat baru membuka aplikasi, sehingga user langsung mendapatkan dialog/sheet update tanpa harus manual masuk ke menu Pengaturan > Tentang > Periksa Pembaruan.
+
+### Analisis & Root Cause:
+1. **Crash saat Scroll di Jelajahi > Repository**:
+   - **Duplicate Key Exception**: Pada `repo_browse_tab.dart`, setiap baris sumber menggunakan `key: ValueKey(entry.row!.savedId)`. Pada repository dengan ribuan sumber (seperti Keiyoushi), terdapat entri dengan ID duplikat (misal ID `'1'` atau `'0'` dari multisrc). Ketika user scroll melewati entri kedua dengan key identik, Flutter melempar exception `DuplicateKeysFoundException` yang memicu fatal error di release mode.
+   - **Observer Loop Flooding**: Setiap tombol `_ExtensionInstallButton` mendaftarkan dirinya ke `WidgetsBindingObserver` pada `initState` dan melepaskannya pada `dispose`. Scroll cepat memicu ratusan pendaftaran/pembatalan observer per detik ke engine Flutter.
+   - **`SourceSiteIcon` Out-of-Bounds & Network Flooding**: Pada `source_site_icon.dart`, akses `candidates[_candidateIndex]` rentan `RangeError` jika kandidat kosong atau indeks tergeser saat async rebuild, serta URL parsing tanpa `try/catch`.
+2. **Durasi Splash**: Timer statis di `splash_screen.dart` terkonfigurasi 5000 ms.
+3. **VPN Background Persistence**:
+   - `KizenVpnService` tidak meng-override `onTaskRemoved()`. Saat user menutup/men-swipe Kizen dari daftar aplikasi terkini (Recents), Service dengan status `START_STICKY` tetap berjalan di background.
+   - Notifikasi ongoing tidak memiliki tombol aksi cepat "Matikan".
+4. **Pemberitahuan Update Manual**:
+   - `checkForAppUpdate` hanya dipanggil saat user menekan tombol di `AboutScreen`. Belum ada listener/trigger otomatis saat user masuk ke `HomeShell`.
+
+### Perubahan & Solusi:
+1. **Stabilisasi Scroll Jelajahi > Repository**:
+   - Pada [repo_browse_tab.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/browse/repo_browse_tab.dart):
+     - Memperbarui key builder list menjadi `key: ValueKey('${entry.row!.savedId}_$index')` sehingga terjamin 100% unik dan kebal duplikasi.
+     - Membungkus setiap row dengan `RepaintBoundary` untuk mengisolasi repainting saat scrolling 60/120 fps.
+     - Menghapus implementasi `WidgetsBindingObserver` dari tombol row individual, dan memindahkannya cukup sekali di level `_RepoBrowseTabState`.
+   - Pada [source_site_icon.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/core/widgets/source_site_icon.dart):
+     - Menambahkan proteksi `try/catch` pada parsing URL kandidat favicon.
+     - Menambahkan proteksi `safeIndex` terisolasi `[0 .. candidates.length - 1]`.
+     - Membungkus gambar network dengan `RepaintBoundary`.
+2. **Splash Screen Dipersingkat ke 3 Detik**:
+   - Pada [splash_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/onboarding/splash_screen.dart), durasi `Future.delayed` diubah dari 5000ms menjadi 3000ms.
+3. **Pencegahan VPN Aktif Terus Menerus & Auto-Stop**:
+   - Pada [KizenVpnService.kt](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/android/app/src/main/kotlin/com/reikypratama/aplikasi_komik/vpn/KizenVpnService.kt):
+     - Mengimplementasikan `onTaskRemoved(rootIntent: Intent?)`: saat aplikasi ditutup/dibuang dari recent apps, `stopVpn()` otomatis dipanggil untuk mematikan tunnel dan menutup interface TUN.
+     - Menambahkan tombol aksi langsung **"Matikan VPN"** (`PendingIntent.getService`) pada notifikasi status ongoing di bar notifikasi Android.
+   - Pada [MainActivity.kt](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/android/app/src/main/kotlin/com/reikypratama/aplikasi_komik/MainActivity.kt):
+     - Mematikan service VPN pada `onDestroy()` jika `isFinishing`.
+   - Pada [main.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/main.dart):
+     - Menambahkan `AppLifecycleListener` dengan hook `onDetach` untuk mematikan VPN via method channel.
+4. **Pengecekan Pembaruan Otomatis saat Buka Aplikasi**:
+   - Mengekspos `showAppUpdateModal(...)` dan konstanta versi dari [about_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/settings/about_screen.dart).
+   - Pada [home_shell.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/home/home_shell.dart):
+     - Menjalankan pengecekan pembaruan otomatis di background 2 detik setelah user masuk ke HomeShell (hanya 1x per sesi agar tidak mengganggu).
+     - Jika rilis baru terdeteksi di GitHub, sheet unduh & pasang langsung otomatis muncul ke pengguna.
+5. **Bump Versi ke 1.2.5 (Build 17)**:
+   - `pubspec.yaml` dan `about_screen.dart` dinaikkan ke versi `1.2.5+17`.
+   - APK release `kizen-v1.2.5.apk` berhasil di-build (SHA-256: `74db6d0fd532721f4bbb1522ed4554d73cd43045591d9ff16a0a01fa1393c6eb`).
+
+### Verifikasi:
+- `flutter analyze`: Nol issue (0 errors, 0 warnings).
+- `flutter test -j 1`: 169/169 unit & widget test lulus 100% (3 skipped).
+- `flutter build web`: Berhasil compile.
+- `flutter build apk --release`: Selesai dalam 84 detik (69.4MB).

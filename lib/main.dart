@@ -24,8 +24,36 @@ void main() async {
   runApp(const ProviderScope(child: KizenApp()));
 }
 
-class KizenApp extends StatelessWidget {
+class KizenApp extends StatefulWidget {
   const KizenApp({super.key});
+
+  @override
+  State<KizenApp> createState() => _KizenAppState();
+}
+
+class _KizenAppState extends State<KizenApp> {
+  late final AppLifecycleListener _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycleListener = AppLifecycleListener(
+      onDetach: () {
+        // Saat aplikasi ditutup (detached), pastikan VPN dimatikan agar tidak
+        // terus menguras baterai di latar belakang
+        const MethodChannel('kizen/extension_runtime').invokeMethod<void>(
+          'setVpnEnabled',
+          {'enabled': false, 'provider': 'cloudflare'},
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

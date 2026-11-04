@@ -60,6 +60,16 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (isFinishing) {
+            val intent = Intent(this, KizenVpnService::class.java).apply {
+                action = KizenVpnService.ACTION_STOP
+            }
+            startService(intent)
+        }
+        super.onDestroy()
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_VPN_PERMISSION) {

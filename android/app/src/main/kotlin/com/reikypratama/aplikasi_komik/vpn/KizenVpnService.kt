@@ -353,6 +353,12 @@ class KizenVpnService : VpnService(), Runnable {
         super.onDestroy()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.i(TAG, "Kizen app ditutup dari Recent Apps, otomatis matikan VPN")
+        stopVpn()
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -386,11 +392,26 @@ class KizenVpnService : VpnService(), Runnable {
             else -> "Cloudflare (1.1.1.1)"
         }
 
+        val stopIntent = Intent(this, KizenVpnService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this,
+            1,
+            stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Kizen VPN Aktif")
             .setContentText("Bebas Blokir & Terenkripsi · $serverName")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pendingIntent)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Matikan VPN",
+                stopPendingIntent,
+            )
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()

@@ -8,10 +8,27 @@ import '../../core/widgets/widgets.dart';
 import '../../data/app_update_checker.dart';
 import '../../data/extension_runtime.dart';
 
-const _appVersion = '1.2.4';
-const _appBuild = '16';
+const kAppVersion = '1.2.5';
+const kAppBuild = '17';
 const _repoOwner = 'reiky03';
 const _developerHandle = '@reiky03';
+
+/// Membuka bottom sheet pembaruan aplikasi langsung
+Future<void> showAppUpdateModal(
+  BuildContext context, {
+  required AppUpdateResult result,
+  required String currentVersion,
+  required ValueChanged<String> onOpenUrl,
+}) async {
+  await showAppSheet<void>(
+    context,
+    builder: (sheetContext) => _AppUpdateSheet(
+      result: result,
+      currentVersion: currentVersion,
+      onOpenUrl: onOpenUrl,
+    ),
+  );
+}
 
 /// Identitas aplikasi, pengembang, pembaruan, dan lisensi.
 class AboutScreen extends StatefulWidget {
@@ -42,17 +59,15 @@ class _AboutScreenState extends State<AboutScreen> {
   Future<void> _checkForUpdate() async {
     if (_checking) return;
     setState(() => _checking = true);
-    final result = await checkForAppUpdate(currentVersion: _appVersion);
+    final result = await checkForAppUpdate(currentVersion: kAppVersion);
     if (!mounted) return;
     setState(() => _checking = false);
     if (result.hasUpdate) {
-      await showAppSheet<void>(
+      await showAppUpdateModal(
         context,
-        builder: (sheetContext) => _AppUpdateSheet(
-          result: result,
-          currentVersion: _appVersion,
-          onOpenUrl: _openUrl,
-        ),
+        result: result,
+        currentVersion: kAppVersion,
+        onOpenUrl: _openUrl,
       );
     } else {
       AppToast.show(context, result.message ?? 'Sudah pakai versi terbaru');
@@ -109,7 +124,7 @@ class _AboutScreenState extends State<AboutScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'v$_appVersion (build $_appBuild)',
+                          'v$kAppVersion (build $kAppBuild)',
                           style: AppTypography.jakarta(
                             size: 12.5,
                             weight: FontWeight.w400,
@@ -189,7 +204,7 @@ class _AboutScreenState extends State<AboutScreen> {
                       onTap: () => showLicensePage(
                         context: context,
                         applicationName: 'Kizen',
-                        applicationVersion: 'v$_appVersion ($_appBuild)',
+                        applicationVersion: 'v$kAppVersion ($kAppBuild)',
                         applicationIcon: Padding(
                           padding: const EdgeInsets.all(8),
                           child: Image.asset(

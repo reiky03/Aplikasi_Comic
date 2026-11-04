@@ -38,22 +38,26 @@ class _SourceSiteIconState extends State<SourceSiteIcon> {
   }
 
   List<String> get _candidates {
-    final raw = widget.websiteUrl?.trim() ?? '';
-    if (raw.isEmpty) return const [];
-    final normalized = raw.startsWith(RegExp(r'https?://'))
-        ? raw
-        : 'https://$raw';
-    final uri = Uri.tryParse(normalized);
-    if (uri == null || uri.host.isEmpty) return const [];
-    final origin = uri.replace(path: '/', query: null, fragment: null);
-    return <String>{
-      origin.resolve('favicon.ico').toString(),
-      origin.resolve('apple-touch-icon.png').toString(),
-      Uri.https('www.google.com', '/s2/favicons', {
-        'domain': uri.host,
-        'sz': '128',
-      }).toString(),
-    }.toList();
+    try {
+      final raw = widget.websiteUrl?.trim() ?? '';
+      if (raw.isEmpty) return const [];
+      final normalized = raw.startsWith(RegExp(r'https?://'))
+          ? raw
+          : 'https://$raw';
+      final uri = Uri.tryParse(normalized);
+      if (uri == null || uri.host.isEmpty) return const [];
+      final origin = uri.replace(path: '/', query: null, fragment: null);
+      return <String>{
+        origin.resolve('favicon.ico').toString(),
+        origin.resolve('apple-touch-icon.png').toString(),
+        Uri.https('www.google.com', '/s2/favicons', {
+          'domain': uri.host,
+          'sz': '128',
+        }).toString(),
+      }.toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   void _tryNextCandidate(int candidateCount) {
@@ -87,6 +91,11 @@ class _SourceSiteIconState extends State<SourceSiteIcon> {
       ),
     );
 
+    final safeIndex =
+        (_candidateIndex >= 0 && _candidateIndex < candidates.length)
+            ? _candidateIndex
+            : 0;
+
     return Container(
       width: widget.size,
       height: widget.size,
@@ -98,16 +107,19 @@ class _SourceSiteIconState extends State<SourceSiteIcon> {
       ),
       child: candidates.isEmpty
           ? fallback
-          : Image.network(
-              candidates[_candidateIndex],
-              key: ValueKey(candidates[_candidateIndex]),
-              fit: BoxFit.cover,
-              cacheWidth: (widget.size * MediaQuery.devicePixelRatioOf(context))
-                  .round(),
-              errorBuilder: (_, _, _) {
-                _tryNextCandidate(candidates.length);
-                return fallback;
-              },
+          : RepaintBoundary(
+              child: Image.network(
+                candidates[safeIndex],
+                key: ValueKey(candidates[safeIndex]),
+                fit: BoxFit.cover,
+                cacheWidth:
+                    (widget.size * MediaQuery.devicePixelRatioOf(context))
+                        .round(),
+                errorBuilder: (_, _, _) {
+                  _tryNextCandidate(candidates.length);
+                  return fallback;
+                },
+              ),
             ),
     );
   }

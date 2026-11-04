@@ -12,7 +12,7 @@ import '../home/home_shell.dart';
 import '../auth/auth_repository.dart';
 import 'login_screen.dart';
 
-/// Splash — spek 03: brand moment ~5 detik sambil cek sesi auth DAN
+/// Splash — spek 03: brand moment ~3 detik sambil cek sesi auth DAN
 /// (kalau sesi valid) mulai sinkron data dari cloud, bukan cuma nunggu
 /// diam. Sesi valid → langsung ke Library (skip Login & Sync); tidak →
 /// Login.
@@ -33,14 +33,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   Future<void> _start() async {
     // Delay brand moment mulai dihitung dari sekarang, paralel dengan cek
     // sesi (`restoreSession` sendiri cepat/sinkron) supaya durasinya tidak
-    // ketambahan waktu cek sesi.
-    final delay = Future<void>.delayed(const Duration(milliseconds: 5000));
+    // ketambahan waktu cek sesi (~3 detik).
+    final delay = Future<void>.delayed(const Duration(milliseconds: 3000));
     final user = await ref.read(authControllerProvider.notifier).restoreSession();
 
     if (user != null) {
       // Baca provider-provider ini sekarang (bukan nunggu splash kelar) —
       // listener Firestore-nya nempel begitu provider pertama kali dibaca,
-      // jadi sisa waktu splash (~5 detik) beneran dipakai buat narik data
+      // jadi sisa waktu splash (~3 detik) beneran dipakai buat narik data
       // dari cloud, bukan sekadar animasi kosong. Begitu user sampai di
       // Library/History, datanya idealnya sudah (atau hampir) siap.
       ref.read(libraryProvider);
