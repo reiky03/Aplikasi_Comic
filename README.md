@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.3/kizen-v1.2.3.apk">
-    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.3)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.4/kizen-v1.2.4.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.4)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
   <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
     <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru&style=for-the-badge" alt="Rilis Terbaru" />
@@ -31,7 +31,12 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## ✨ Fitur-Fitur Seru
 
-- 🛡️ **Kizen VPN & Anti-Blokir (DoH)**: Buka web komik yang terblokir di Indonesia (Internet Positif / DNS hijacking) langsung di dalam aplikasi tanpa perlu install VPN luar atau izin root. Dilengkapi pilihan server Cloudflare 1.1.1.1, Google DNS, dan AdGuard Shield, pengukur ping live, dan tes status akses otomatis.
+- 🛡️ **Kizen VPN Terintegrasi (Built-in Anti-Blokir)**: Gak perlu lagi download aplikasi VPN luar dari Play Store atau bolak-balik ganti app cuma buat baca komik! Kizen sudah punya VPN native ter-build langsung di dalam aplikasi (memanfaatkan Android `VpnService` + DoH Wire-Format). Bebas membuka situs yang diblokir Internet Positif / DNS poisoning ISP Indonesia (seperti Doujindesu, IMHentai, ToonGod, E-Hentai) dengan pilihan server:
+  - 🇭🇰 **Hong Kong (DNS.SB Anycast)** — *Bypass tercepat galeri komik & server Asia (Rekomendasi)*
+  - 🇸🇬 **Singapura (Cloudflare 1.1.1.1)** — *Koneksi ultra-cepat Anycast latency rendah*
+  - 🛡️ **AdGuard Shield** — *Proteksi iklan popup & malware agresif*
+  - 🌐 **Google Public DNS** — *Server global dengan stabilitas tinggi*
+- 🔓 **Native Decryptor & Cloudflare Turnstile Solver**: Dibekali engine native XOR decryptor untuk membuka API Doujindesu secara instan dan integrasi verifikasi Cloudflare Turnstile otomatis untuk IMHentai, lengkap dengan routing Anycast CDN gambar dinamis.
 - 🚀 **In-App Direct Update & Install**: Cek pembaruan langsung di Pengaturan > Tentang, unduh APK rilis langsung di dalam aplikasi dengan progress bar real-time, dan pasang otomatis tanpa ribet bolak-balik browser.
 - 🌐 **Universal Web Parser**: Tinggal tempel link homepage web komik favorit kamu di *"Sumber Saya"*, Kizen bakal coba deteksi dan parse daftarnya otomatis (support MangaThemesia, Madara CMS, dan berbagai web custom).
 - 🧩 **Support Extension Repo (Tachiyomi / Mihon style)**: Punya link repository extension? Pasang di tab Repository dan langsung nikmati ribuan sumber komik dari berbagai bahasa.
@@ -51,8 +56,8 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## 📲 Cara Download & Pasang (Android)
 
-1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.3/kizen-v1.2.3.apk)** di atas, atau pilih versi lainnya di halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)**.
-2. Unduh file `kizen-v1.2.3.apk`.
+1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.4/kizen-v1.2.4.apk)** di atas, atau pilih versi lainnya di halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)**.
+2. Unduh file `kizen-v1.2.4.apk`.
 3. Buka file APK yang sudah didownload di HP kamu.
 4. Kalau ada peringatan *"Izinkan instalasi dari sumber tidak dikenal"*, centang izinkan/lanjutkan.
 5. Buka **Kizen** dan langsung nikmati baca komik tanpa gangguan!

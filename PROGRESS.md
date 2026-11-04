@@ -27,6 +27,44 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-05 — Kizen v1.2.4: Redesain Tampilan VPN (Minimalis & Modern), Penanganan Seamless Cloudflare Turnstile, & Auto-Clearance Cookie Sync
+
+Permintaan user:
+"imhentai masih gak bisa dibuka, katnaya 403 cloudfire turnstille terdeteksi
+lalu ak mau kamu redesain tampilan vpnya beb, gak usah tampilkan yang bagian statusk askes web komik, lalu yang bawahnya yang private dns andorin 1 tap juga gak ada kan aja,
+dan terakhir sekalian cek sistemnya secara keseluruhan, kalau ad bug yang terjadi perbaiki
+dan update readme.md terkait dengan yang baru ktia buat dengna tambahan ad vpn terbuild disistem wkwk"
+
+Root cause & analisis mendalam:
+1. **Cloudflare Turnstile UX & Desynchronization**:
+   - `imhentai.xxx` menerapkan Cloudflare Managed Challenge (HTTP 403) yang mewajibkan penyelesaian Turnstile di browser asli.
+   - Sebelumnya, saat `ImhentaiSource` mendeteksi status 403, aplikasi langsung melempar teks error mentah: `Exception: Cloudflare Turnstile terdeteksi (HTTP 403). Buka WebView untuk verifikasi.`
+   - Di sisi pengguna, hal ini membingungkan dan terlihat seperti aplikasi rusak, karena tidak ada panduan visual yang jelas atau tombol aksi mencolok untuk menyelesaikan Turnstile.
+   - Selain itu, jika Android `CookieManager` sebenarnya sudah memiliki cookie sesi/clearance, `ImhentaiSource` sebelumnya belum memeriksa sinkronisasi cookie native sebelum melempar error.
+2. **Redesain Antarmuka VPN Kizen**:
+   - Tampilan VPN sebelumnya memuat widget "Diagnostik Jaringan Komik" (daftar status host komik Shinigami, Komiku, dll) dan pintasan "Private DNS Android 1-Tap" yang membuat tampilan terasa terlalu ramai dan redundant.
+   - Pengguna menginginkan antarmuka VPN yang bersih, berfokus murni pada aktivasi koneksi VPN, indikator latensi real-time, pilihan server (Hong Kong, Singapura, AdGuard, Google) dengan dialog konfirmasi peralihan yang aman, dan pintasan pengaturan sistem HP.
+3. **Pemberian Solusi Terintegrasi di Comic Detail**:
+   - Di `ComicDetailScreen`, jika pengambilan chapter gagal karena Cloudflare 403, ditambahkan tombol aksi langsung "Selesaikan Verifikasi Cloudflare di Browser" yang otomatis membuka WebView dan me-reload data chapter seketika saat verifikasi berhasil.
+
+Solusi & Perubahan:
+1. **Seamless Cloudflare Solver & Native Cookie Auto-Sync (`imhentai_source.dart`)**:
+   - Ditambahkan mekanisme auto-sync: sebelum melempar exception 403, `ImhentaiSource` otomatis mengecek `CookieManager` native Android melalui `ExtensionRuntimeBridge().readWebViewSession(baseUrl)`. Jika `cf_clearance` sudah ada, cookie langsung disimpan ke `SourceSessionStore` dan request diulang seketika.
+2. **Visual Verification Card di Source Detail & Comic Detail (`source_detail_screen.dart`, `comic_detail_screen.dart`)**:
+   - Menggantikan teks error mentah dengan card elegan berikon Shield hijau: "Verifikasi Keamanan (Cloudflare)", penjelasan ramah, tombol aksi utama "Selesaikan Verifikasi di Browser", dan tombol muat ulang sekunder.
+3. **Redesain Total Tampilan VPN (`vpn_screen.dart`)**:
+   - Menghapus bagian diagnostik web komik (status host komik) dan pintasan Private DNS Android 1-Tap.
+   - Memperbarui hero card VPN dengan visual tactile power button beranimasi pulse, pill status badge "TERHUBUNG (AMAN)", serta display live ping latency.
+   - Server picker dengan visual bendera negara (🇭🇰 Hong Kong, 🇸🇬 Singapura, 🛡️ AdGuard, 🌐 Google) dan dialog konfirmasi peralihan server yang mulus.
+   - Card informasi keunggulan keamanan & privasi Kizen VPN (Built-in, Anti-DNS Hijacking, Zero Log).
+4. **Pembaruan Dokumentasi (`README.md`)**:
+   - Memperbarui dokumentasi fitur utama menonjolkan VPN native built-in tanpa aplikasi luar dan pembaruan v1.2.4.
+5. **Verifikasi Kualitas**:
+   - `flutter analyze` 100% bersih (0 issues).
+   - Seluruh 169 unit test lulus (`flutter test -j 1`).
+
+---
+
 ### 2026-11-05 — Kizen v1.2.3: Perbaikan Total Parsing IMHentai (Native Single-Gallery Engine, Dynamic Image CDN Routing, & Anycast DoH Wildcard)
 
 Permintaan user:

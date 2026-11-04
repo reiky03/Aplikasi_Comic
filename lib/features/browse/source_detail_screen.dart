@@ -699,11 +699,108 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     final isMissingExtension =
         source.repoPackage != null && !isInstalled && repoMatch != null;
 
+    final isCloudflareChallenge =
+        _discoverError?.contains('Cloudflare') == true ||
+        _discoverError?.contains('Turnstile') == true ||
+        _discoverError?.contains('403') == true;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
       child: Column(
         children: [
-          if (isMissingExtension) ...[
+          if (isCloudflareChallenge) ...[
+            Container(
+              padding: const EdgeInsets.all(18),
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.08),
+                    blurRadius: 18,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    ),
+                    child: const Icon(
+                      LucideIcons.shieldAlert,
+                      color: Color(0xFF10B981),
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Verifikasi Keamanan (Cloudflare)',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.jakarta(
+                      size: 15,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Situs ${source.name} mengaktifkan proteksi Cloudflare Turnstile. Cukup buka browser internal sekali saja untuk verifikasi, setelah itu seluruh komik langsung terbuka otomatis.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.jakarta(
+                      size: 12,
+                      weight: FontWeight.w400,
+                      color: AppColors.textSecondary,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 42,
+                    child: FilledButton.icon(
+                      onPressed: () => _openWebView(
+                        source,
+                        initialUrl: _discoverWebViewUrl ?? source.url,
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      icon: const Icon(LucideIcons.shieldCheck, size: 16),
+                      label: Text(
+                        'Selesaikan Verifikasi di Browser',
+                        style: AppTypography.jakarta(
+                          size: 13,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: () => _loadDiscover(source),
+                    icon: const Icon(LucideIcons.refreshCw, size: 14),
+                    label: const Text('Coba Muat Ulang'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (isMissingExtension) ...[
             Container(
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.only(bottom: 20),
@@ -780,79 +877,81 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
               ),
             ),
           ],
-          Text(
-            isMissingExtension
-                ? 'Atau gunakan metode browser di bawah jika belum ingin memasang ekstensi:'
-                : 'Gagal memuat daftar komik.\n${_discoverError ?? ''}',
-            textAlign: TextAlign.center,
-            style: AppTypography.jakarta(
-              size: 12.5,
-              weight: FontWeight.w500,
-              color: AppColors.textSecondary,
+          if (!isCloudflareChallenge) ...[
+            Text(
+              isMissingExtension
+                  ? 'Atau gunakan metode browser di bawah jika belum ingin memasang ekstensi:'
+                  : 'Gagal memuat daftar komik.\n${_discoverError ?? ''}',
+              textAlign: TextAlign.center,
+              style: AppTypography.jakarta(
+                size: 12.5,
+                weight: FontWeight.w500,
+                color: AppColors.textSecondary,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              InkWell(
-                onTap: () => _loadDiscover(source),
-                borderRadius: BorderRadius.circular(11),
-                child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: AppColors.borderStrong),
-                  ),
-                  child: Text(
-                    'Coba Lagi',
-                    style: AppTypography.jakarta(
-                      size: 13,
-                      weight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                InkWell(
+                  onTap: () => _loadDiscover(source),
+                  borderRadius: BorderRadius.circular(11),
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(color: AppColors.borderStrong),
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              InkWell(
-                onTap: () => _openWebView(
-                  source,
-                  initialUrl: _discoverWebViewUrl ?? source.url,
-                ),
-                borderRadius: BorderRadius.circular(11),
-                child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(
-                      color: AppColors.accent.withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(LucideIcons.globe, size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Buka WebView',
-                        style: AppTypography.jakarta(
-                          size: 13,
-                          weight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
+                    child: Text(
+                      'Coba Lagi',
+                      style: AppTypography.jakarta(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: AppColors.textPrimary,
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 12),
+                InkWell(
+                  onTap: () => _openWebView(
+                    source,
+                    initialUrl: _discoverWebViewUrl ?? source.url,
+                  ),
+                  borderRadius: BorderRadius.circular(11),
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                        color: AppColors.accent.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(LucideIcons.globe, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Buka WebView',
+                          style: AppTypography.jakarta(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

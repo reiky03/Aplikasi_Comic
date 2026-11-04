@@ -8,8 +8,8 @@ import '../../core/widgets/widgets.dart';
 import '../../data/app_update_checker.dart';
 import '../../data/extension_runtime.dart';
 
-const _appVersion = '1.2.3';
-const _appBuild = '15';
+const _appVersion = '1.2.4';
+const _appBuild = '16';
 const _repoOwner = 'reiky03';
 const _developerHandle = '@reiky03';
 

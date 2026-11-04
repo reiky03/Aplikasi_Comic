@@ -3,6 +3,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html;
 import 'package:http/http.dart' as http;
 
+import '../data/extension_runtime.dart';
 import '../data/kizen_http_client.dart';
 import '../data/source_session_store.dart';
 import '../data/source_url.dart';
@@ -45,7 +46,25 @@ class ImhentaiSource implements MangaSource {
 
   Future<Document> _fetchDocument(String targetUrl) async {
     final uri = Uri.parse(targetUrl);
-    final response = await _client.get(uri, headers: _headers);
+    var response = await _client.get(uri, headers: _headers);
+
+    if (response.statusCode == 403 ||
+        response.body.contains('Just a moment...') ||
+        response.body.contains('challenges.cloudflare.com')) {
+      // Coba periksa apakah CookieManager native Android sudah memiliki clearance
+      try {
+        final session = await const ExtensionRuntimeBridge().readWebViewSession(baseUrl);
+        final cookie = session.cookie ?? '';
+        if (cookie.contains('cf_clearance')) {
+          await SourceSessionStore.save(
+            url: baseUrl,
+            cookie: cookie,
+            userAgent: session.userAgent,
+          );
+          response = await _client.get(uri, headers: _headers);
+        }
+      } catch (_) {}
+    }
 
     if (response.statusCode == 403 ||
         response.body.contains('Just a moment...') ||
@@ -53,7 +72,7 @@ class ImhentaiSource implements MangaSource {
       throw MangaSourceWebViewException(
         url: targetUrl,
         message:
-            'Cloudflare Turnstile terdeteksi (HTTP 403). Buka WebView untuk verifikasi.',
+            'Cloudflare Turnstile terdeteksi (HTTP 403). Selesaikan verifikasi sekali di WebView untuk membuka akses.',
       );
     }
 

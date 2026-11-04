@@ -49,6 +49,7 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Top Bar
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
               child: Row(
@@ -93,341 +94,342 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
                       ],
                     ),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: vpn.isEnabled
+                          ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                          : AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: vpn.isEnabled
+                            ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                            : AppColors.border,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: vpn.isEnabled
+                                ? const Color(0xFF10B981)
+                                : AppColors.textMuted,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          vpn.isEnabled ? 'AKTIF' : 'MATI',
+                          style: AppTypography.jakarta(
+                            size: 11,
+                            weight: FontWeight.w800,
+                            color: vpn.isEnabled
+                                ? const Color(0xFF10B981)
+                                : AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
+
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 40),
                 children: [
-                  // Hero Power / VPN Button
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Column(
-                        children: [
-                          ScaleTransition(
-                            scale: vpn.isEnabled
-                                ? _pulseAnimation
-                                : const AlwaysStoppedAnimation(1.0),
-                            child: GestureDetector(
-                              onTap: vpn.isConnecting
-                                  ? null
-                                  : () => notifier.toggle(),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                width: 140,
-                                height: 140,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: vpn.isEnabled
-                                        ? [
-                                            const Color(0xFF10B981),
-                                            const Color(0xFF047857),
-                                          ]
-                                        : [
-                                            AppColors.surfaceAlt,
-                                            AppColors.surface,
-                                          ],
-                                  ),
-                                  boxShadow: [
-                                    if (vpn.isEnabled)
-                                      BoxShadow(
-                                        color: const Color(0xFF10B981)
-                                            .withValues(alpha: 0.4),
-                                        blurRadius: 32,
-                                        spreadRadius: 4,
-                                        offset: const Offset(0, 8),
-                                      )
-                                    else
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.3),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                  ],
-                                  border: Border.all(
-                                    color: vpn.isEnabled
-                                        ? Colors.white.withValues(alpha: 0.3)
-                                        : AppColors.border,
-                                    width: 3,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: vpn.isConnecting
-                                      ? const AppSpinner(
-                                          size: 36,
-                                          strokeWidth: 3,
-                                        )
-                                      : Icon(
-                                          LucideIcons.power,
-                                          size: 52,
-                                          color: vpn.isEnabled
-                                              ? Colors.white
-                                              : AppColors.textMuted,
-                                        ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          // Status Badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: vpn.isEnabled
-                                  ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                  : AppColors.surfaceAlt,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: vpn.isEnabled
-                                    ? const Color(0xFF10B981)
-                                        .withValues(alpha: 0.4)
-                                    : AppColors.border,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: vpn.isEnabled
-                                        ? const Color(0xFF10B981)
-                                        : AppColors.textMuted,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  vpn.isEnabled
-                                      ? 'TERHUBUNG (AMAN)'
-                                      : 'TERPUTUS (STANDAR)',
-                                  style: AppTypography.jakarta(
-                                    size: 12,
-                                    weight: FontWeight.w800,
-                                    color: vpn.isEnabled
-                                        ? const Color(0xFF10B981)
-                                        : AppColors.textMuted,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            vpn.isEnabled
-                                ? 'DNS Terenkripsi aktif — semua web komik bebas diakses tanpa blokir Internet Positif.'
-                                : 'Tekan tombol di atas untuk mengaktifkan proteksi anti-blokir.',
-                            textAlign: TextAlign.center,
-                            style: AppTypography.jakarta(
-                              size: 12,
-                              weight: FontWeight.w400,
-                              color: AppColors.textSecondary,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-                  _eyebrow('Lokasi Server VPN & Terowongan'),
-                  _card([
-                    for (final p in VpnProvider.values)
-                      _serverOption(
-                        title: p.label,
-                        subtitle: p == VpnProvider.hongkong
-                            ? 'Server Hong Kong (Bypass cepat komik doujin & galeri Asia)'
-                            : (p == VpnProvider.cloudflare
-                                ? 'Server Singapura (Cloudflare Anycast - Ping tercepat)'
-                                : (p == VpnProvider.adguard
-                                    ? 'Server AdGuard (Proteksi iklan popup & malware)'
-                                    : 'Server Global (Google DNS Anycast)')),
-                        selected: vpn.provider == p,
-                        onTap: () => _handleSelectProvider(context, vpn, notifier, p),
-                        showDivider: p != VpnProvider.values.last,
-                      ),
-                  ]),
-
-                  _eyebrow('Diagnostik Jaringan Komik'),
+                  // Hero Interactive Power / VPN Card
                   Container(
-                    margin: const EdgeInsets.only(bottom: 22),
-                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 26,
+                    ),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.border),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: vpn.isEnabled
+                            ? [
+                                const Color(0xFF132A22),
+                                AppColors.surface,
+                              ]
+                            : [
+                                AppColors.surfaceAlt,
+                                AppColors.surface,
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: vpn.isEnabled
+                            ? const Color(0xFF10B981).withValues(alpha: 0.35)
+                            : AppColors.border,
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        if (vpn.isEnabled)
+                          BoxShadow(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                            blurRadius: 28,
+                            offset: const Offset(0, 8),
+                          )
+                        else
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                      ],
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  LucideIcons.gauge,
-                                  size: 16,
-                                  color: AppColors.accent,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Latensi Ping',
-                                  style: AppTypography.jakarta(
-                                    size: 13,
-                                    weight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
+                        ScaleTransition(
+                          scale: vpn.isEnabled
+                              ? _pulseAnimation
+                              : const AlwaysStoppedAnimation(1.0),
+                          child: GestureDetector(
+                            onTap: vpn.isConnecting
+                                ? null
+                                : () => notifier.toggle(),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              width: 136,
+                              height: 136,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF10B981)
-                                    .withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: vpn.isEnabled
+                                      ? [
+                                          const Color(0xFF10B981),
+                                          const Color(0xFF047857),
+                                        ]
+                                      : [
+                                          const Color(0xFF2B3342),
+                                          const Color(0xFF1E2430),
+                                        ],
+                                ),
+                                boxShadow: [
+                                  if (vpn.isEnabled)
+                                    BoxShadow(
+                                      color: const Color(0xFF10B981)
+                                          .withValues(alpha: 0.45),
+                                      blurRadius: 36,
+                                      spreadRadius: 4,
+                                      offset: const Offset(0, 8),
+                                    )
+                                  else
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.35),
+                                      blurRadius: 14,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                ],
+                                border: Border.all(
+                                  color: vpn.isEnabled
+                                      ? Colors.white.withValues(alpha: 0.35)
+                                      : AppColors.borderStrong,
+                                  width: 3.5,
+                                ),
                               ),
-                              child: Text(
-                                '${vpn.pingMs} ms',
+                              child: Center(
+                                child: vpn.isConnecting
+                                    ? const AppSpinner(
+                                        size: 38,
+                                        strokeWidth: 3.5,
+                                      )
+                                    : Icon(
+                                        LucideIcons.power,
+                                        size: 52,
+                                        color: vpn.isEnabled
+                                            ? Colors.white
+                                            : AppColors.textMuted,
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Status Badge Pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: vpn.isEnabled
+                                ? const Color(0xFF10B981).withValues(alpha: 0.18)
+                                : AppColors.surface,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: vpn.isEnabled
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.5)
+                                  : AppColors.border,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                vpn.isEnabled
+                                    ? LucideIcons.shieldCheck
+                                    : LucideIcons.shieldAlert,
+                                size: 14,
+                                color: vpn.isEnabled
+                                    ? const Color(0xFF10B981)
+                                    : AppColors.textMuted,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                vpn.isEnabled
+                                    ? 'TERHUBUNG (AMAN & BEBAS BLOKIR)'
+                                    : 'TERPUTUS (STANDAR)',
+                                style: AppTypography.jakarta(
+                                  size: 11.5,
+                                  weight: FontWeight.w800,
+                                  color: vpn.isEnabled
+                                      ? const Color(0xFF10B981)
+                                      : AppColors.textMuted,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        if (vpn.isEnabled) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                LucideIcons.zap,
+                                size: 13,
+                                color: Color(0xFF10B981),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Latensi Ping: ${vpn.pingMs} ms',
                                 style: AppTypography.jakarta(
                                   size: 12,
                                   weight: FontWeight.w700,
                                   color: const Color(0xFF10B981),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        const Divider(height: 1, color: AppColors.border),
+                              const SizedBox(width: 12),
+                              Container(
+                                width: 4,
+                                height: 4,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'DNS Wire-Format DoH',
+                                style: AppTypography.jakarta(
+                                  size: 12,
+                                  weight: FontWeight.w500,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+
                         const SizedBox(height: 12),
                         Text(
-                          'STATUS AKSES WEB KOMIK',
-                          style: AppTypography.eyebrow,
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final entry in (vpn.testedHosts.isEmpty
-                                ? {
-                                    'Shinigami': true,
-                                    'Komiku': true,
-                                    'Komikindo': true,
-                                    'Asura': true,
-                                  }.entries
-                                : vpn.testedHosts.entries))
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: (entry.value && vpn.isEnabled)
-                                      ? const Color(0xFF10B981)
-                                          .withValues(alpha: 0.12)
-                                      : AppColors.surfaceAlt,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: (entry.value && vpn.isEnabled)
-                                        ? const Color(0xFF10B981)
-                                            .withValues(alpha: 0.3)
-                                        : AppColors.border,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      (entry.value && vpn.isEnabled)
-                                          ? LucideIcons.circleCheckBig
-                                          : LucideIcons.circleAlert,
-                                      size: 14,
-                                      color: (entry.value && vpn.isEnabled)
-                                          ? const Color(0xFF10B981)
-                                          : AppColors.textMuted,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '${entry.key}: ${(entry.value && vpn.isEnabled) ? "Tembus" : "Standar"}',
-                                      style: AppTypography.jakarta(
-                                        size: 11.5,
-                                        weight: FontWeight.w600,
-                                        color: (entry.value && vpn.isEnabled)
-                                            ? const Color(0xFF10B981)
-                                            : AppColors.textMuted,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 40,
-                          child: OutlinedButton.icon(
-                            onPressed: () => notifier.testConnection(),
-                            icon: const Icon(LucideIcons.refreshCw, size: 14),
-                            label: const Text('Uji Ulang Koneksi'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.textSecondary,
-                              side: const BorderSide(color: AppColors.border),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
+                          vpn.isEnabled
+                              ? 'Seluruh trafik DNS web komik (IMHentai, Doujindesu, ToonGod, dll) dialihkan melalui terowongan terenkripsi tanpa blokir Internet Positif.'
+                              : 'Tekan tombol power di atas untuk menyalakan proteksi anti-blokir Kizen langsung di dalam aplikasi.',
+                          textAlign: TextAlign.center,
+                          style: AppTypography.jakarta(
+                            size: 12,
+                            weight: FontWeight.w400,
+                            color: AppColors.textSecondary,
+                            height: 1.45,
                           ),
                         ),
                       ],
                     ),
                   ),
 
-                  _eyebrow('Pintasan Sistem Android'),
+                  // Server Selection
+                  _eyebrow('Lokasi Server VPN & Terowongan'),
+                  _card([
+                    for (final p in VpnProvider.values)
+                      _serverOption(
+                        provider: p,
+                        title: p.label,
+                        subtitle: switch (p) {
+                          VpnProvider.hongkong =>
+                            'Server Hong Kong (Bypass cepat galeri komik Asia)',
+                          VpnProvider.cloudflare =>
+                            'Server Singapura (Cloudflare Anycast - Latensi terendah)',
+                          VpnProvider.adguard =>
+                            'Server AdGuard (Proteksi iklan agresif & malware)',
+                          VpnProvider.google =>
+                            'Server Global (Google Public Anycast)',
+                        },
+                        selected: vpn.provider == p,
+                        onTap: () => _handleSelectProvider(context, vpn, notifier, p),
+                        showDivider: p != VpnProvider.values.last,
+                      ),
+                  ]),
+
+                  // Pintasan Sistem Android (Hanya Pengaturan VPN Sistem)
+                  _eyebrow('Pintasan Sistem'),
                   _card([
                     _menuRow(
-                      icon: LucideIcons.shield,
+                      icon: LucideIcons.settings2,
                       label: 'Pengaturan VPN Sistem HP',
-                      subtitle: 'Buka menu konfigurasi VPN bawaan Android',
+                      subtitle: 'Buka konfigurasi VPN bawaan Android OS',
                       trailing: const Icon(
                         AppIcons.forward,
                         size: 16,
                         color: AppColors.textFaint,
                       ),
                       onTap: () => notifier.openSystemVpnSettings(),
-                    ),
-                    _menuRow(
-                      icon: LucideIcons.globe,
-                      label: 'Private DNS Android (1-Tap)',
-                      subtitle: 'Panduan set Private DNS: dns.cloudflare-dns.com',
-                      trailing: const Icon(
-                        AppIcons.forward,
-                        size: 16,
-                        color: AppColors.textFaint,
-                      ),
-                      onTap: () {
-                        notifier.openPrivateDnsSettings();
-                        AppToast.show(
-                          context,
-                          'Pilih Private DNS di HP kamu lalu isi: dns.cloudflare-dns.com',
-                        );
-                      },
                       showDivider: false,
+                    ),
+                  ]),
+
+                  // Info Keamanan
+                  _eyebrow('Fitur & Keamanan Kizen VPN'),
+                  _card([
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          _featureItem(
+                            icon: LucideIcons.layers,
+                            title: 'Terpasang di Dalam Aplikasi (Built-in)',
+                            desc: 'Tidak perlu download aplikasi VPN tambahan dari Play Store atau bolak-balik ganti aplikasi.',
+                          ),
+                          const Divider(height: 20, color: AppColors.border),
+                          _featureItem(
+                            icon: LucideIcons.shieldCheck,
+                            title: 'Bypass DNS Hijacking Telkom/ISP',
+                            desc: 'Mengenkripsi query DNS port 53 langsung ke port 443 HTTPS dengan enkripsi TLS.',
+                          ),
+                          const Divider(height: 20, color: AppColors.border),
+                          _featureItem(
+                            icon: LucideIcons.eyeOff,
+                            title: 'Zero Activity Log & Privasi Terjaga',
+                            desc: 'Riwayat komik kamu tidak pernah dicatat atau dibagikan ke pihak ketiga mana pun.',
+                          ),
+                        ],
+                      ),
                     ),
                   ]),
                 ],
@@ -562,27 +564,29 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
   }
 
   Widget _serverOption({
+    required VpnProvider provider,
     required String title,
     required String subtitle,
     required bool selected,
     required VoidCallback onTap,
     bool showDivider = true,
   }) {
+    final flag = switch (provider) {
+      VpnProvider.hongkong => '🇭🇰',
+      VpnProvider.cloudflare => '🇸🇬',
+      VpnProvider.adguard => '🛡️',
+      VpnProvider.google => '🌐',
+    };
+
     return Column(
       children: [
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                Icon(
-                  selected
-                      ? LucideIcons.circleDot
-                      : LucideIcons.circle,
-                  size: 18,
-                  color: selected ? AppColors.accent : AppColors.textFaint,
-                ),
+                Text(flag, style: const TextStyle(fontSize: 22)),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -610,12 +614,17 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
                     ],
                   ),
                 ),
+                Icon(
+                  selected ? LucideIcons.circleDot : LucideIcons.circle,
+                  size: 20,
+                  color: selected ? const Color(0xFF10B981) : AppColors.textFaint,
+                ),
               ],
             ),
           ),
         ),
         if (showDivider)
-          const Divider(height: 1, indent: 48, color: AppColors.border),
+          const Divider(height: 1, indent: 52, color: AppColors.border),
       ],
     );
   }
@@ -633,7 +642,7 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
                 Icon(icon, size: 18, color: AppColors.accentText),
@@ -674,6 +683,52 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
     );
   }
 
+  Widget _featureItem({
+    required IconData icon,
+    required String title,
+    required String desc,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10B981).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: const Color(0xFF10B981)),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.jakarta(
+                  size: 13,
+                  weight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                desc,
+                style: AppTypography.jakarta(
+                  size: 11.5,
+                  weight: FontWeight.w400,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _eyebrow(String text) => Padding(
         padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
         child: Text(text.toUpperCase(), style: AppTypography.eyebrow),
@@ -684,7 +739,7 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.border),
         ),
         child: Column(children: children),

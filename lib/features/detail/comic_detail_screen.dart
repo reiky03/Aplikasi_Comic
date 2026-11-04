@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
@@ -16,6 +17,7 @@ import '../../data/source_resolver.dart';
 import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
 import '../../sources/manga_source.dart';
+import '../browse/web_view_screen.dart';
 import '../reader/reader_screen.dart';
 
 /// Comic Detail — spek 12. Bila [comic] berasal dari sumber asli (lihat
@@ -47,6 +49,24 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
 
   /// true = chapter terbaru (nomor besar) di atas, seperti sebelumnya.
   bool _sortDescending = true;
+
+  ComicSource? get _comicSource {
+    final sources = ref.read(sourcesProvider);
+    for (final s in sources) {
+      if (s.name == widget.comic.src || s.id == widget.comic.src) return s;
+    }
+    final matched = _matchedSource;
+    if (matched != null) {
+      return ComicSource(
+        id: widget.comic.src,
+        name: widget.comic.src,
+        url: matched.baseUrl,
+        lang: 'all',
+        hue: 200,
+      );
+    }
+    return null;
+  }
 
   MangaSource? get _matchedSource => resolveMangaSource(
     widget.comic.src,
@@ -204,27 +224,80 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         if (_error != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-            child: InkWell(
-              onTap: _loadReal,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                height: 38,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.borderStrong),
-                ),
-                child: Text(
-                  'Gagal memuat chapter — Coba Lagi',
-                  style: AppTypography.jakarta(
-                    size: 12.5,
-                    weight: FontWeight.w700,
-                    color: AppColors.danger,
+            child: (_error!.contains('Cloudflare') ||
+                    _error!.contains('403') ||
+                    _error!.contains('Turnstile'))
+                ? InkWell(
+                    onTap: () {
+                      final url = widget.comic.sourceMangaUrl ??
+                          _matchedSource?.baseUrl ??
+                          '';
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => WebViewScreen(
+                            sourceId: widget.comic.src,
+                            fallbackSource: _comicSource,
+                            initialUrl: url,
+                          ),
+                        ),
+                      ).then((_) {
+                        if (mounted) _loadReal();
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            LucideIcons.shieldAlert,
+                            size: 16,
+                            color: Color(0xFF10B981),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Selesaikan Verifikasi Cloudflare di Browser',
+                            style: AppTypography.jakarta(
+                              size: 12.5,
+                              weight: FontWeight.w700,
+                              color: const Color(0xFF10B981),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : InkWell(
+                    onTap: _loadReal,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      height: 38,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.borderStrong),
+                      ),
+                      child: Text(
+                        'Gagal memuat chapter — Coba Lagi',
+                        style: AppTypography.jakarta(
+                          size: 12.5,
+                          weight: FontWeight.w700,
+                          color: AppColors.danger,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ),
           ),
         // Action row
         Padding(
