@@ -1,7 +1,8 @@
 package eu.kanade.tachiyomi.source.online
 
 import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -12,13 +13,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 
-abstract class HttpSource : Source {
+abstract class HttpSource : CatalogueSource {
     abstract val baseUrl: String
 
-    open val supportsLatest: Boolean = false
+    override val supportsLatest: Boolean = false
     open val network: NetworkHelper = NetworkHelper()
     open val client: OkHttpClient = network.client
-    open val headers: Headers = headersBuilder().build()
+    val headers: Headers by lazy { headersBuilder().build() }
 
     open fun headersBuilder(): Headers.Builder =
         Headers.Builder()
@@ -68,6 +69,41 @@ abstract class HttpSource : Source {
         response.request.url.toString()
 
     open fun getFilterList(): FilterList = FilterList()
+
+    override suspend fun getPopularManga(page: Int): MangasPage {
+        val response = client.newCall(popularMangaRequest(page)).awaitSuccess()
+        return popularMangaParse(response)
+    }
+
+    override suspend fun getLatestUpdates(page: Int): MangasPage {
+        val response = client.newCall(latestUpdatesRequest(page)).awaitSuccess()
+        return latestUpdatesParse(response)
+    }
+
+    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+        val response = client.newCall(searchMangaRequest(page, query, filters)).awaitSuccess()
+        return searchMangaParse(response)
+    }
+
+    override suspend fun getMangaDetails(manga: SManga): SManga {
+        val response = client.newCall(mangaDetailsRequest(manga)).awaitSuccess()
+        return mangaDetailsParse(response)
+    }
+
+    override suspend fun getChapterList(manga: SManga): List<SChapter> {
+        val response = client.newCall(chapterListRequest(manga)).awaitSuccess()
+        return chapterListParse(response)
+    }
+
+    override suspend fun getPageList(chapter: SChapter): List<Page> {
+        val response = client.newCall(pageListRequest(chapter)).awaitSuccess()
+        return pageListParse(response)
+    }
+
+    override suspend fun getImageUrl(page: Page): String {
+        val response = client.newCall(imageRequest(page)).awaitSuccess()
+        return imageUrlParse(response)
+    }
 
     fun setUrlWithoutDomain(manga: SManga, url: String) {
         manga.url = stripBaseUrl(url)

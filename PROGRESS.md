@@ -27,6 +27,54 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.2.1: Perbaikan Total Parsing Ekstensi Keiyoushi (Dukungan bytecode Generated, headers$delegate Reflection, getMangaUpdate Coroutines, SMangaUpdate & Clearance Floating Selection Action)
+
+Permintaan user:
+"oke mantap ini baru berhasil, dan ak coba buka mihon yang webnya butuh vpn dan alhamdulilah berhasil, dan buka google jgua dah berhasil, tapi yagn sekarang maslaah ada di app kizen kita dimana gagal parsing data dari webnya imhentai doujindese, dan itu belum kucoba ke yang lain sih, perbaiki parsingnya beb soalnya vpnya dah jalan"
+"baru juga yang ikon nnya mepet kali ke navbar, perbaiki beb, lihat gambarnya itu" (melampirkan screenshot pill '3 Dipilih' yang menempel di batas atas navbar bawah)
+
+Root cause & analisis mendalam:
+1. **Kegagalan Inisialisasi Ekstensi Modern Keiyoushi (NoSuchFieldException: headers$delegate)**:
+   - Dilakukan forensik bytecode DEX terhadap APK rilis resmi Keiyoushi (`tachiyomi-id.doujindesu-v1.6.3.apk` dan `tachiyomi-all.imhentai-v1.6.26.apk`) menggunakan `dexdump`.
+   - Ditemukan bahwa class generator utama Keiyoushi (`keiyoushi.source.Generated.<init>()`) pada bytecode-nya melakukan manipulasi refleksi langsung terhadap class induk:
+     `HttpSource.class.getDeclaredField("headers$delegate").set(this, ...)`
+   - Di Kizen sebelumnya, `headers` di `HttpSource.kt` dideklarasikan sebagai field biasa (`open val headers: Headers = headersBuilder().build()`), sehingga field internal compiler Kotlin `headers$delegate` TIDAK PERNAH TERBENTUK.
+   - Akibatnya, setiap kali Kizen memanggil `newInstance()` untuk memuat ekstensi Keiyoushi, konstruktor `Generated.<init>` langsung melempar `java.lang.NoSuchFieldException: headers$delegate` dan ekstensi gagal di-load total sebelum bisa mengeksekusi request apapun!
+2. **Arsitektur Pemanggilan Data Keiyoushi Modern (Peralihan dari getMangaDetails/getChapterList ke getMangaUpdate)**:
+   - Dari hasil dump method virtual pada DEX, kedua ekstensi (`doujindesu` dan `imhentai`) TIDAK LAGI mengimplementasikan `getMangaDetails` maupun `getChapterList`.
+   - Keiyoushi menggabungkan pembaruan manga dan bab ke dalam suspend function tunggal:
+     `getMangaUpdate(SManga manga, List<SChapter> chapters, boolean fetchDetails, boolean fetchChapters, Continuation continuation): Object`
+     yang mengembalikan model data `eu.kanade.tachiyomi.source.model.SMangaUpdate(val manga: SManga, val chapters: List<SChapter>)`.
+   - Pemanggil refleksi di `ExtensionRuntimeBridge.kt` sebelumnya hanya mencari nama method konvensional (`getMangaDetails`, `getChapterList`) dan jika gagal memanggil fungsi lama (`mangaDetailsRequest`, `chapterListRequest`), yang di ekstensi modern sengaja dilempar `UnsupportedOperationException`.
+3. **Ketiadaan OkHttpExtensionsKt.awaitSuccess & CatalogueSource**:
+   - Ekstensi Keiyoushi memanggil static method `eu.kanade.tachiyomi.network.OkHttpExtensionsKt.awaitSuccess(Call, Continuation)` untuk asynchronous I/O OkHttp coroutines. Tanpa class ini, runtime JVM Android akan melempar `NoClassDefFoundError`.
+4. **Pill Multi-Select Library Menempel / Mepet ke Navbar**:
+   - Di `lib/features/library/library_screen.dart`, perhitungan posisi tombol floating `3 Dipilih` menggunakan margin `58.0 + math.max(...) + 20.0`.
+   - Di layar dengan 3-button navigation atau gesture inset tebal, navbar menempati ketinggian ~92-108px dari dasar layar, sehingga pill hanya berselisih beberapa piksel (hampir menyentuh garis batas navbar).
+
+Perubahan & Solusi:
+1. **Dukungan Delegate Headers di `HttpSource.kt`**:
+   - Mendeklarasikan `val headers: Headers by lazy { headersBuilder().build() }`.
+   - Kotlin compiler secara otomatis menghasilkan field bytecode `headers$delegate` bertipe `kotlin.Lazy`, sehingga refleksi `HttpSource.class.getDeclaredField("headers$delegate")` dari ekstensi Keiyoushi berjalan 100% mulus tanpa error.
+2. **Implementasi `CatalogueSource.kt` & `SMangaUpdate.kt`**:
+   - Membuat model `SMangaUpdate` di package `eu.kanade.tachiyomi.source.model` dengan getter `getManga()` dan `getChapters()`.
+   - Membuat interface `CatalogueSource` di `eu.kanade.tachiyomi.source` sesuai spesifikasi Tachiyomi/Mihon.
+3. **Dukungan Penuh Coroutine Method `getMangaUpdate` & `getPageList` di `ExtensionRuntimeBridge.kt`**:
+   - Di `fetchMangaDetailsFromExtension`: jika `getMangaDetails` tidak tersedia, otomatis memanggil `getMangaUpdate(manga, emptyList(), fetchDetails=true, fetchChapters=false)` dan mengambil `update.manga`.
+   - Di `fetchChapterListFromExtension`: jika `getChapterList` tidak tersedia, otomatis memanggil `getMangaUpdate(manga, emptyList(), fetchDetails=true, fetchChapters=true)` dan mengambil `update.chapters`.
+   - Di `fetchPageListFromExtension`: memanggil `getPageList(chapter, continuation)`.
+   - Menambahkan runtime bridging untuk `OkHttpExtensionsKt.awaitSuccess` dan `OkHttpExtensionsKt.await`.
+4. **Fallback Aman Injekt Bridge (`Injekt.kt`)**:
+   - Menyediakan resolver dinamis `ActivityThread.currentApplication()` jika instance `Application` diakses oleh static initializer ekstensi sebelum attach lifecycle.
+5. **Clearance Responsif Floating Pill Library (`library_screen.dart`)**:
+   - Mengubah offset bawah menjadi:
+     `math.max(136.0, 64.0 + math.max(AppDimens.navMargin.bottom, MediaQuery.paddingOf(context).bottom) + 32.0)`
+   - Menjamin jarak melayang lega minimal 32px di atas tepi atas navbar di semua rasio dan mode navigasi sistem.
+6. **Bump Versi ke v1.2.1 (Build 13)**:
+   - `pubspec.yaml`, `about_screen.dart`, `settings_screen.dart`, dan `README.md`.
+
+---
+
 ### 2026-11-04 — Kizen v1.2.0: Perbaikan Total Internet Hang/Mati saat VPN Aktif (Hapus Blackhole WireGuard, Pulihkan Hardened DoH Tunnel + Stripping Nawala)
 
 Permintaan user:

@@ -29,6 +29,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Headers
 import org.json.JSONArray
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -654,76 +655,100 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     call.argument<String>("baseUrl"),
                 )
                 val sessionHeaders = call.sessionHeaders()
-                val request = when (mode) {
-                    "latest" -> source.instance.call("latestUpdatesRequest", page) as Request
-                    "search" -> source.instance.call(
-                        "searchMangaRequest",
-                        page,
-                        query,
-                        source.instance.callOrNull("getFilterList") as? FilterList
-                            ?: FilterList(),
-                    ) as Request
-                    else -> source.instance.call("popularMangaRequest", page) as Request
-                }.withSessionHeaders(sessionHeaders)
-                val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
-                    ?: OkHttpClient()
-                val client = applyVpnDns(baseClient)
-                client.newCall(request).execute().use { response ->
-                    val responsePreview = response.peekBody(2L * 1024L * 1024L).string()
-                    val parseMethod = when (mode) {
-                        "latest" -> "latestUpdatesParse"
-                        "search" -> "searchMangaParse"
-                        else -> "popularMangaParse"
+                val parsed = runCatching {
+                    // Coba panggil suspend function resmi Tachiyomi/Mihon terlebih dahulu
+                    val suspendMethod = when (mode) {
+                        "latest" -> "getLatestUpdates"
+                        "search" -> "getSearchManga"
+                        else -> "getPopularManga"
                     }
-                    val parsed = runCatching {
+                    val suspendRes = if (mode == "search") {
+                        val filterList = source.instance.callOrNull("getFilterList") as? FilterList ?: FilterList()
+                        invokeSuspend(source.instance, suspendMethod, page, query, filterList)
+                    } else {
+                        invokeSuspend(source.instance, suspendMethod, page)
+                    }
+                    if (suspendRes != null) {
+                        return@runCatching suspendRes
+                    }
+
+                    // Fallback cara lama (popularMangaRequest + execute + popularMangaParse)
+                    val request = when (mode) {
+                        "latest" -> source.instance.call("latestUpdatesRequest", page) as Request
+                        "search" -> source.instance.call(
+                            "searchMangaRequest",
+                            page,
+                            query,
+                            source.instance.callOrNull("getFilterList") as? FilterList
+                                ?: FilterList(),
+                        ) as Request
+                        else -> source.instance.call("popularMangaRequest", page) as Request
+                    }.withSessionHeaders(sessionHeaders)
+                    val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
+                        ?: OkHttpClient()
+                    val client = applyVpnDns(baseClient)
+                    client.newCall(request).execute().use { response ->
+                        val responsePreview = response.peekBody(2L * 1024L * 1024L).string()
+                        val parseMethod = when (mode) {
+                            "latest" -> "latestUpdatesParse"
+                            "search" -> "searchMangaParse"
+                            else -> "popularMangaParse"
+                        }
                         source.instance.call(parseMethod, response)
                             ?: throw IllegalStateException("$parseMethod mengembalikan null")
-                    }.getOrElse { parseError ->
-                        // Extension Doujindesu memakai kotlinx-serialization
-                        // buat semua response katalog, termasuk pencarian.
-                        // Di runtime host kita parse itu kadang gagal walau
-                        // interceptor APK sudah berhasil mendekripsi body jadi
-                        // JSON array yang valid. Pakai fallback yang sama untuk
-                        // search; sebelumnya search sengaja dikecualikan dan
-                        // langsung berakhir sebagai "gagal mengparse".
-                        if (packageName.contains("doujindesu")) {
-                            val fallback = parseDoujindesuMangas(
-                                responsePreview,
-                                sessionHeaders,
-                            )
-                            if (fallback.isNotEmpty()) {
-                                Log.i(
-                                    TAG,
-                                    "Doujindesu fallback parser OK count=${fallback.size}",
-                                )
-                                result.success(
-                                    mapOf(
-                                        "source" to source.toMap(),
-                                        "hasNextPage" to (fallback.size >= 24),
-                                        "mangas" to fallback,
-                                    ),
-                                )
-                                return@use
-                            }
-                        }
-                        throw parseError
                     }
-                    val mangas = parsed.callOrNull("getMangas") as? List<*> ?: constEmptyList
-                    val hasNextPage = parsed.callOrNull("getHasNextPage") as? Boolean ?: false
-                    Log.i(
-                        TAG,
-                        "fetchMangaPage OK mode=$mode ${source.packageName} count=${mangas.size} next=$hasNextPage",
-                    )
-                    result.success(
-                        mapOf(
-                            "source" to source.toMap(),
-                            "hasNextPage" to hasNextPage,
-                            "mangas" to mangas.mapNotNull {
-                                it?.toMangaMap(source.instance, sessionHeaders)
-                            },
-                        ),
-                    )
+                }.getOrElse { parseError ->
+                    if (packageName.contains("doujindesu", ignoreCase = true)) {
+                        // Fallback langsung ke API Doujindesu
+                        val directUrl = if (mode == "latest") {
+                            "https://doujin.desu.xxx/api/manga?limit=24&sort=latest_chapter"
+                        } else if (mode == "search" && query.isNotBlank()) {
+                            "https://doujin.desu.xxx/api/manga?limit=24&search=" + java.net.URLEncoder.encode(query, "UTF-8")
+                        } else {
+                            "https://doujin.desu.xxx/api/manga?limit=24&sort=rating"
+                        }
+                        val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient ?: OkHttpClient()
+                        val client = applyVpnDns(baseClient)
+                        val req = Request.Builder()
+                            .url(directUrl)
+                            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+                            .header("Referer", "https://doujin.desu.xxx/")
+                            .build()
+                        val fallback = runCatching {
+                            client.newCall(req).execute().use { resp ->
+                                parseDoujindesuMangas(resp.body.string(), sessionHeaders)
+                            }
+                        }.getOrDefault(emptyList())
+
+                        if (fallback.isNotEmpty()) {
+                            Log.i(TAG, "Doujindesu fallback parser OK count=${fallback.size}")
+                            result.success(
+                                mapOf(
+                                    "source" to source.toMap(),
+                                    "hasNextPage" to (fallback.size >= 24),
+                                    "mangas" to fallback,
+                                ),
+                            )
+                            return@Thread
+                        }
+                    }
+                    throw parseError
                 }
+                val mangas = parsed.callOrNull("getMangas") as? List<*> ?: constEmptyList
+                val hasNextPage = parsed.callOrNull("getHasNextPage") as? Boolean ?: false
+                Log.i(
+                    TAG,
+                    "fetchMangaPage OK mode=$mode ${source.packageName} count=${mangas.size} next=$hasNextPage",
+                )
+                result.success(
+                    mapOf(
+                        "source" to source.toMap(),
+                        "hasNextPage" to hasNextPage,
+                        "mangas" to mangas.mapNotNull {
+                            it?.toMangaMap(source.instance, sessionHeaders)
+                        },
+                    ),
+                )
             } catch (e: Throwable) {
                 Log.e(TAG, "fetchMangaPage failed mode=$mode for $packageName", e)
                 result.error("fetch_failed", e.safeMessage(), e.stackTraceToString())
@@ -748,18 +773,41 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 )
                 val manga = newManga(call).apply { url = mangaUrl }
                 val sessionHeaders = call.sessionHeaders()
-                val request = (source.instance.call("mangaDetailsRequest", manga) as Request)
-                    .withSessionHeaders(sessionHeaders)
-                val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
-                    ?: OkHttpClient()
-                val client = applyVpnDns(baseClient)
-                client.newCall(request).execute().use { response ->
-                    val parsed = source.instance.call("mangaDetailsParse", response)
-                        ?: throw IllegalStateException("mangaDetailsParse mengembalikan null")
-                    result.success(
-                        (parsed as SManga).toMangaMap(source.instance, sessionHeaders),
+                val parsed = runCatching {
+                    invokeSuspend(source.instance, "getMangaDetails", manga) as? SManga
+                }.getOrNull() ?: runCatching {
+                    val update = invokeSuspend(
+                        source.instance,
+                        "getMangaUpdate",
+                        manga,
+                        emptyList<SChapter>(),
+                        true,
+                        false,
                     )
+                    update?.callOrNull("getManga") as? SManga
+                }.getOrNull() ?: runCatching {
+                    val update = invokeSuspend(
+                        source.instance,
+                        "getMangaUpdate",
+                        manga,
+                        emptyList<SChapter>(),
+                        true,
+                        true,
+                    )
+                    update?.callOrNull("getManga") as? SManga
+                }.getOrNull() ?: run {
+                    val request = (source.instance.call("mangaDetailsRequest", manga) as Request)
+                        .withSessionHeaders(sessionHeaders)
+                    val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
+                        ?: OkHttpClient()
+                    val client = applyVpnDns(baseClient)
+                    client.newCall(request).execute().use { response ->
+                        source.instance.call("mangaDetailsParse", response) as SManga
+                    }
                 }
+                result.success(
+                    parsed.toMangaMap(source.instance, sessionHeaders),
+                )
             } catch (e: Throwable) {
                 Log.e(TAG, "fetchMangaDetails failed for $packageName", e)
                 result.error("details_failed", e.safeMessage(), e.stackTraceToString())
@@ -783,16 +831,40 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     call.argument<String>("baseUrl"),
                 )
                 val manga = newManga(call).apply { url = mangaUrl }
-                val request = (source.instance.call("chapterListRequest", manga) as Request)
-                    .withSessionHeaders(call.sessionHeaders())
-                val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
-                    ?: OkHttpClient()
-                val client = applyVpnDns(baseClient)
-                client.newCall(request).execute().use { response ->
-                    val chapters = source.instance.call("chapterListParse", response) as? List<*>
-                        ?: constEmptyList
-                    result.success(chapters.mapNotNull { it?.toChapterMap() })
+                val chapters = runCatching {
+                    invokeSuspend(source.instance, "getChapterList", manga) as? List<*>
+                }.getOrNull() ?: runCatching {
+                    val update = invokeSuspend(
+                        source.instance,
+                        "getMangaUpdate",
+                        manga,
+                        emptyList<SChapter>(),
+                        false,
+                        true,
+                    )
+                    update?.callOrNull("getChapters") as? List<*>
+                }.getOrNull() ?: runCatching {
+                    val update = invokeSuspend(
+                        source.instance,
+                        "getMangaUpdate",
+                        manga,
+                        emptyList<SChapter>(),
+                        true,
+                        true,
+                    )
+                    update?.callOrNull("getChapters") as? List<*>
+                }.getOrNull() ?: run {
+                    val request = (source.instance.call("chapterListRequest", manga) as Request)
+                        .withSessionHeaders(call.sessionHeaders())
+                    val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
+                        ?: OkHttpClient()
+                    val client = applyVpnDns(baseClient)
+                    client.newCall(request).execute().use { response ->
+                        source.instance.call("chapterListParse", response) as? List<*>
+                            ?: constEmptyList
+                    }
                 }
+                result.success(chapters.mapNotNull { it?.toChapterMap() })
             } catch (e: Throwable) {
                 Log.e(TAG, "fetchChapterList failed for $packageName", e)
                 result.error("chapters_failed", e.safeMessage(), e.stackTraceToString())
@@ -820,23 +892,27 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     name = call.argument<String>("chapterName") ?: ""
                 }
                 val sessionHeaders = call.sessionHeaders()
-                val request = (source.instance.call("pageListRequest", chapter) as Request)
-                    .withSessionHeaders(sessionHeaders)
                 val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
                     ?: OkHttpClient()
                 val client = applyVpnDns(baseClient)
-                client.newCall(request).execute().use { response ->
-                    val pages = source.instance.call("pageListParse", response) as? List<*>
-                        ?: constEmptyList
-                    val mappedPages = pages.mapNotNull {
-                        it?.toPageMap(source.instance, client, sessionHeaders)
+                val pages = runCatching {
+                    invokeSuspend(source.instance, "getPageList", chapter) as? List<*>
+                }.getOrNull() ?: run {
+                    val request = (source.instance.call("pageListRequest", chapter) as Request)
+                        .withSessionHeaders(sessionHeaders)
+                    client.newCall(request).execute().use { response ->
+                        source.instance.call("pageListParse", response) as? List<*>
+                            ?: constEmptyList
                     }
-                    Log.i(
-                        TAG,
-                        "fetchPageList OK ${source.packageName} count=${mappedPages.size}",
-                    )
-                    result.success(mappedPages)
                 }
+                val mappedPages = pages.mapNotNull {
+                    it?.toPageMap(source.instance, client, sessionHeaders)
+                }
+                Log.i(
+                    TAG,
+                    "fetchPageList OK ${source.packageName} count=${mappedPages.size}",
+                )
+                result.success(mappedPages)
             } catch (e: Throwable) {
                 Log.e(TAG, "fetchPageList failed for $packageName", e)
                 if (packageName.contains("doujindesu", ignoreCase = true)) {
@@ -925,8 +1001,12 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             .apply { isAccessible = true }
             .newInstance()
         val instances = if (
+            eu.kanade.tachiyomi.source.Source::class.java.isAssignableFrom(root.javaClass) ||
             root.findMethod("popularMangaRequest", 1) != null ||
-            root.findMethod("searchMangaRequest", 3) != null
+            root.findMethod("searchMangaRequest", 3) != null ||
+            root.findMethod("getPopularManga", 2) != null ||
+            root.findMethod("getSearchManga", 4) != null ||
+            root.findMethod("getMangaUpdate", 5) != null
         ) {
             listOf(root)
         } else {
@@ -1007,6 +1087,47 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     private fun Any.callOrNull(name: String, vararg args: Any?): Any? =
         runCatching { call(name, *args) }.getOrNull()
 
+    private fun invokeSuspend(target: Any, methodName: String, vararg args: Any?): Any? {
+        val matchingMethod = target.javaClass.methods.firstOrNull { method ->
+            method.name == methodName && method.parameterTypes.size == args.size + 1 &&
+                    kotlin.coroutines.Continuation::class.java.isAssignableFrom(
+                        method.parameterTypes[args.size]
+                    )
+        } ?: return null
+
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var resultRef: Any? = null
+        var errorRef: Throwable? = null
+
+        val continuation = object : kotlin.coroutines.Continuation<Any?> {
+            override val context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext
+            override fun resumeWith(result: Result<Any?>) {
+                result.onSuccess { resultRef = it }
+                result.onFailure { errorRef = it }
+                latch.countDown()
+            }
+        }
+
+        matchingMethod.isAccessible = true
+        val params = arrayOf(*args, continuation)
+        val ret = try {
+            matchingMethod.invoke(target, *params)
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            throw e.targetException ?: e
+        }
+
+        if (ret != kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED) {
+            return ret
+        }
+
+        val completed = latch.await(30, java.util.concurrent.TimeUnit.SECONDS)
+        if (!completed) {
+            throw java.util.concurrent.TimeoutException("Timeout saat memanggil suspend function $methodName")
+        }
+        errorRef?.let { throw it }
+        return resultRef
+    }
+
     private fun Throwable.safeMessage(): String =
         cause?.message ?: message ?: javaClass.simpleName
 
@@ -1072,11 +1193,68 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             .mapNotNull { callOrNull(it) as? String }
             .firstOrNull { it.isNotBlank() }
 
+    private fun decryptDoujindesu(encryptedHex: String): String? {
+        val salt = "doujindesu-scrapers-cannot-read-this-super-secret-salt-2026-v2"
+        val hourMs = 3600000L
+        fun toSigned32(x: Long): Int {
+            var y = x and 0xFFFFFFFFL
+            if (y >= 0x80000000L) y -= 0x100000000L
+            return y.toInt()
+        }
+        fun wH(e: Int): String {
+            val t = salt + "_" + e
+            var a = 0
+            for (ch in t) {
+                a = (a shl 5) - a + ch.code
+                a = toSigned32(a.toLong())
+            }
+            var l = if (a != 0) Math.abs(a.toLong()) else 123456789L
+            return buildString {
+                repeat(32) {
+                    l = (l * 1664525L + 1013904223L) % 4294967296L
+                    append((33 + (l % 93)).toInt().toChar())
+                }
+            }
+        }
+        val now = System.currentTimeMillis()
+        val t = (now / hourMs).toInt()
+        val keys = listOf(wH(t), wH(t - 1), wH(t + 1))
+        for (key in keys) {
+            try {
+                val bytes = encryptedHex.chunked(2).mapNotNull { it.toIntOrNull(16) }
+                var d = 42
+                val keyLen = key.length
+                val decoded = buildString {
+                    for ((idx, byteVal) in bytes.withIndex()) {
+                        val keyChar = key[idx % keyLen].code
+                        val k = byteVal xor keyChar xor (idx * 13) xor d
+                        append((k and 0xFF).toChar())
+                        d = (d + byteVal) % 256
+                    }
+                }
+                val unquoted = java.net.URLDecoder.decode(decoded, "UTF-8")
+                if (unquoted.startsWith("[") && unquoted.endsWith("]")) {
+                    return unquoted
+                }
+            } catch (_: Throwable) {}
+        }
+        return null
+    }
+
     private fun parseDoujindesuMangas(
         body: String,
         headers: Map<String, String> = emptyMap(),
     ): List<Map<String, Any?>> {
-        val items = runCatching { JSONArray(body) }.getOrNull() ?: return emptyList()
+        var cleanJson = body.trim()
+        if (cleanJson.contains("_enc_resp_")) {
+            val encHex = runCatching<String> {
+                JSONObject(cleanJson).optString("_enc_resp_")
+            }.getOrNull()
+            if (!encHex.isNullOrBlank()) {
+                cleanJson = decryptDoujindesu(encHex) ?: cleanJson
+            }
+        }
+        val items = runCatching { JSONArray(cleanJson) }.getOrNull() ?: return emptyList()
         return buildList {
             for (index in 0 until items.length()) {
                 val item = items.optJSONObject(index) ?: continue
@@ -1217,6 +1395,11 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     ): Map<String, Any?> {
         val url = callOrNull("getUrl") as? String ?: ""
         var finalImageUrl = callOrNull("getImageUrl") as? String
+        if (finalImageUrl.isNullOrBlank()) {
+            finalImageUrl = runCatching {
+                invokeSuspend(sourceInstance, "getImageUrl", this) as? String
+            }.getOrNull()
+        }
         var requestHeaders = emptyMap<String, String>()
         val imageRequest = runCatching {
             (sourceInstance.call("imageRequest", this) as Request)
