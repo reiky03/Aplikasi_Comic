@@ -27,6 +27,33 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Fix Regresi Web Parsing: Mengembalikan Prioritas Parser Web & Menyelaraskan Fallback Extension Runtime
+
+Root cause:
+1. Pembajakan parser oleh extension runtime yang belum terpasang (`lib/features/browse/source_detail_screen.dart`): `_matchedSource` mendahulukan `_repoMatchedSource(source)` sebelum `SourceCatalog.matchByUrl` dan `matchByName`. Karena repositori Tachiyomi memuat hampir semua situs (Shinigami, Komikindo, Komiku, Ikiru, Asura, dll.), semua sumber dialihkan ke `ExtensionRuntimeSource` dengan `pkg`. Di HP user yang belum memasang APK extension tersebut, native bridge melempar `PackageManager.NameNotFoundException`.
+2. Fallback `ExtensionRuntimeSource` tidak memiliki parser native & tema (`lib/sources/extension_runtime_source.dart`): `_defaultFallback` hanya mengembalikan `UniversalHtmlSource` dengan browser session dinonaktifkan (kecuali ToonGod) dan tanpa membungkus parser native (Shinigami, Komiku, Asura, Komikindo, Ikiru) atau tema generik (MangaThemesia, NatsuId, Madara). Akibatnya, begitu pemanggilan native extension gagal, seluruh proses langsung melempar `MangaSourceWebViewException` dan halaman gagal memuat sama sekali.
+3. Overwrite `parserKind` prematur di `syncWithRepositories` dan `add_source_screen.dart`: saat sync atau penambahan sumber dilakukan, `parserKind` otomatis ditimpa menjadi `extension-runtime:${pkg}` meskipun APK extension belum terpasang di perangkat.
+4. `source_resolver.dart` mengabaikan parser web aktif: jika sumber memiliki repo match dengan `pkg`, `resolveMangaSource` memaksakan `extension-runtime`, mematikan parser web native maupun generik yang sudah terbukti bekerja.
+
+Fix:
+1. `lib/features/browse/source_detail_screen.dart`:
+   - Mengembalikan urutan resolusi yang benar: `SourceCatalog.matchByUrl` dan `matchByName` (native parsers) dijalankan pertama, disusul parser tema generik (`source.parserKind`), baru kemudian `_repoMatchedSource` dan `buildAutomatic`.
+2. `lib/sources/extension_runtime_source.dart`:
+   - Mengubah `_defaultFallback` menjadi `AdaptiveSource` lengkap dengan `fallbackBaseUrls`, sehingga kegagalan native extension otomatis beralih ke rantai parser web native & tema generik tanpa error.
+3. `lib/sources/adaptive_source.dart` & `lib/sources/alternative_source_methods.dart`:
+   - Memasukkan `_knownNativeSource` (Shinigami, Komiku, Asura, Komikindo, Ikiru) ke dalam strategi fallback `AdaptiveSource` dan `AlternativeSourceMethods`, serta menyusun prioritas parser tema spesifik (MangaThemesia, NatsuId, Madara) sebelum `UniversalHtmlSource` dengan `enableBrowserSessionFallback: true`.
+4. `lib/data/source_resolver.dart`:
+   - Memastikan `isExplicitWebParser` dan `builtInMatch` diutamakan agar parser web tidak dibajak oleh extension runtime repo yang belum terpasang.
+5. `lib/data/sources_state.dart` & `lib/features/browse/add_source_screen.dart`:
+   - Mencegah penimpaan `parserKind` menjadi `extension-runtime` jika APK extension belum terpasang di perangkat (`installedMatch != null`). Menyembuhkan `parserKind` yang telanjur rusak menjadi native saat disinkronkan.
+
+Verifikasi:
+- `flutter analyze`: Bersih (0 issues).
+- `flutter test -j 1`: 147 test lolos (100% pass, 3 skipped safe-mode), termasuk 2 test baru untuk proteksi sumber web dan fallback uninstalled extension runtime.
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Sanity check compile berhasil (53.1s).
+- `flutter build apk --release`: Build APK rilis berhasil (68.7MB).
+- Asset `kizen-v1.0.0.apk` di GitHub Releases v1.0.0 diperbarui.
+
 ### 2026-11-04 — Universal Parser Fleksibel, Sinkronisasi Repo & Sumber Saya, serta Manajemen Batch Library
 
 Perbaikan menyeluruh atas permintaan user:

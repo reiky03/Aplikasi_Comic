@@ -316,6 +316,26 @@ void main() {
       expect(latest.mangas.single.title, 'Benar Terbaru');
     },
   );
+
+  test('extension throw / APK tidak ada langsung memakai fallback AdaptiveSource', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          throw PlatformException(
+            code: 'NOT_FOUND',
+            message: 'PackageManager.NameNotFoundException',
+          );
+        });
+    final source = ExtensionRuntimeSource(
+      name: 'Test',
+      packageName: 'eu.kanade.tachiyomi.extension.id.nonexistent',
+      baseUrl: 'https://reader.example',
+      fallback: const _FallbackSource(),
+    );
+
+    final page = await source.fetchPopular(1);
+    expect(page.mangas, isNotEmpty);
+    expect(page.mangas.single.title, 'Fallback Manga');
+  });
 }
 
 class _FallbackSource implements MangaSource {

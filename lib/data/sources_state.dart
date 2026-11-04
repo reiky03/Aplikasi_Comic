@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_colors.dart';
+import '../sources/source_catalog.dart';
 import 'firestore_scope.dart';
 import 'repository_state.dart';
 import 'source_url.dart';
@@ -365,9 +366,19 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
       final newSourceId = repoSource.id.isNotEmpty
           ? repoSource.id
           : source.repoSourceId;
-      final newParserKind = repoSource.pkg != null
-          ? 'extension-runtime:${repoSource.pkg}'
-          : (repoSource.parserKind ?? source.parserKind);
+
+      final isExistingWebParser = source.parserKind != null &&
+          !source.parserKind!.startsWith('extension-runtime:');
+      final isBuiltIn = SourceCatalog.matchByName(source.name, source.url) != null ||
+          SourceCatalog.matchByUrl(source.url) != null;
+
+      final newParserKind = isExistingWebParser
+          ? source.parserKind
+          : (isBuiltIn
+              ? null
+              : (repoSource.pkg != null
+                  ? 'extension-runtime:${repoSource.pkg}'
+                  : (repoSource.parserKind ?? source.parserKind)));
 
       final hasChanged = isDifferentUrl ||
           source.repoPackage != newPackage ||

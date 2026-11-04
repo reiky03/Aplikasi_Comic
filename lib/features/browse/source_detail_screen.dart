@@ -76,11 +76,26 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       // sumber custom juga bisa nampilin grid discover, bukan cuma
       // fallback ke WebView.
       _matchedSource =
-          _repoMatchedSource(source) ??
           SourceCatalog.matchByUrl(
             source.url,
             fallbackBaseUrls: source.urlAliases,
           ) ??
+          SourceCatalog.matchByName(
+            source.name,
+            source.url,
+          ) ??
+          (source.parserKind != null &&
+                  !source.parserKind!.startsWith('extension-runtime:')
+              ? SourceCatalog.buildGeneric(
+                  source.parserKind!,
+                  source.name,
+                  source.url.startsWith('http')
+                      ? source.url
+                      : 'https://${source.url}',
+                  fallbackBaseUrls: source.urlAliases,
+                )
+              : null) ??
+          _repoMatchedSource(source) ??
           SourceCatalog.buildAutomatic(
             source.name,
             source.url.startsWith('http')

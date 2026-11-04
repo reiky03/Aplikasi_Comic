@@ -1,9 +1,12 @@
 import '../data/source_url.dart';
+import 'asura_source.dart';
+import 'komiku_source.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
 import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
+import 'shinigami_source.dart';
 import 'sveltekit_comic_source.dart';
 import 'universal_html_source.dart';
 
@@ -49,9 +52,12 @@ class AdaptiveSource implements MangaSource {
         .toSet();
     final candidates = <MangaSource>[
       ...preferred,
+      ?_knownNativeSource(name, normalizedBaseUrl),
       ..._genericStrategies(name, normalizedBaseUrl),
-      for (final fallbackBase in fallbackBases)
+      for (final fallbackBase in fallbackBases) ...[
+        ?_knownNativeSource(name, fallbackBase),
         ..._genericStrategies(name, fallbackBase),
+      ],
     ];
     final seen = <String>{};
     return [
@@ -60,19 +66,28 @@ class AdaptiveSource implements MangaSource {
     ];
   }
 
+  static MangaSource? _knownNativeSource(String name, String baseUrl) {
+    return switch (name.trim().toLowerCase()) {
+      'asura scans' || 'asura' => AsuraSource(),
+      'shinigami' => ShinigamiSource(),
+      'komiku' => KomikuSource(),
+      'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
+      'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
+      _ => null,
+    };
+  }
+
   static List<MangaSource> _genericStrategies(String name, String baseUrl) => [
     if (_isMangaFire(baseUrl)) MangaFireSource(name: name, baseUrl: baseUrl),
     SvelteKitComicSource(name: name, baseUrl: baseUrl),
+    MangaThemesiaSource(name: name, baseUrl: baseUrl),
+    NatsuIdSource(name: name, baseUrl: baseUrl),
+    MadaraSource(name: name, baseUrl: baseUrl),
     UniversalHtmlSource(
       name: name,
       baseUrl: baseUrl,
       enableBrowserSessionFallback: true,
     ),
-    MangaThemesiaSource(name: name, baseUrl: baseUrl),
-    NatsuIdSource(name: name, baseUrl: baseUrl),
-    // Strategi tambahan paling belakang: tidak menggeser parser lama yang
-    // sudah berhasil, tetapi menutup katalog/chapter WordPress Madara AJAX.
-    MadaraSource(name: name, baseUrl: baseUrl),
   ];
 
   static bool _isMangaFire(String url) {

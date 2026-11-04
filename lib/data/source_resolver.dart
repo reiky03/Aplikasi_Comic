@@ -44,14 +44,27 @@ MangaSource? resolveMangaSource(
       urlAliases: custom.urlAliases,
     );
     final baseUrl = repoMatch?.source.baseUrl ?? customBaseUrl;
-    final kind = repoMatch?.source.pkg == null
-        ? (repoMatch?.source.parserKind ?? custom.parserKind)
-        : 'extension-runtime:${repoMatch!.source.pkg}';
     final fallbackBaseUrls = <String>{
       ...custom.urlAliases,
       if (baseUrl != customBaseUrl) customBaseUrl,
       ...?repoMatch?.source.baseUrlAliases,
     };
+
+    final isExplicitWebParser = custom.parserKind != null &&
+        !custom.parserKind!.startsWith('extension-runtime:');
+    final builtInMatch = SourceCatalog.matchByName(custom.name, baseUrl) ??
+        SourceCatalog.matchByUrl(baseUrl, fallbackBaseUrls: fallbackBaseUrls);
+
+    final kind = isExplicitWebParser
+        ? custom.parserKind
+        : (builtInMatch != null
+            ? null
+            : (custom.parserKind?.startsWith('extension-runtime:') == true
+                ? custom.parserKind
+                : (repoMatch?.source.pkg != null
+                    ? 'extension-runtime:${repoMatch!.source.pkg}'
+                    : (repoMatch?.source.parserKind ?? custom.parserKind))));
+
     return SourceCatalog.buildAutomatic(
       custom.name,
       baseUrl,

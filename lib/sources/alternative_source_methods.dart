@@ -1,8 +1,12 @@
+import 'asura_source.dart';
+import 'komiku_source.dart';
 import 'manga_source.dart';
 import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
+import 'shinigami_source.dart';
 import 'sveltekit_comic_source.dart';
+import 'universal_html_source.dart';
 
 /// Kumpulan parser tambahan yang dicoba SETELAH parser utama gagal.
 ///
@@ -18,6 +22,7 @@ class AlternativeSourceMethods implements MangaSource {
   }) : _strategies =
            strategies ??
            [
+             ?_knownNativeSource(name, baseUrl),
              // Banyak source modern berpindah dari WordPress ke frontend/API
              // SvelteKit. Ini hanya dicoba setelah extension + fallback utama
              // gagal, jadi jalur lama yang sudah berhasil tetap tidak berubah.
@@ -25,7 +30,23 @@ class AlternativeSourceMethods implements MangaSource {
              MangaThemesiaSource(name: name, baseUrl: baseUrl),
              NatsuIdSource(name: name, baseUrl: baseUrl),
              MadaraSource(name: name, baseUrl: baseUrl),
+             UniversalHtmlSource(
+               name: name,
+               baseUrl: baseUrl,
+               enableBrowserSessionFallback: true,
+             ),
            ];
+
+  static MangaSource? _knownNativeSource(String name, String baseUrl) {
+    return switch (name.trim().toLowerCase()) {
+      'asura scans' || 'asura' => AsuraSource(),
+      'shinigami' => ShinigamiSource(),
+      'komiku' => KomikuSource(),
+      'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
+      'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
+      _ => null,
+    };
+  }
 
   @override
   final String name;

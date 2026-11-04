@@ -208,21 +208,25 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       installedMatch = await findInstalledExtensionForUrl(rawUrl);
       if (!mounted) return;
     }
-    final extensionPackage =
-        repoMatch?.source.pkg ??
-        installedMatch?.package.packageName ??
-        (sameLogicalSource ? initial.repoPackage : null);
-    final extensionSourceId =
-        repoMatch?.source.id ??
-        installedMatch?.source.id.toString() ??
-        (sameLogicalSource ? initial.repoSourceId : null);
-    var parserKind = extensionPackage == null
-        ? (isBuiltIn ? null : _detectedParserKind)
-        : 'extension-runtime:$extensionPackage';
+    final hasInstalledApk = installedMatch != null;
+    final extensionPackage = hasInstalledApk
+        ? installedMatch.package.packageName
+        : (repoMatch?.source.pkg ??
+            (sameLogicalSource ? initial.repoPackage : null));
+    final extensionSourceId = hasInstalledApk
+        ? installedMatch.source.id.toString()
+        : (repoMatch?.source.id ??
+            (sameLogicalSource ? initial.repoSourceId : null));
+    var parserKind = (hasInstalledApk ||
+            _detectedParserKind?.startsWith('extension-runtime:') == true)
+        ? 'extension-runtime:${extensionPackage ?? repoMatch?.source.pkg}'
+        : (isBuiltIn
+            ? null
+            : (_detectedParserKind ?? repoMatch?.source.parserKind));
     var status =
-        extensionPackage != null || isBuiltIn || _testState == _TestState.ok
-        ? SourceStatus.normal
-        : SourceStatus.webview;
+        hasInstalledApk || isBuiltIn || _testState == _TestState.ok
+            ? SourceStatus.normal
+            : SourceStatus.webview;
     if (_testState == _TestState.error) status = SourceStatus.webview;
     if (!isBuiltIn && parserKind == null) {
       final normalizedUrl = rawUrl.startsWith('http')

@@ -189,4 +189,71 @@ void main() {
     expect(resolved, isNotNull);
     expect(resolved?.name, 'Kiryuu ID');
   });
+
+  test('sumber built-in tetap mengutamakan parser native walau repositori memiliki package extension', () {
+    const customSources = [
+      ComicSource(
+        id: 's_shinigami',
+        name: 'Shinigami',
+        url: 'https://shinigami.asia',
+        lang: 'ID',
+        hue: 0,
+      ),
+    ];
+    const repositories = [
+      ComicRepository(
+        id: 'repo1',
+        name: 'Repo Indo',
+        url: 'https://repo.example/index.min.json',
+        sources: [
+          RepoSource(
+            id: 'shinigami-repo',
+            name: 'Shinigami',
+            hue: 0,
+            lang: 'ID',
+            baseUrl: 'https://shinigami.asia',
+            pkg: 'eu.kanade.tachiyomi.extension.id.shinigamito',
+          ),
+        ],
+      ),
+    ];
+
+    final resolved = resolveMangaSource('Shinigami', customSources, repositories);
+    expect(resolved, isNotNull);
+    expect(resolved, isA<AdaptiveSource>());
+  });
+
+  test('sumber custom dengan parserKind web generik tidak tertimpa oleh extension package repo', () {
+    const customSources = [
+      ComicSource(
+        id: 's_custom',
+        name: 'WestManga',
+        url: 'https://westmanga.info',
+        lang: 'ID',
+        hue: 30,
+        parserKind: 'mangathemesia',
+      ),
+    ];
+    const repositories = [
+      ComicRepository(
+        id: 'repo1',
+        name: 'Repo Indo',
+        url: 'https://repo.example/index.min.json',
+        sources: [
+          RepoSource(
+            id: 'westmanga-repo',
+            name: 'WestManga',
+            hue: 30,
+            lang: 'ID',
+            baseUrl: 'https://westmanga.info',
+            pkg: 'eu.kanade.tachiyomi.extension.id.westmanga',
+          ),
+        ],
+      ),
+    ];
+
+    final resolved = resolveMangaSource('WestManga', customSources, repositories);
+    expect(resolved, isNotNull);
+    expect(resolved, isA<AdaptiveSource>());
+  });
 }

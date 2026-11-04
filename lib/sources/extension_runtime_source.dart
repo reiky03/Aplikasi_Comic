@@ -6,7 +6,6 @@ import 'alternative_source_methods.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
 import 'sveltekit_comic_source.dart';
-import 'universal_html_source.dart';
 
 class ExtensionRuntimeSource implements MangaSource {
   ExtensionRuntimeSource({
@@ -22,7 +21,12 @@ class ExtensionRuntimeSource implements MangaSource {
   }) : _bridge = bridge ?? const ExtensionRuntimeBridge(),
        _fallback =
            fallback ??
-           _defaultFallback(name: name, baseUrl: baseUrl, lang: lang),
+           _defaultFallback(
+             name: name,
+             baseUrl: baseUrl,
+             lang: lang,
+             fallbackBaseUrls: fallbackBaseUrls,
+           ),
        _alternatives =
            alternatives ??
            AlternativeSourceMethods(name: name, baseUrl: baseUrl),
@@ -70,6 +74,7 @@ class ExtensionRuntimeSource implements MangaSource {
     required String name,
     required String baseUrl,
     String? lang,
+    Iterable<String> fallbackBaseUrls = const [],
   }) {
     final host = Uri.tryParse(baseUrl)?.host.toLowerCase();
     if (host == 'soulscans.asia' || host?.endsWith('.soulscans.asia') == true) {
@@ -78,11 +83,10 @@ class ExtensionRuntimeSource implements MangaSource {
     if (host == 'mangafire.to' || host?.endsWith('.mangafire.to') == true) {
       return MangaFireSource(name: name, baseUrl: baseUrl, lang: lang);
     }
-    return UniversalHtmlSource(
+    return AdaptiveSource(
       name: name,
       baseUrl: baseUrl,
-      enableBrowserSessionFallback:
-          host == 'toongod.org' || host?.endsWith('.toongod.org') == true,
+      fallbackBaseUrls: fallbackBaseUrls,
     );
   }
 
