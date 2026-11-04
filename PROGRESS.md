@@ -4127,3 +4127,41 @@ Verifikasi:
 - `flutter test -j 1`: 155/155 unit & widget test lulus 100%.
 - `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Sanity check compile web berhasil (`✓ Built build/web` dalam 49.6 detik).
 - `flutter build apk --release`: Build APK release Android.
+
+
+---
+
+## 5 November 2026 — Rilis v1.2.4: Redesain Antarmuka VPN Kizen, Auto-Sync Clearance Cloudflare Turnstile, & Sanitasi Publik Catatan Rilis
+
+### Latar Belakang & Keluhan User:
+1. User meminta perbaikan akses galeri komik yang terkena proteksi Cloudflare Turnstile (HTTP 403), di mana tampilan error sebelumnya terlalu teknis dan cookie clearance belum otomatis tersinkronisasi kembali ke HTTP engine.
+2. User meminta perombakan tampilan layar VPN agar lebih bersih dan tidak berantakan: menghapus kartu diagnostik status akses web komik dan pintasan Private DNS Android (1-Tap).
+3. User meminta agar seluruh catatan rilis dan judul rilis publik di GitHub Releases serta README tidak secara eksplisit mengumbar nama situs komik tertentu agar profesional, rapi, dan tidak memalukan, diganti dengan istilah teknis umum (seperti Universal Web Gallery Engine, Native Web Decryptor, dan Advanced Web Engine).
+
+### Analisis & Root Cause:
+1. **Cloudflare Turnstile Handling**:
+   - Turnstile pada situs galeri web memerlukan eksekusi JS browser nyata. Saat user menyelesaikan tantangan di `WebViewScreen`, Android `CookieManager` telah menyimpan cookie `cf_clearance`. Namun pada parser native, jika cache sesi belum sinkron, request langsung gagal dengan pesan 403 mentah yang membingungkan user.
+2. **UI Clutter pada VPN Screen**:
+   - Menu diagnostik host web komik memakan ruang vertikal cukup banyak dan mengekspos domain-domain tertentu, serta fitur Private DNS Android 1-tap redundan dengan VpnService native yang sudah berjalan penuh.
+3. **Penyebutan Domain di Rilis Publik**:
+   - Beberapa judul dan catatan rilis terdahulu (v1.1.3 hingga v1.2.1) menyebutkan domain secara spesifik, yang dirasa kurang pantas untuk portofolio publik.
+
+### Perubahan & Solusi:
+1. **Auto-Sync & Interactive Cloudflare Solver**:
+   - Pada `lib/sources/imhentai_source.dart`, sebelum melempar exception 403, parser memanggil `ExtensionRuntimeBridge().readWebViewSession(baseUrl)`. Jika cookie `cf_clearance` sudah tersimpan di browser perangkat, token langsung disinkronkan ke `SourceSessionStore` dan request HTTP diulang seketika tanpa melempar error.
+   - Pada `lib/features/browse/source_detail_screen.dart` dan `lib/features/detail/comic_detail_screen.dart`, jika terkena tantangan Cloudflare 403, ditampilkan card verifikasi perisai hijau yang ramah pengguna dengan tombol aksi 1-tap untuk menyelesaikan verifikasi di browser internal dan otomatis memuat ulang saat kembali.
+2. **Redesain Antarmuka Layar VPN (`lib/features/vpn/vpn_screen.dart`)**:
+   - Menghapus total widget diagnostik status akses web komik dan pintasan Private DNS Android.
+   - Mengganti tampilan dengan hero card modern bertema obsidian, tombol daya taktil beranimasi denyut, dan pengukur latensi ping live.
+   - Menambahkan pemilih lokasi server dengan bendera negara (Hong Kong, Singapura, AdGuard, Google) dan dialog konfirmasi pemindahan server yang aman.
+   - Menghaluskan seluruh teks bantuan dan panduan antarmuka menjadi istilah umum yang netral.
+3. **Sanitasi Total Catatan Rilis & Dokumentasi**:
+   - Memperbarui seluruh catatan rilis dan judul rilis di GitHub Releases dari v1.1.3 sampai v1.2.4 menggunakan GitHub API, menggantikan penyebutan spesifik dengan istilah umum dan profesional (*"Peningkatan Engine Universal Web Gallery"*, *"Native Web Decryptor Engine"*, *"Advanced Web Engine & Cloudflare Solver"*).
+   - Memperbarui `README.md` agar bebas dari penyebutan domain spesifik.
+4. **Bump Versi ke 1.2.4 (Build 16)**:
+   - File APK release `kizen-v1.2.4.apk` berhasil di-build dan diunggah ke rilis resmi GitHub.
+
+### Verifikasi:
+- `flutter analyze`: Nol issue (0 errors, 0 warnings).
+- `flutter test -j 1`: 169/169 unit & widget test lulus 100% (3 skipped).
+- GitHub Release audit: Semua tag rilis (v1.0.0 s.d. v1.2.4) terverifikasi bersih dari kata kunci eksplisit.

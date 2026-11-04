@@ -31,12 +31,12 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## ✨ Fitur-Fitur Seru
 
-- 🛡️ **Kizen VPN Terintegrasi (Built-in Anti-Blokir)**: Gak perlu lagi download aplikasi VPN luar dari Play Store atau bolak-balik ganti app cuma buat baca komik! Kizen sudah punya VPN native ter-build langsung di dalam aplikasi (memanfaatkan Android `VpnService` + DoH Wire-Format). Bebas membuka situs yang diblokir Internet Positif / DNS poisoning ISP Indonesia (seperti Doujindesu, IMHentai, ToonGod, E-Hentai) dengan pilihan server:
+- 🛡️ **Kizen VPN Terintegrasi (Built-in Anti-Blokir)**: Gak perlu lagi download aplikasi VPN luar dari Play Store atau bolak-balik ganti app cuma buat baca komik! Kizen sudah punya VPN native ter-build langsung di dalam aplikasi (memanfaatkan Android `VpnService` + DoH Wire-Format). Bebas membuka berbagai situs web komik dan galeri manga populer yang terblokir Internet Positif / DNS poisoning ISP Indonesia dengan pilihan server:
   - 🇭🇰 **Hong Kong (DNS.SB Anycast)** — *Bypass tercepat galeri komik & server Asia (Rekomendasi)*
   - 🇸🇬 **Singapura (Cloudflare 1.1.1.1)** — *Koneksi ultra-cepat Anycast latency rendah*
   - 🛡️ **AdGuard Shield** — *Proteksi iklan popup & malware agresif*
   - 🌐 **Google Public DNS** — *Server global dengan stabilitas tinggi*
-- 🔓 **Native Decryptor & Cloudflare Turnstile Solver**: Dibekali engine native XOR decryptor untuk membuka API Doujindesu secara instan dan integrasi verifikasi Cloudflare Turnstile otomatis untuk IMHentai, lengkap dengan routing Anycast CDN gambar dinamis.
+- 🔓 **Advanced Web Engine & Cloudflare Solver**: Dibekali engine native decryptor untuk situs web komik berbasis SPA/API terenkripsi dan integrasi otomatis Cloudflare Turnstile solver, lengkap dengan routing Anycast CDN gambar berkecepatan tinggi.
 - 🚀 **In-App Direct Update & Install**: Cek pembaruan langsung di Pengaturan > Tentang, unduh APK rilis langsung di dalam aplikasi dengan progress bar real-time, dan pasang otomatis tanpa ribet bolak-balik browser.
 - 🌐 **Universal Web Parser**: Tinggal tempel link homepage web komik favorit kamu di *"Sumber Saya"*, Kizen bakal coba deteksi dan parse daftarnya otomatis (support MangaThemesia, Madara CMS, dan berbagai web custom).
 - 🧩 **Support Extension Repo (Tachiyomi / Mihon style)**: Punya link repository extension? Pasang di tab Repository dan langsung nikmati ribuan sumber komik dari berbagai bahasa.

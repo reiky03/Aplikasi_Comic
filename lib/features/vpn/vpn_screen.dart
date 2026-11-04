@@ -350,7 +350,7 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
                         const SizedBox(height: 12),
                         Text(
                           vpn.isEnabled
-                              ? 'Seluruh trafik DNS web komik (IMHentai, Doujindesu, ToonGod, dll) dialihkan melalui terowongan terenkripsi tanpa blokir Internet Positif.'
+                              ? 'Seluruh trafik DNS web komik dan galeri manga dialihkan melalui terowongan terenkripsi tanpa blokir Internet Positif.'
                               : 'Tekan tombol power di atas untuk menyalakan proteksi anti-blokir Kizen langsung di dalam aplikasi.',
                           textAlign: TextAlign.center,
                           style: AppTypography.jakarta(
