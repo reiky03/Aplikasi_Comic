@@ -27,6 +27,35 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.1.7: Eliminasi Deadlock DNS Terowongan VPN (Anti-Internet Mati Total) & Bootstrap In-Memory OkHttpClient
+
+Permintaan user:
+"Bahkan ketika vpnya aktif, sumber web apapun itu yang awalnya bisa dibuka walau tanpa VPN malah jadi gak bisa, ini sebenarnya VPN apa sih beb tadi di 1.1.5 tadi"
+
+Root cause & analisis mendalam:
+1. **Mekanisme Recursive DNS Deadlock di `KizenVpnService.kt` (v1.1.5):**
+   - Saat VPN Android aktif, `VpnService.Builder().addDnsServer("10.222.0.2")` mengarahkan SEMUA query DNS UDP port 53 dari seluruh sistem Android ke terowongan virtual TUN Kizen.
+   - Loop worker TUN menerima query DNS dari sistem HP lalu menggunakan `OkHttpClient` untuk membungkus query tersebut ke protokol DoH HTTPS (`https://cloudflare-dns.com/dns-query`).
+   - Masalah fatalnya: `OkHttpClient` belum tahu IP dari domain DoH itu sendiri (`cloudflare-dns.com`). Karena tidak memiliki pemetaan IP in-memory, `OkHttpClient` memanggil resolver bawaan OS libc (`InetAddress.getAllByName`).
+   - Karena OS sedang diarahkan ke TUN Kizen, query DNS mencari IP `cloudflare-dns.com` tersebut masuk lagi ke dalam TUN Kizen itu sendiri!
+   - Hasilnya terjadi **Infinite Recursive Deadlock**: OkHttp menunggu hasil DNS selesai, tapi hasil DNS menunggu OkHttp mengirim paket! Seluruh thread pool OkHttp kehabisan worker dan macet total (hang).
+   - Akibatnya: seluruh HP pengguna kehilangan kemampuan resolve DNS apa pun. Web komik yang normal tanpa blokir (Shinigami, Komiku, dll) maupun web terblokir sama sekali tidak bisa dibuka saat VPN aktif.
+
+Solusi & Perbaikan di v1.1.7:
+1. **In-Memory Bootstrap DNS untuk `KizenVpnService` (`android/app/.../KizenVpnService.kt`):**
+   - Memasukkan custom `okhttp3.Dns` resolver langsung ke `OkHttpClient.Builder().dns(bootstrapDns)`.
+   - Melakukan mapping in-memory byte statis murni lewat `InetAddress.getByAddress(hostname, byteArrayOf(...))` tanpa panggilan jaringan maupun OS:
+     * `cloudflare-dns.com`, `one.one.one.one` -> `1.1.1.1`, `1.0.0.1`
+     * `dns.google` -> `8.8.8.8`, `8.8.4.4`
+     * `dns.adguard-dns.com` -> `94.140.14.14`, `94.140.15.15`
+     * `doh.dns.sb` -> `185.222.222.222`, `45.11.45.11`
+   - OkHttp kini menghubungkan TLS handshake DoH langsung ke IP Anycast tanpa pernah menyentuh sistem DNS Android lagi.
+2. **Protected Datagram UDP Fallback:**
+   - Menambahkan mekanisme `fallbackUdpQuery` menggunakan `DatagramSocket()` yang diproteksi OS (`protect(socket)`) langsung ke Anycast `1.1.1.1:53` jika request HTTPS DoH gagal atau timeout, menjamin tidak ada query DNS yang terputus atau tertahan.
+3. **Versi & Rilis:**
+   - Bump versi ke `v1.1.7+9`.
+   - Update `about_screen.dart`, `settings_screen.dart`, `pubspec.yaml`, dan `README.md`.
+
 ### 2026-11-04 — Kizen v1.1.6: Dialog Konfirmasi & Feedback Interaktif Pindah Server VPN, Custom DoH Client Anti-Blokir Parser Komik (Zero Impact Firestore), & Prompt 1-Tap Pasang Ekstensi Keiyoushi
 
 Permintaan user:

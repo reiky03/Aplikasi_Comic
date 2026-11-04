@@ -79,10 +79,37 @@ class KizenVpnService : VpnService(), Runnable {
                 defaultFactory.createSocket(address, port, localAddress, localPort).also { protect(it) }
         }
 
+        // DNS Bootstrap in-memory agar OkHttp TIDAK pernah memicu recursive DNS loop ke TUN
+        val bootstrapDns = okhttp3.Dns { hostname ->
+            when (hostname.lowercase()) {
+                "cloudflare-dns.com", "one.one.one.one" -> listOf(
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(1, 1, 1, 1)),
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(1, 0, 0, 1)),
+                )
+                "dns.google" -> listOf(
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(8, 8, 8, 8)),
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(8, 8, 4, 4)),
+                )
+                "dns.adguard-dns.com" -> listOf(
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(94.toByte(), 140.toByte(), 14, 14)),
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(94.toByte(), 140.toByte(), 15, 15)),
+                )
+                "doh.dns.sb" -> listOf(
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(185.toByte(), 222.toByte(), 222.toByte(), 222.toByte())),
+                    java.net.InetAddress.getByAddress(hostname, byteArrayOf(45, 11, 45, 11)),
+                )
+                else -> {
+                    // Fallback langsung ke Cloudflare Anycast tanpa query ke sistem
+                    listOf(java.net.InetAddress.getByAddress(hostname, byteArrayOf(1, 1, 1, 1)))
+                }
+            }
+        }
+
         httpClient = OkHttpClient.Builder()
             .socketFactory(protectedSocketFactory)
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
+            .dns(bootstrapDns)
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(4, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
     }
@@ -207,56 +234,85 @@ class KizenVpnService : VpnService(), Runnable {
                 .post(dnsQuery.toRequestBody("application/dns-message".toMediaType()))
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return
-                val dnsResponse = response.body.bytes()
-                if (dnsResponse.isEmpty()) return
-
-                // Bangun paket balasan IPv4 + UDP
-                val totalLen = 20 + 8 + dnsResponse.size
-                val replyPacket = ByteArray(totalLen)
-
-                // IPv4 Header
-                replyPacket[0] = 0x45.toByte() // IPv4, IHL 5 (20 bytes)
-                replyPacket[1] = 0x00.toByte() // ToS
-                replyPacket[2] = ((totalLen shr 8) and 0xFF).toByte()
-                replyPacket[3] = (totalLen and 0xFF).toByte()
-                replyPacket[4] = 0x12.toByte() // ID
-                replyPacket[5] = 0x34.toByte()
-                replyPacket[6] = 0x40.toByte() // Don't Fragment
-                replyPacket[7] = 0x00.toByte()
-                replyPacket[8] = 64.toByte()   // TTL
-                replyPacket[9] = 17.toByte()   // Protocol UDP
-                // Checksum nanti dihitung di bytes 10..11
-                System.arraycopy(destIp, 0, replyPacket, 12, 4)   // Source = DNS IP
-                System.arraycopy(clientIp, 0, replyPacket, 16, 4) // Dest = Client IP
-
-                // Hitung IPv4 Header Checksum
-                val ipChecksum = computeChecksum(replyPacket, 0, 20)
-                replyPacket[10] = ((ipChecksum shr 8) and 0xFF).toByte()
-                replyPacket[11] = (ipChecksum and 0xFF).toByte()
-
-                // UDP Header
-                replyPacket[20] = ((dnsPort shr 8) and 0xFF).toByte()
-                replyPacket[21] = (dnsPort and 0xFF).toByte()
-                replyPacket[22] = ((clientPort shr 8) and 0xFF).toByte()
-                replyPacket[23] = (clientPort and 0xFF).toByte()
-                val udpTotalLen = 8 + dnsResponse.size
-                replyPacket[24] = ((udpTotalLen shr 8) and 0xFF).toByte()
-                replyPacket[25] = (udpTotalLen and 0xFF).toByte()
-                replyPacket[26] = 0x00.toByte() // UDP checksum opsional (0 di IPv4)
-                replyPacket[27] = 0x00.toByte()
-
-                // Payload DNS
-                System.arraycopy(dnsResponse, 0, replyPacket, 28, dnsResponse.size)
-
-                synchronized(outStream) {
-                    outStream.write(replyPacket)
-                    outStream.flush()
+            var dnsResponse: ByteArray? = null
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val bytes = response.body.bytes()
+                        if (bytes.isNotEmpty()) dnsResponse = bytes
+                    }
                 }
+            } catch (_: Throwable) {}
+
+            if (dnsResponse == null || dnsResponse!!.isEmpty()) {
+                dnsResponse = fallbackUdpQuery(dnsQuery)
+            }
+
+            val validResponse = dnsResponse ?: return
+            if (validResponse.isEmpty()) return
+
+            // Bangun paket balasan IPv4 + UDP
+            val totalLen = 20 + 8 + validResponse.size
+            val replyPacket = ByteArray(totalLen)
+
+            // IPv4 Header
+            replyPacket[0] = 0x45.toByte() // IPv4, IHL 5 (20 bytes)
+            replyPacket[1] = 0x00.toByte() // ToS
+            replyPacket[2] = ((totalLen shr 8) and 0xFF).toByte()
+            replyPacket[3] = (totalLen and 0xFF).toByte()
+            replyPacket[4] = 0x12.toByte() // ID
+            replyPacket[5] = 0x34.toByte()
+            replyPacket[6] = 0x40.toByte() // Don't Fragment
+            replyPacket[7] = 0x00.toByte()
+            replyPacket[8] = 64.toByte()   // TTL
+            replyPacket[9] = 17.toByte()   // Protocol UDP
+            // Checksum nanti dihitung di bytes 10..11
+            System.arraycopy(destIp, 0, replyPacket, 12, 4)   // Source = DNS IP
+            System.arraycopy(clientIp, 0, replyPacket, 16, 4) // Dest = Client IP
+
+            // Hitung IPv4 Header Checksum
+            val ipChecksum = computeChecksum(replyPacket, 0, 20)
+            replyPacket[10] = ((ipChecksum shr 8) and 0xFF).toByte()
+            replyPacket[11] = (ipChecksum and 0xFF).toByte()
+
+            // UDP Header
+            replyPacket[20] = ((dnsPort shr 8) and 0xFF).toByte()
+            replyPacket[21] = (dnsPort and 0xFF).toByte()
+            replyPacket[22] = ((clientPort shr 8) and 0xFF).toByte()
+            replyPacket[23] = (clientPort and 0xFF).toByte()
+            val udpTotalLen = 8 + validResponse.size
+            replyPacket[24] = ((udpTotalLen shr 8) and 0xFF).toByte()
+            replyPacket[25] = (udpTotalLen and 0xFF).toByte()
+            replyPacket[26] = 0x00.toByte() // UDP checksum opsional (0 di IPv4)
+            replyPacket[27] = 0x00.toByte()
+
+            // Payload DNS
+            System.arraycopy(validResponse, 0, replyPacket, 28, validResponse.size)
+
+            synchronized(outStream) {
+                outStream.write(replyPacket)
+                outStream.flush()
             }
         } catch (_: Throwable) {
             // Abaikan query individual yang gagal/timeout agar thread pool tetap sehat
+        }
+    }
+
+    private fun fallbackUdpQuery(query: ByteArray): ByteArray? {
+        return try {
+            val socket = java.net.DatagramSocket()
+            protect(socket)
+            socket.soTimeout = 2000
+            val dnsServer = java.net.InetAddress.getByAddress(byteArrayOf(1, 1, 1, 1))
+            val packet = java.net.DatagramPacket(query, query.size, dnsServer, 53)
+            socket.send(packet)
+            val buffer = ByteArray(2048)
+            val recv = java.net.DatagramPacket(buffer, buffer.size)
+            socket.receive(recv)
+            socket.close()
+            buffer.copyOf(recv.length)
+        } catch (_: Throwable) {
+            null
         }
     }
 
