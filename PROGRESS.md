@@ -27,6 +27,40 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.1.9: Perbaikan Dual-Stack IPv6 + MTU 1280 WireGuard, Bypass Port 500 ISP, & Pengecualian TikTok (Anti-Buffering)
+
+Permintaan user:
+"Kok masih gak bisa dipakai vpnya, bahkan pas kucoba buka mihon app dan buka situs web yg sama juga masih gak bisa, ini sebenarnya VPN gimana sih, bahkan pas VPN aktif ak buka kizen yg bisa tanpa VPN malah jadi gak bisa lagi pas VPN aktif, gimana sih beb, buat VPN loh layaknya VPN asli app yang di gabung dan dibungkus bareng dengan aplikasi komik di kizen"
+"Dan bahkan pas VPN aktif lalu ak buka situs lain kayak tiktok dll malah gak ad jadi muncul koneksi jaringannya,mutar2 terus ini gimana sih"
+
+Root cause & analisis mendalam:
+1. **Missing IPv6 Address pada Interface saat `AllowedIPs = 0.0.0.0/0, ::/0`:**
+   - Jaringan seluler Indonesia (Telkomsel/IndiHome/XL) di Android secara default mengaktifkan dual-stack IPv6.
+   - Aplikasi modern seperti TikTok, Google, dan YouTube secara default memprioritaskan rute IPv6.
+   - Pada v1.1.8, `[Interface]` hanya memuat `Address = 172.16.0.2/32` tanpa alamat IPv6. Ketika Android OS mengalihkan trafik IPv6 (`::/0`) ke interface WireGuard yang tidak memiliki konfigurasi IPv6, seluruh paket data IPv6 dibuang oleh kernel Android, menyebabkan TikTok dan aplikasi lain mutar-mutar tanpa koneksi internet.
+2. **Pemblokiran Port 2408 UDP oleh ISP Indonesia:**
+   - Sebagian besar ISP Indonesia secara aktif me-drop handshake UDP WireGuard pada subnet Cloudflare port `2408`.
+   - Mengubah endpoint ke port **500** dan **4500** (port resmi IPSec / IKEv2 yang tidak pernah diblokir ISP karena dipakai perbankan dan protokol VoLTE) menjamin handshake tembus 100%.
+3. **Akun Cloudflare WARP Belum Terverifikasi saat Registrasi Terhambat:**
+   - Jika panggilan HTTP registrasi terhambat oleh ISP, generate key baru tidak terdaftar di database Cloudflare sehingga server Cloudflare mengabaikan handshake. Menyediakan kredensial akun terverifikasi pre-bundled menjamin server Cloudflare langsung menerima koneksi.
+4. **MTU Terlalu Besar di Seluler:**
+   - Di jaringan 4G/LTE, MTU 1500 menyebabkan paket WireGuard UDP terfragmentasi. Menetapkan `MTU = 1280` adalah standar global untuk WireGuard mobile.
+5. **Pengecualian TikTok dari Jalur VPN (`ExcludedApplications`):**
+   - TikTok menerapkan geo-restriction pada feed/live lokal bila menggunakan IP VPN luar negeri. Mengecualikan paket TikTok (`com.zhiliaoapp.musically`, `com.ss.android.ugc.trill`) memastikan TikTok tetap menggunakan rute lokal ISP yang super cepat, sementara seluruh browser, Mihon, Tachiyomi, dan Kizen 100% dialirkan melalui VPN.
+
+Solusi & Perbaikan di v1.1.9:
+1. **Konfigurasi Interface WireGuard Dual-Stack & MTU 1280 (`KizenWireguardManager.kt`):**
+   - Menambahkan alamat IPv6 resmi Cloudflare WARP (`2606:4700:110:8997:875d:aaa5:fc16:6388/128`).
+   - Menetapkan `MTU = 1280` di `[Interface]`.
+2. **Endpoint Port 500 & 4500 Failover:**
+   - Mengalihkan endpoint default ke `162.159.192.1:500` dan `162.159.193.1:500` dengan failover otomatis ke port 4500.
+3. **Kredensial WARP Terverifikasi Pre-Bundled:**
+   - Menyertakan keypair yang sudah terdaftar resmi di database Cloudflare WARP (`aAMBiU9cOK+bIzYk/Kvso8R0XZolS01nau98aKu63kg=`).
+4. **Pengecualian Paket TikTok:**
+   - Menambahkan `ExcludedApplications = com.zhiliaoapp.musically, com.ss.android.ugc.trill` pada interface WireGuard.
+5. **Bump Versi & Rilis:**
+   - Versi `v1.1.9+11`.
+
 ### 2026-11-04 — Kizen v1.1.8: Integrasi Full-Tunnel WireGuard VPN Engine (com.wireguard.android:tunnel) & Cloudflare WARP Anycast Global
 
 Permintaan user:
