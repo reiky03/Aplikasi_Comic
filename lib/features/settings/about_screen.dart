@@ -6,8 +6,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_update_checker.dart';
 
-const _appVersion = '1.0.0';
-const _appBuild = '1';
+const _appVersion = '1.1.0';
+const _appBuild = '2';
 const _repoOwner = 'reiky03';
 const _developerHandle = '@reiky03';
 

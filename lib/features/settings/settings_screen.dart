@@ -230,7 +230,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Kizen v1.0.0 (MVP)',
+                  'Kizen v1.1.0',
                   textAlign: TextAlign.center,
                   style: AppTypography.jakarta(
                     size: 11,
