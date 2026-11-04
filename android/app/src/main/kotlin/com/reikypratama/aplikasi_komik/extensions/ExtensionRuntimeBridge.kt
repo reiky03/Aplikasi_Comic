@@ -646,15 +646,47 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             return
         }
 
+        val isDoujin = packageName.contains("doujindesu", ignoreCase = true) ||
+            call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+
         Thread {
+            val sessionHeaders = call.sessionHeaders()
             try {
-                val source = loadExtensionSource(
-                    packageName,
-                    call.argument<String>("sourceName"),
-                    call.argument<String>("sourceLang"),
-                    call.argument<String>("baseUrl"),
-                )
-                val sessionHeaders = call.sessionHeaders()
+                val source = runCatching {
+                    loadExtensionSource(
+                        packageName,
+                        call.argument<String>("sourceName"),
+                        call.argument<String>("sourceLang"),
+                        call.argument<String>("baseUrl"),
+                    )
+                }.getOrNull()
+
+                if (source == null && isDoujin) {
+                    val fallback = runCatching {
+                        fetchDoujindesuCatalogDirect(mode, query, page, sessionHeaders)
+                    }.getOrDefault(emptyList())
+                    if (fallback.isNotEmpty()) {
+                        Log.i(TAG, "Doujindesu direct catalog OK count=${fallback.size}")
+                        result.success(
+                            mapOf(
+                                "source" to mapOf(
+                                    "packageName" to packageName,
+                                    "sourceDir" to "",
+                                    "extensionClass" to "DoujindesuNative",
+                                    "className" to "DoujindesuNative",
+                                ),
+                                "hasNextPage" to (fallback.size >= 24),
+                                "mangas" to fallback,
+                            ),
+                        )
+                        return@Thread
+                    }
+                }
+
+                if (source == null) {
+                    throw IllegalStateException("Ekstensi $packageName belum terpasang di perangkat")
+                }
+
                 val parsed = runCatching {
                     // Coba panggil suspend function resmi Tachiyomi/Mihon terlebih dahulu
                     val suspendMethod = when (mode) {
@@ -688,7 +720,6 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                         ?: OkHttpClient()
                     val client = applyVpnDns(baseClient)
                     client.newCall(request).execute().use { response ->
-                        val responsePreview = response.peekBody(2L * 1024L * 1024L).string()
                         val parseMethod = when (mode) {
                             "latest" -> "latestUpdatesParse"
                             "search" -> "searchMangaParse"
@@ -698,26 +729,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                             ?: throw IllegalStateException("$parseMethod mengembalikan null")
                     }
                 }.getOrElse { parseError ->
-                    if (packageName.contains("doujindesu", ignoreCase = true)) {
-                        // Fallback langsung ke API Doujindesu
-                        val directUrl = if (mode == "latest") {
-                            "https://doujin.desu.xxx/api/manga?limit=24&sort=latest_chapter"
-                        } else if (mode == "search" && query.isNotBlank()) {
-                            "https://doujin.desu.xxx/api/manga?limit=24&search=" + java.net.URLEncoder.encode(query, "UTF-8")
-                        } else {
-                            "https://doujin.desu.xxx/api/manga?limit=24&sort=rating"
-                        }
-                        val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient ?: OkHttpClient()
-                        val client = applyVpnDns(baseClient)
-                        val req = Request.Builder()
-                            .url(directUrl)
-                            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
-                            .header("Referer", "https://doujin.desu.xxx/")
-                            .build()
+                    if (isDoujin) {
                         val fallback = runCatching {
-                            client.newCall(req).execute().use { resp ->
-                                parseDoujindesuMangas(resp.body.string(), sessionHeaders)
-                            }
+                            fetchDoujindesuCatalogDirect(mode, query, page, sessionHeaders)
                         }.getOrDefault(emptyList())
 
                         if (fallback.isNotEmpty()) {
@@ -750,6 +764,27 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     ),
                 )
             } catch (e: Throwable) {
+                if (isDoujin) {
+                    val fallback = runCatching {
+                        fetchDoujindesuCatalogDirect(mode, query, page, sessionHeaders)
+                    }.getOrDefault(emptyList())
+                    if (fallback.isNotEmpty()) {
+                        Log.i(TAG, "Doujindesu direct catalog catch-fallback OK count=${fallback.size}")
+                        result.success(
+                            mapOf(
+                                "source" to mapOf(
+                                    "packageName" to packageName,
+                                    "sourceDir" to "",
+                                    "extensionClass" to "DoujindesuNative",
+                                    "className" to "DoujindesuNative",
+                                ),
+                                "hasNextPage" to (fallback.size >= 24),
+                                "mangas" to fallback,
+                            ),
+                        )
+                        return@Thread
+                    }
+                }
                 Log.e(TAG, "fetchMangaPage failed mode=$mode for $packageName", e)
                 result.error("fetch_failed", e.safeMessage(), e.stackTraceToString())
             }
@@ -763,16 +798,32 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             result.error("bad_args", "packageName/mangaUrl kosong", null)
             return
         }
+        val isDoujin = packageName.contains("doujindesu", ignoreCase = true) ||
+            mangaUrl.contains("doujin", ignoreCase = true) ||
+            call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+
         Thread {
+            val sessionHeaders = call.sessionHeaders()
             try {
-                val source = loadExtensionSource(
-                    packageName,
-                    call.argument<String>("sourceName"),
-                    call.argument<String>("sourceLang"),
-                    call.argument<String>("baseUrl"),
-                )
+                val source = runCatching {
+                    loadExtensionSource(
+                        packageName,
+                        call.argument<String>("sourceName"),
+                        call.argument<String>("sourceLang"),
+                        call.argument<String>("baseUrl"),
+                    )
+                }.getOrNull()
+
+                if (source == null && isDoujin) {
+                    val direct = fetchDoujindesuDetailsDirect(mangaUrl, sessionHeaders)
+                    result.success(direct)
+                    return@Thread
+                }
+                if (source == null) {
+                    throw IllegalStateException("Ekstensi $packageName belum terpasang di perangkat")
+                }
+
                 val manga = newManga(call).apply { url = mangaUrl }
-                val sessionHeaders = call.sessionHeaders()
                 val parsed = runCatching {
                     invokeSuspend(source.instance, "getMangaDetails", manga) as? SManga
                 }.getOrNull() ?: runCatching {
@@ -809,6 +860,16 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     parsed.toMangaMap(source.instance, sessionHeaders),
                 )
             } catch (e: Throwable) {
+                if (isDoujin) {
+                    val direct = runCatching {
+                        fetchDoujindesuDetailsDirect(mangaUrl, sessionHeaders)
+                    }.getOrNull()
+                    if (direct != null) {
+                        Log.i(TAG, "Doujindesu direct details fallback OK")
+                        result.success(direct)
+                        return@Thread
+                    }
+                }
                 Log.e(TAG, "fetchMangaDetails failed for $packageName", e)
                 result.error("details_failed", e.safeMessage(), e.stackTraceToString())
             }
@@ -822,14 +883,30 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             result.error("bad_args", "packageName/mangaUrl kosong", null)
             return
         }
+        val isDoujin = packageName.contains("doujindesu", ignoreCase = true) ||
+            mangaUrl.contains("doujin", ignoreCase = true) ||
+            call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+
         Thread {
             try {
-                val source = loadExtensionSource(
-                    packageName,
-                    call.argument<String>("sourceName"),
-                    call.argument<String>("sourceLang"),
-                    call.argument<String>("baseUrl"),
-                )
+                val source = runCatching {
+                    loadExtensionSource(
+                        packageName,
+                        call.argument<String>("sourceName"),
+                        call.argument<String>("sourceLang"),
+                        call.argument<String>("baseUrl"),
+                    )
+                }.getOrNull()
+
+                if (source == null && isDoujin) {
+                    val direct = fetchDoujindesuChaptersDirect(mangaUrl)
+                    result.success(direct)
+                    return@Thread
+                }
+                if (source == null) {
+                    throw IllegalStateException("Ekstensi $packageName belum terpasang di perangkat")
+                }
+
                 val manga = newManga(call).apply { url = mangaUrl }
                 val chapters = runCatching {
                     invokeSuspend(source.instance, "getChapterList", manga) as? List<*>
@@ -866,6 +943,16 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 }
                 result.success(chapters.mapNotNull { it?.toChapterMap() })
             } catch (e: Throwable) {
+                if (isDoujin) {
+                    val direct = runCatching {
+                        fetchDoujindesuChaptersDirect(mangaUrl)
+                    }.getOrNull()
+                    if (direct != null && direct.isNotEmpty()) {
+                        Log.i(TAG, "Doujindesu direct chapters fallback OK count=${direct.size}")
+                        result.success(direct)
+                        return@Thread
+                    }
+                }
                 Log.e(TAG, "fetchChapterList failed for $packageName", e)
                 result.error("chapters_failed", e.safeMessage(), e.stackTraceToString())
             }
@@ -879,19 +966,37 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             result.error("bad_args", "packageName/chapterUrl kosong", null)
             return
         }
+        val isDoujin = packageName.contains("doujindesu", ignoreCase = true) ||
+            chapterUrl.contains("doujin", ignoreCase = true) ||
+            chapterUrl.contains("/chapter/") ||
+            chapterUrl.contains("/api/chapters/") ||
+            call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+
         Thread {
+            val sessionHeaders = call.sessionHeaders()
             try {
-                val source = loadExtensionSource(
-                    packageName,
-                    call.argument<String>("sourceName"),
-                    call.argument<String>("sourceLang"),
-                    call.argument<String>("baseUrl"),
-                )
+                val source = runCatching {
+                    loadExtensionSource(
+                        packageName,
+                        call.argument<String>("sourceName"),
+                        call.argument<String>("sourceLang"),
+                        call.argument<String>("baseUrl"),
+                    )
+                }.getOrNull()
+
+                if (source == null && isDoujin) {
+                    val direct = fetchDoujindesuPagesDirect(chapterUrl, sessionHeaders)
+                    result.success(direct)
+                    return@Thread
+                }
+                if (source == null) {
+                    throw IllegalStateException("Ekstensi $packageName belum terpasang di perangkat")
+                }
+
                 val chapter = SChapter.create().apply {
                     url = chapterUrl
                     name = call.argument<String>("chapterName") ?: ""
                 }
-                val sessionHeaders = call.sessionHeaders()
                 val baseClient = source.instance.callOrNull("getClient") as? OkHttpClient
                     ?: OkHttpClient()
                 val client = applyVpnDns(baseClient)
@@ -915,24 +1020,12 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 result.success(mappedPages)
             } catch (e: Throwable) {
                 Log.e(TAG, "fetchPageList failed for $packageName", e)
-                if (packageName.contains("doujindesu", ignoreCase = true)) {
+                if (isDoujin) {
                     val fallback = runCatching {
-                        val source = loadExtensionSource(
-                            packageName,
-                            call.argument<String>("sourceName"),
-                            call.argument<String>("sourceLang"),
-                            call.argument<String>("baseUrl"),
-                        )
-                        fetchDoujindesuPages(
-                            source.absoluteUrlForSource(chapterUrl),
-                            call.sessionHeaders(),
-                        )
-                    }.getOrElse { fallbackError ->
-                        Log.e(TAG, "Doujindesu page fallback failed", fallbackError)
-                        emptyList()
-                    }
+                        fetchDoujindesuPagesDirect(chapterUrl, sessionHeaders)
+                    }.getOrDefault(emptyList())
                     if (fallback.isNotEmpty()) {
-                        Log.i(TAG, "Doujindesu page fallback OK count=${fallback.size}")
+                        Log.i(TAG, "Doujindesu direct pages fallback OK count=${fallback.size}")
                         result.success(fallback)
                         return@Thread
                     }
@@ -1283,74 +1376,184 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         }
     }
 
-    private fun fetchDoujindesuPages(
+    private fun fetchDoujindesuCatalogDirect(
+        mode: String,
+        query: String,
+        page: Int,
+        sessionHeaders: Map<String, String>,
+    ): List<Map<String, Any?>> {
+        val offset = (page - 1) * 24
+        val directUrl = if (mode == "latest") {
+            "https://doujin.desu.xxx/api/manga?limit=24&offset=$offset&sort=latest_chapter"
+        } else if (mode == "search" && query.isNotBlank()) {
+            "https://doujin.desu.xxx/api/manga?limit=24&offset=$offset&search=" + java.net.URLEncoder.encode(query, "UTF-8")
+        } else {
+            "https://doujin.desu.xxx/api/manga?limit=24&offset=$offset&sort=rating"
+        }
+        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val req = Request.Builder()
+            .url(directUrl)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            .header("Referer", "https://doujin.desu.xxx/")
+            .build()
+        return client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            parseDoujindesuMangas(resp.body.string(), sessionHeaders)
+        }
+    }
+
+    private fun fetchDoujindesuDetailsDirect(
+        mangaUrl: String,
+        sessionHeaders: Map<String, String>,
+    ): Map<String, Any?> {
+        var slug = mangaUrl.trim()
+        if (slug.startsWith("http://") || slug.startsWith("https://")) {
+            slug = runCatching { java.net.URI.create(slug).path }.getOrDefault(slug)
+        }
+        slug = slug.removePrefix("/manga/").removePrefix("/api/manga/").removeSuffix("/")
+        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val req = Request.Builder()
+            .url("https://doujin.desu.xxx/api/manga/$slug")
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            .header("Referer", "https://doujin.desu.xxx/")
+            .build()
+        val body = client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            resp.body.string()
+        }
+        var cleanJson = body.trim()
+        if (cleanJson.contains("_enc_resp_")) {
+            val encHex = JSONObject(cleanJson).optString("_enc_resp_")
+            if (encHex.isNotBlank()) {
+                cleanJson = decryptDoujindesu(encHex) ?: cleanJson
+            }
+        }
+        val item = JSONObject(cleanJson)
+        val status = when (item.optString("status").lowercase()) {
+            "ongoing", "publishing" -> SManga.ONGOING
+            "completed" -> SManga.COMPLETED
+            else -> SManga.UNKNOWN
+        }
+        val genres = mutableListOf<String>()
+        val rawGenres = item.optJSONArray("manga_genres")
+        if (rawGenres != null) {
+            for (i in 0 until rawGenres.length()) {
+                val g = rawGenres.optJSONObject(i)?.optJSONObject("genre")?.optString("name")
+                if (!g.isNullOrBlank()) genres.add(g)
+            }
+        }
+        return mapOf(
+            "title" to item.optString("title"),
+            "url" to "/manga/$slug/",
+            "thumbnailUrl" to item.optString("cover_url").ifBlank { null },
+            "headers" to sessionHeaders,
+            "author" to item.optString("author").ifBlank { null },
+            "artist" to item.optString("artist").ifBlank { null },
+            "description" to item.optString("description").ifBlank { null },
+            "genre" to genres.joinToString(", ").ifBlank { null },
+            "status" to status,
+        )
+    }
+
+    private fun fetchDoujindesuChaptersDirect(
+        mangaUrl: String,
+    ): List<Map<String, Any?>> {
+        var slug = mangaUrl.trim()
+        if (slug.startsWith("http://") || slug.startsWith("https://")) {
+            slug = runCatching { java.net.URI.create(slug).path }.getOrDefault(slug)
+        }
+        slug = slug.removePrefix("/manga/").removePrefix("/api/manga/").removeSuffix("/")
+        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val req = Request.Builder()
+            .url("https://doujin.desu.xxx/api/manga/$slug")
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            .header("Referer", "https://doujin.desu.xxx/")
+            .build()
+        val body = client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            resp.body.string()
+        }
+        var cleanJson = body.trim()
+        if (cleanJson.contains("_enc_resp_")) {
+            val encHex = JSONObject(cleanJson).optString("_enc_resp_")
+            if (encHex.isNotBlank()) {
+                cleanJson = decryptDoujindesu(encHex) ?: cleanJson
+            }
+        }
+        val item = JSONObject(cleanJson)
+        val chapters = item.optJSONArray("chapters") ?: return emptyList()
+        return buildList {
+            for (i in 0 until chapters.length()) {
+                val ch = chapters.optJSONObject(i) ?: continue
+                val chId = ch.optString("id")
+                val title = ch.optString("title").ifBlank { "Chapter ${ch.optString("chapter_number")}" }
+                val chNum = ch.optDouble("chapter_number", -1.0).toFloat()
+                val dateUpload = runCatching {
+                    val str = ch.optString("created_at")
+                    if (str.isNotBlank()) {
+                        java.time.Instant.parse(str).toEpochMilli()
+                    } else 0L
+                }.getOrDefault(0L)
+                add(
+                    mapOf(
+                        "url" to "/chapter/$chId",
+                        "name" to title,
+                        "dateUpload" to dateUpload,
+                        "chapterNumber" to chNum,
+                        "scanlator" to null,
+                    )
+                )
+            }
+        }
+    }
+
+    private fun fetchDoujindesuPagesDirect(
         chapterUrl: String,
         sessionHeaders: Map<String, String>,
     ): List<Map<String, Any?>> {
-        val headers = buildMap {
-            put("User-Agent", WebSettings.getDefaultUserAgent(context))
-            put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-            put("Referer", chapterUrl)
+        var chId = chapterUrl.trim()
+        if (chId.startsWith("http://") || chId.startsWith("https://")) {
+            chId = runCatching { java.net.URI.create(chId).path }.getOrDefault(chId)
+        }
+        chId = chId.removePrefix("/chapter/").removePrefix("/api/chapters/").removeSuffix("/")
+        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val req = Request.Builder()
+            .url("https://doujin.desu.xxx/api/chapters/$chId")
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            .header("Referer", "https://doujin.desu.xxx/")
+            .build()
+        val body = client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            resp.body.string()
+        }
+        var cleanJson = body.trim()
+        if (cleanJson.contains("_enc_resp_")) {
+            val encHex = JSONObject(cleanJson).optString("_enc_resp_")
+            if (encHex.isNotBlank()) {
+                cleanJson = decryptDoujindesu(encHex) ?: cleanJson
+            }
+        }
+        val item = JSONObject(cleanJson)
+        val contentUrls = item.optJSONArray("content_urls") ?: return emptyList()
+        val imageHeaders = buildMap {
+            put("Referer", "https://doujin.desu.xxx/")
+            put("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
             putAll(sessionHeaders)
         }
-        val request = Request.Builder()
-            .url(chapterUrl)
-            .headers(Headers.headersOf(*headers.flatMap { listOf(it.key, it.value) }.toTypedArray()))
-            .get()
-            .build()
-        val baseClient = OkHttpClient.Builder()
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .build()
-        val client = applyVpnDns(baseClient)
-        val html = client
-            .newCall(request)
-            .execute()
-            .use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("HTTP ${response.code}")
+        return buildList {
+            for (i in 0 until contentUrls.length()) {
+                val url = contentUrls.optString(i)
+                if (url.isNotBlank()) {
+                    add(
+                        mapOf(
+                            "index" to i,
+                            "url" to url,
+                            "imageUrl" to url,
+                            "headers" to imageHeaders,
+                        )
+                    )
                 }
-                response.body.string()
             }
-        val document = Jsoup.parse(html, chapterUrl)
-        val urls = linkedSetOf<String>()
-        document.select(
-            "#readerarea img, .reading-content img, .entry-content img, " +
-                ".chapter-content img, article img, main img, img",
-        ).forEach { img ->
-            listOf(
-                "data-lazy-src",
-                "data-src",
-                "data-original",
-                "data-url",
-                "data-image",
-                "srcset",
-                "src",
-            ).firstNotNullOfOrNull { attr ->
-                img.attr(attr).takeIf { it.isNotBlank() }
-            }?.let { raw ->
-                raw.split(',').first().trim().split(' ').firstOrNull()
-            }?.let { candidate ->
-                if (candidate.looksLikeReaderImage()) urls.add(document.absUrl(candidate, chapterUrl))
-            }
-        }
-        IMAGE_URL_REGEX.findAll(html).forEach { match ->
-            val candidate = match.value
-                .replace("\\/", "/")
-                .replace("\\u002F", "/")
-                .replace("\\u002f", "/")
-            if (candidate.looksLikeReaderImage()) {
-                urls.add(document.absUrl(candidate, chapterUrl))
-            }
-        }
-        Log.i(TAG, "Doujindesu page fallback scanned url=$chapterUrl images=${urls.size}")
-        return urls.mapIndexed { index, imageUrl ->
-            mapOf(
-                "index" to index,
-                "url" to imageUrl,
-                "imageUrl" to imageUrl,
-                "headers" to headers,
-            )
         }
     }
 
@@ -1579,16 +1782,22 @@ class DohDns(private val provider: String = "cloudflare") : Dns {
         // Jangan fallback ke DNS sistem yang diinjeksi Nawala jika domain komik terkenal
         val safeFallback = when (hostname.lowercase()) {
             "doujindesu.tv", "doujin.desu.xxx", "doujindesu.bid" -> listOf(
-                InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 169.toByte(), 73)),
-                InetAddress.getByAddress(hostname, byteArrayOf(104, 21, 95, 24)),
+                InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 1, 249.toByte())),
+                InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 72, 203.toByte())),
+                InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 0, 249.toByte())),
             )
             "imhentai.xxx" -> listOf(
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 11, 15)),
                 InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 73, 234.toByte())),
+                InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 10, 15)),
             )
             "e-hentai.org" -> listOf(
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 20, 134.toByte(), 21)),
                 InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 2.toByte(), 187.toByte())),
+            )
+            "toongod.org", "www.toongod.org", "toongod.cc" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(104, 21, 32, 187.toByte())),
+                InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 189.toByte(), 155.toByte())),
             )
             else -> null
         }

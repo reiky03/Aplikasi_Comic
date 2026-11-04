@@ -16,7 +16,7 @@ private val jsonInstance by lazy {
     }
 }
 
-private fun resolveApp(): Application? {
+internal fun resolveApp(): Application? {
     if (application != null) return application
     return runCatching {
         val atClass = Class.forName("android.app.ActivityThread")

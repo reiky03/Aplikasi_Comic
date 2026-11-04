@@ -327,15 +327,17 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   }
 
   void _openWebView(ComicSource source, {String? initialUrl}) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+    Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => WebViewScreen(
           sourceId: source.id,
           fallbackSource: widget.fallbackSource,
           initialUrl: initialUrl,
         ),
       ),
-    );
+    ).then((_) {
+      if (mounted) _retry();
+    });
   }
 
   void _resetSession(ComicSource source) {
@@ -917,19 +919,28 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
 
   Widget _buildErrorState(ComicSource source) {
     final status = source.statusMeta;
-    final message = switch (source.status) {
-      SourceStatus.failed =>
-        'Source gagal diakses. Website mungkin sedang down atau memblokir '
-            'akses jaringan. Coba lagi, atau buka lewat WebView untuk membuat '
-            'sesi.',
-      SourceStatus.limited =>
-        'Akses ke source ini terbatas. Sebagian halaman mungkin meminta '
-            'verifikasi browser. Buka lewat WebView untuk membuka sesi penuh.',
-      _ =>
-        'Source ini tidak bisa dibaca otomatis. Website mungkin membutuhkan '
-            'verifikasi browser atau memiliki proteksi akses. Kamu bisa '
-            'membukanya lewat WebView terlebih dahulu.',
-    };
+    final isCloudflare = _discoverError != null &&
+        (_discoverError!.toLowerCase().contains('403') ||
+            _discoverError!.toLowerCase().contains('cloudflare') ||
+            _discoverError!.toLowerCase().contains('turnstile') ||
+            _discoverError!.toLowerCase().contains('clearance') ||
+            _discoverError!.toLowerCase().contains('just a moment'));
+
+    final message = isCloudflare
+        ? 'Website meminta verifikasi keamanan Cloudflare. Buka WebView untuk menyelesaikan verifikasi, sesi akan tersimpan otomatis.'
+        : switch (source.status) {
+            SourceStatus.failed =>
+              'Source gagal diakses. Website mungkin sedang down atau memblokir '
+                  'akses jaringan. Coba lagi, atau buka lewat WebView untuk membuat '
+                  'sesi.',
+            SourceStatus.limited =>
+              'Akses ke source ini terbatas. Sebagian halaman mungkin meminta '
+                  'verifikasi browser. Buka lewat WebView untuk membuka sesi penuh.',
+            _ =>
+              'Source ini tidak bisa dibaca otomatis. Website mungkin membutuhkan '
+                  'verifikasi browser atau memiliki proteksi akses. Kamu bisa '
+                  'membukanya lewat WebView terlebih dahulu.',
+          };
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 20, 32, 60),
@@ -1003,8 +1014,10 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _primaryAction(
-                  label: 'Buka lewat WebView',
-                  icon: LucideIcons.globe,
+                  label: isCloudflare
+                      ? 'Verifikasi Cloudflare di WebView'
+                      : 'Buka lewat WebView',
+                  icon: isCloudflare ? LucideIcons.shieldCheck : LucideIcons.globe,
                   onTap: () => _openWebView(source),
                 ),
                 const SizedBox(height: 9),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -48,6 +49,7 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
   bool _canGoBack = false;
   bool _canGoForward = false;
   bool _sessionCaptured = false;
+  Timer? _clearanceTimer;
 
   ComicSource? get _source {
     final sources = ref.read(sourcesProvider);
@@ -55,6 +57,41 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
       if (s.id == widget.sourceId) return s;
     }
     return widget.fallbackSource;
+  }
+
+  @override
+  void dispose() {
+    _clearanceTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkCloudflareClearance(String url) async {
+    if (_sessionCaptured || !mounted) return;
+    try {
+      final session = await const ExtensionRuntimeBridge().readWebViewSession(url);
+      final cookie = session.cookie ?? '';
+      if (cookie.contains('cf_clearance')) {
+        _clearanceTimer?.cancel();
+        await SourceSessionStore.save(
+          url: url,
+          cookie: cookie,
+          userAgent: session.userAgent,
+        );
+        final source = _source;
+        if (source != null && widget.fallbackSource == null) {
+          ref.read(sourcesProvider.notifier).setSession(source.id, true);
+        }
+        if (mounted) {
+          setState(() => _sessionCaptured = true);
+          AppToast.show(context, 'Verifikasi Cloudflare berhasil! Sesi aktif.');
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (mounted && Navigator.of(context).canPop()) {
+              Navigator.of(context).pop(true);
+            }
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -110,6 +147,7 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
               _canGoBack = back;
               _canGoForward = fwd;
             });
+            await _checkCloudflareClearance(url);
           },
           onWebResourceError: (_) {
             if (!mounted) return;
@@ -118,6 +156,12 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
         ),
       )
       ..loadRequest(Uri.parse(startUrl));
+
+    _clearanceTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+      if (!_sessionCaptured && _currentUrl.isNotEmpty && mounted) {
+        _checkCloudflareClearance(_currentUrl);
+      }
+    });
   }
 
   Future<void> _reload() => _controller.reload();

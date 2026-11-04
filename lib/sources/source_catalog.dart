@@ -1,5 +1,6 @@
 import 'asura_source.dart';
 import 'adaptive_source.dart';
+import 'doujindesu_source.dart';
 import 'extension_runtime_source.dart';
 import 'komiku_source.dart';
 import 'manga_source.dart';
@@ -98,6 +99,9 @@ abstract final class SourceCatalog {
     if (_isMangaFire(baseUrl)) {
       return MangaFireSource(name: name, baseUrl: baseUrl, lang: lang);
     }
+    if (_isDoujindesu(baseUrl) || name.trim().toLowerCase().contains('doujindesu')) {
+      return DoujindesuSource(name: name, baseUrl: baseUrl);
+    }
     if (kind.startsWith('extension-runtime:')) {
       // Extension Soulscans yang terpasang bisa tertinggal dari API situsnya.
       // Untuk katalog/chapter, parser API langsung lebih dapat dipercaya.
@@ -131,6 +135,14 @@ abstract final class SourceCatalog {
       ),
       _ => null,
     };
+  }
+
+  static bool _isDoujindesu(String url) {
+    final host = Uri.tryParse(url)?.host.toLowerCase();
+    return host == 'doujin.desu.xxx' ||
+        host == 'doujindesu.tv' ||
+        host == 'doujindesu.bid' ||
+        host?.endsWith('.desu.xxx') == true;
   }
 
   static bool _isSoulScans(String url) {
@@ -181,6 +193,8 @@ abstract final class SourceCatalog {
     // instal/update extension tidak berubah.
     final extension = preferred.whereType<ExtensionRuntimeSource>().firstOrNull;
     if (extension != null) return extension;
+    final doujin = preferred.whereType<DoujindesuSource>().firstOrNull;
+    if (doujin != null) return doujin;
     return AdaptiveSource(
       name: name,
       baseUrl: normalizedBase,
@@ -196,6 +210,7 @@ abstract final class SourceCatalog {
       'komiku' => KomikuSource(),
       'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
       'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
+      'doujindesu' => DoujindesuSource(name: name, baseUrl: baseUrl),
       _ => null,
     };
   }

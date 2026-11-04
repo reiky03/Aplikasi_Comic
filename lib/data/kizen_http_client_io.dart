@@ -17,7 +17,10 @@ http.Client createKizenHttpClient() {
     final targetPort = port ?? (uri.scheme == 'https' ? 443 : 80);
 
     String? targetIp;
-    if (VpnNotifier.currentVpnEnabled) {
+    if (VpnNotifier.currentVpnEnabled ||
+        targetHost.contains('doujin') ||
+        targetHost.contains('imhentai') ||
+        targetHost.contains('toongod')) {
       targetIp = await DohResolver.resolveHost(
         targetHost,
         provider: VpnNotifier.currentProviderId,

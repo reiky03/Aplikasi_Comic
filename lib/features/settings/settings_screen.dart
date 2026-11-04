@@ -287,7 +287,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Kizen v1.2.1',
+                  'Kizen v1.2.2',
                   textAlign: TextAlign.center,
                   style: AppTypography.jakarta(
                     size: 11,

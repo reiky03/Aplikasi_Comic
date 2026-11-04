@@ -13,7 +13,14 @@ import java.util.concurrent.TimeUnit
 
 class NetworkHelper {
     val defaultUserAgentProvider: () -> String = {
-        "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        val app = uy.kohesive.injekt.resolveApp()
+        if (app != null) {
+            runCatching {
+                android.webkit.WebSettings.getDefaultUserAgent(app)
+            }.getOrNull() ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        } else {
+            "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        }
     }
 
     val client: OkHttpClient = OkHttpClient.Builder()
