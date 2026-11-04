@@ -183,27 +183,94 @@ List<RepoSource>? _decodeRepositorySources(String encoded) {
   }
 }
 
-/// Data demo — dipakai saat belum login/Firebase tak tersedia.
+/// URL resmi repository Keiyoushi
+const kKeiyoushiRepositoryUrl =
+    'https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json';
+
+/// Data demo / repository bawaan — repository resmi Keiyoushi disertakan langsung
+/// sebagai sumber default dengan ribuan extension Tachiyomi/Mihon.
 const _seedRepositories = [
+  ComicRepository(
+    id: 'rp-keiyoushi',
+    name: 'Keiyoushi Extensions Official',
+    url: kKeiyoushiRepositoryUrl,
+    sources: [
+      RepoSource(
+        id: '1707768678643970514',
+        name: 'Doujindesu',
+        hue: 330,
+        lang: 'ID',
+        baseUrl: 'https://doujin.desu.xxx',
+        baseUrlAliases: ['https://doujindesu.tv', 'https://doujindesu.bid'],
+        pkg: 'eu.kanade.tachiyomi.extension.id.doujindesu',
+        apk: 'https://github.com/keiyoushi/extensions/releases/download/726723b-1/tachiyomi-id.doujindesu-v1.6.3.apk',
+        version: '1.6.3',
+        versionCode: 3,
+        parserKind: 'extension-runtime:eu.kanade.tachiyomi.extension.id.doujindesu',
+      ),
+      RepoSource(
+        id: '8680327663458641477',
+        name: 'IMHentai',
+        hue: 280,
+        lang: 'ALL',
+        baseUrl: 'https://imhentai.xxx',
+        pkg: 'eu.kanade.tachiyomi.extension.all.imhentai',
+        apk: 'https://github.com/keiyoushi/extensions/releases/download/726723b-0/tachiyomi-all.imhentai-v1.6.26.apk',
+        version: '1.6.26',
+        versionCode: 26,
+        parserKind: 'extension-runtime:eu.kanade.tachiyomi.extension.all.imhentai',
+      ),
+      RepoSource(
+        id: '4372991024317042531',
+        name: 'ToonGod',
+        hue: 45,
+        lang: 'EN',
+        baseUrl: 'https://www.toongod.org',
+        baseUrlAliases: ['https://toongod.cc'],
+        pkg: 'eu.kanade.tachiyomi.extension.en.toongod',
+        apk: 'https://github.com/keiyoushi/extensions/releases/download/726723b-1/tachiyomi-en.toongod-v1.6.63.apk',
+        version: '1.6.63',
+        versionCode: 63,
+        parserKind: 'extension-runtime:eu.kanade.tachiyomi.extension.en.toongod',
+      ),
+      RepoSource(
+        id: 'rps1',
+        name: 'Komiku',
+        hue: 150,
+        lang: 'ID',
+        baseUrl: 'https://komiku.id',
+      ),
+      RepoSource(
+        id: 'rps2',
+        name: 'Shinigami',
+        hue: 210,
+        lang: 'ID',
+        baseUrl: 'https://shinigami.moe',
+      ),
+      RepoSource(
+        id: 'rps3',
+        name: 'Komikindo',
+        hue: 30,
+        lang: 'ID',
+        baseUrl: 'https://komikindo.tv',
+      ),
+      RepoSource(
+        id: 'rps4',
+        name: 'Asura Scans',
+        hue: 260,
+        lang: 'EN',
+        baseUrl: 'https://asuracomic.net',
+      ),
+    ],
+  ),
   ComicRepository(
     id: 'rp1',
     name: 'Komunitas Scan ID',
     url: 'repo.komunitasscan.example/index.json',
     sources: [
-      RepoSource(id: 'rps1', name: 'NusaScans', hue: 210, lang: 'ID'),
-      RepoSource(id: 'rps2', name: 'KomikRaya', hue: 150, lang: 'ID'),
-      RepoSource(id: 'rps3', name: 'MangaLintang', hue: 30, lang: 'ID'),
-    ],
-  ),
-  ComicRepository(
-    id: 'rp2',
-    name: 'Global Scan Hub',
-    url: 'globalscanhub.example/repo.json',
-    sources: [
-      RepoSource(id: 'rps4', name: 'InkVerse', hue: 260, lang: 'EN'),
-      RepoSource(id: 'rps5', name: 'Duniakomik', hue: 340, lang: 'EN'),
-      RepoSource(id: 'rps6', name: 'ToonForge', hue: 190, lang: 'JP'),
-      RepoSource(id: 'rps7', name: 'HanComics', hue: 10, lang: 'KR'),
+      RepoSource(id: 'rps5', name: 'NusaScans', hue: 210, lang: 'ID'),
+      RepoSource(id: 'rps6', name: 'KomikRaya', hue: 150, lang: 'ID'),
+      RepoSource(id: 'rps7', name: 'MangaLintang', hue: 30, lang: 'ID'),
     ],
   ),
 ];

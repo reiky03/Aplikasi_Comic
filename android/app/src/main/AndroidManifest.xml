@@ -5,6 +5,10 @@
          dan sekarang WebView (buka situs sumber langsung). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        tools:ignore="ForegroundServicePermission"/>
     <!-- Dipakai Extension Runtime untuk menemukan APK extension Tachiyomi/Mihon
          yang sudah terpasang di device. Ini bukan runtime permission, tapi
          perlu dipertimbangkan ulang kalau nanti app mau masuk Play Store. -->
@@ -51,6 +55,18 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <service
+            android:name="com.reikypratama.aplikasi_komik.vpn.KizenVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService"/>
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Encrypted DNS-over-HTTPS tunnel for anti-blocking manga domains" />
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

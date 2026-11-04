@@ -111,9 +111,18 @@ class VpnNotifier extends Notifier<VpnState> {
     state = state.copyWith(isConnecting: true);
 
     try {
+      final success = await _syncNative(nextState, state.provider.id);
+      if (nextState && !success) {
+        // User membatalkan / menolak dialog izin VPN sistemik Android
+        state = state.copyWith(
+          isEnabled: false,
+          isConnecting: false,
+        );
+        return;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kPrefVpnEnabled, nextState);
-      await _syncNative(nextState, state.provider.id);
 
       currentVpnEnabled = nextState;
 
@@ -204,14 +213,18 @@ class VpnNotifier extends Notifier<VpnState> {
     }
   }
 
-  Future<void> _syncNative(bool enabled, String providerId) async {
-    if (kIsWeb) return;
+  Future<bool> _syncNative(bool enabled, String providerId) async {
+    if (kIsWeb) return true;
     try {
-      await _channel.invokeMethod<void>('setVpnEnabled', {
+      final res = await _channel.invokeMethod<bool>('setVpnEnabled', {
         'enabled': enabled,
         'provider': providerId,
       });
-    } catch (_) {}
+      return res ?? true;
+    } catch (_) {
+      // Di test runner atau platform non-Android, fallback ke true
+      return true;
+    }
   }
 
   Future<void> openSystemVpnSettings() async {

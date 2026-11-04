@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
@@ -402,6 +403,42 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
                     controller: _urlController,
                     hint: 'https://…/index.json',
                     mono: true,
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _nameController.text = 'Keiyoushi Extensions';
+                          _urlController.text = kKeiyoushiRepositoryUrl;
+                        });
+                        _testRepo();
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              LucideIcons.sparkles,
+                              size: 13,
+                              color: AppColors.accentText,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Gunakan Repository Resmi Keiyoushi (Tachiyomi/Mihon)',
+                              style: AppTypography.jakarta(
+                                size: 11.5,
+                                weight: FontWeight.w600,
+                                color: AppColors.accentText,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 6),
                   _buildTestResult(),

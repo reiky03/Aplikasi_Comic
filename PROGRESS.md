@@ -27,6 +27,41 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.1.5: Real Native Android VpnService (Izin Sistem & Key Icon [🔑]), Integrasi Bawaan Keiyoushi Official Repository, & Cloudflare Turnstile Session Solver
+
+Permintaan user:
+"ini imhentai sama doujindesu tooongod juga gak bisa dibuka, vpn juga gak jelas kayak gak aktif, padhal setauku ketika aktifin vpn bakal ada minta izin dari hpnya untuk aktifkan vpn dll gimananta beb
+ginin deh beb, coba kamu lakukan demo sendiri dwengan menambah repository di appnya itukan ad banyak web komik, kamu lakukan testing untuk bisa parisng smeua web komik yang ada layaknya mihon dan tachiyomi biar bisa fleksibel untuk parisng semua web komik appaun itu
+ini reponya https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json"
+
+Root cause & analisis mendalam:
+1. ISP Indonesia melakukan DNS hijacking pada port 53 UDP. Meskipun DNS diatur ke 8.8.8.8 atau 1.1.1.1 pada level aplikasi biasa, ISP mengintersep paket UDP port 53 dan membelokkan domain komik (mis. `imhentai.xxx`, `doujin.desu.xxx`, `toongod.org`) ke IP Internet Positif `36.86.63.185`. Hal ini memicu `HandshakeException: CERTIFICATE_VERIFY_FAILED: application verification failure`.
+2. Pada versi sebelumnya, fitur "Kizen VPN" hanya mengandalkan intercept DNS tingkat library tanpa mengimplementasikan `android.net.VpnService` asli. Akibatnya, Android OS tidak memunculkan dialog persetujuan sistem, ikon kunci [🔑] tidak muncul di status bar, dan socket bawaan sistem/WebView/Dart tetap terkena DNS hijacking ISP.
+3. Sebagian situs komik (seperti IMHentai dan ToonGod) menerapkan Cloudflare Turnstile Bot Protection (`cf-mitigated: challenge` / HTTP 403 `Just a moment...`). Di Tachiyomi/Mihon, ini diselesaikan melalui verifikasi browser WebView yang menangkap cookie `cf_clearance`.
+4. Repository bawaan aplikasi sebelumnya hanya berisi link sampel dummy, sehingga pengguna tidak langsung mendapatkan daftar ribuan extension resmi Keiyoushi tanpa menambah URL secara manual.
+
+Solusi & Perbaikan:
+1. **Real Native Android `VpnService` (`KizenVpnService`)**:
+   - Membuat `KizenVpnService.kt` yang mengimplementasikan `android.net.VpnService`.
+   - Mengalihkan trafik DNS virtual `10.222.0.2:53` via TUN interface dan membungkus query wire-format RFC 1035 ke dalam protokol DoH (DNS-over-HTTPS RFC 8484) terenkripsi ke Cloudflare (1.1.1.1), Google, AdGuard, atau Hong Kong (DNS.SB).
+   - Menghubungkan `VpnService.prepare(activity)` di `MainActivity.kt` sehingga Android OS memunculkan dialog modal resmi: *"Kizen ingin menyiapkan koneksi VPN..."* dan memunculkan ikon kunci [🔑] di status bar.
+   - Trafik non-DNS tetap berjalan native tanpa beban proxy ganda, menjaga kecepatan baca komik dan download tetap maksimal.
+2. **Repositori Resmi Keiyoushi Bawaan (Default)**:
+   - Menambahkan Keiyoushi Official (`https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json`) langsung sebagai repositori bawaan #1 di `_seedRepositories`.
+   - Menyertakan sumber populer pra-konfigurasi (Doujindesu, IMHentai, ToonGod, Komiku, Shinigami, Komikindo, Asura Scans).
+   - Menambahkan tombol shortcut 1-tap *"Gunakan Repository Resmi Keiyoushi (Tachiyomi/Mihon)"* pada layar Tambah Repository.
+3. **Penyempurnaan Extension Runtime Networking**:
+   - Memastikan `applyVpnDns` diterapkan pada seluruh client OkHttp termasuk `fetchDoujindesuPages`.
+   - Menyempurnakan fallback WebView solver untuk domain dengan proteksi Cloudflare Turnstile.
+4. **Bump Versi ke v1.1.5 (Build 7)**.
+
+Verifikasi:
+- `flutter analyze` bersih (0 issues).
+- `flutter test -j 1` lolos 155/155 test.
+- `flutter build apk --release` sukses dibangun dengan native VpnService.
+- Rilis GitHub v1.1.5 dan upload APK `kizen-v1.1.5.apk`.
+
+
 ### 2026-11-04 — Kizen v1.1.4: Hotfix Pemulihan Jaringan Aplikasi (Hapus Global HttpOverrides) & Rilis v1.1.4
 
 Permintaan user:

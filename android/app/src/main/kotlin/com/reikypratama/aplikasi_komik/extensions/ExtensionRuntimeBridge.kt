@@ -101,13 +101,24 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         vpnEnabled = call.argument<Boolean>("enabled") ?: true
         vpnProvider = call.argument<String>("provider") ?: "cloudflare"
         Log.i(TAG, "VPN/DoH status changed: enabled=$vpnEnabled, provider=$vpnProvider")
-        result.success(true)
+        val activity = context as? com.reikypratama.aplikasi_komik.MainActivity
+        if (activity != null) {
+            if (vpnEnabled) {
+                activity.startVpnWithPermission(vpnProvider, result)
+            } else {
+                activity.stopVpn(result)
+            }
+        } else {
+            result.success(true)
+        }
     }
 
     private fun getVpnStatus(result: MethodChannel.Result) {
+        val running = com.reikypratama.aplikasi_komik.vpn.KizenVpnService.isRunning
         result.success(
             mapOf(
-                "enabled" to vpnEnabled,
+                "enabled" to (running || vpnEnabled),
+                "isRunning" to running,
                 "provider" to vpnProvider,
             )
         )
@@ -1109,10 +1120,12 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             .headers(Headers.headersOf(*headers.flatMap { listOf(it.key, it.value) }.toTypedArray()))
             .get()
             .build()
-        val html = OkHttpClient.Builder()
+        val baseClient = OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
+        val client = applyVpnDns(baseClient)
+        val html = client
             .newCall(request)
             .execute()
             .use { response ->
