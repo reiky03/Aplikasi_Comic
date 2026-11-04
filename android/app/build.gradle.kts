@@ -55,5 +55,4 @@ dependencies {
     implementation("org.jsoup:jsoup:1.21.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.9.0")
-    implementation("com.wireguard.android:tunnel:1.0.20230706")
 }

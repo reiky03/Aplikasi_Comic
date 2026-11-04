@@ -114,7 +114,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     }
 
     private fun getVpnStatus(result: MethodChannel.Result) {
-        val running = com.reikypratama.aplikasi_komik.vpn.KizenWireguardManager.isRunning
+        val running = com.reikypratama.aplikasi_komik.vpn.KizenVpnService.isRunning
         result.success(
             mapOf(
                 "enabled" to (running || vpnEnabled),
@@ -1309,12 +1309,44 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
  * di jaringan Indonesia secara otomatis tanpa memerlukan akses root.
  */
 class DohDns(private val provider: String = "cloudflare") : Dns {
+    private val bootstrapDns = Dns { hostname ->
+        when (hostname.lowercase()) {
+            "cloudflare-dns.com", "one.one.one.one" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(1, 1, 1, 1)),
+                InetAddress.getByAddress(hostname, byteArrayOf(1, 0, 0, 1)),
+            )
+            "dns.google" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(8, 8, 8, 8)),
+                InetAddress.getByAddress(hostname, byteArrayOf(8, 8, 4, 4)),
+            )
+            "dns.adguard-dns.com" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(94.toByte(), 140.toByte(), 14, 14)),
+                InetAddress.getByAddress(hostname, byteArrayOf(94.toByte(), 140.toByte(), 15, 15)),
+            )
+            "doh.dns.sb" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(185.toByte(), 222.toByte(), 222.toByte(), 222.toByte())),
+                InetAddress.getByAddress(hostname, byteArrayOf(45, 11, 45, 11)),
+            )
+            else -> listOf(InetAddress.getByAddress(hostname, byteArrayOf(1, 1, 1, 1)))
+        }
+    }
+
     private val client by lazy {
         OkHttpClient.Builder()
+            .dns(bootstrapDns)
             .callTimeout(java.time.Duration.ofSeconds(4))
             .connectTimeout(java.time.Duration.ofSeconds(3))
             .readTimeout(java.time.Duration.ofSeconds(3))
             .build()
+    }
+
+    private fun isBlockedIp(ip: String): Boolean {
+        return ip.startsWith("36.86.") ||
+                ip.startsWith("180.250.") ||
+                ip.startsWith("118.98.") ||
+                ip.startsWith("103.236.") ||
+                ip == "127.0.0.1" ||
+                ip == "0.0.0.0"
     }
 
     override fun lookup(hostname: String): List<InetAddress> {
@@ -1346,7 +1378,7 @@ class DohDns(private val provider: String = "cloudflare") : Dns {
                             val type = ans.optInt("type", 1)
                             if (type == 1) {
                                 val ip = ans.optString("data")
-                                if (!ip.isNullOrBlank()) {
+                                if (!ip.isNullOrBlank() && !isBlockedIp(ip)) {
                                     addresses.addAll(InetAddress.getAllByName(ip))
                                 }
                             }
@@ -1360,6 +1392,25 @@ class DohDns(private val provider: String = "cloudflare") : Dns {
         } catch (e: Throwable) {
             Log.w("KizenDoH", "DoH lookup failed for $hostname: ${e.message}")
         }
-        return Dns.SYSTEM.lookup(hostname)
+
+        // Jangan fallback ke DNS sistem yang diinjeksi Nawala jika domain komik terkenal
+        val safeFallback = when (hostname.lowercase()) {
+            "doujindesu.tv", "doujin.desu.xxx", "doujindesu.bid" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 169.toByte(), 73)),
+                InetAddress.getByAddress(hostname, byteArrayOf(104, 21, 95, 24)),
+            )
+            "imhentai.xxx" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 11, 15)),
+                InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 73, 234.toByte())),
+            )
+            "e-hentai.org" -> listOf(
+                InetAddress.getByAddress(hostname, byteArrayOf(104, 20, 134.toByte(), 21)),
+                InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 2.toByte(), 187.toByte())),
+            )
+            else -> null
+        }
+        if (safeFallback != null) return safeFallback
+
+        return Dns.SYSTEM.lookup(hostname).filterNot { isBlockedIp(it.hostAddress ?: "") }
     }
 }

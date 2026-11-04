@@ -3,8 +3,10 @@ package com.reikypratama.aplikasi_komik
 import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
+import androidx.core.content.ContextCompat
 import com.reikypratama.aplikasi_komik.extensions.ExtensionRuntimeBridge
-import com.reikypratama.aplikasi_komik.vpn.KizenWireguardManager
+import com.reikypratama.aplikasi_komik.vpn.KizenVpnService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -33,19 +35,28 @@ class MainActivity : FlutterActivity() {
             startActivityForResult(intent, REQUEST_VPN_PERMISSION)
         } else {
             // Sudah diizinkan oleh sistem sebelumnya
-            startWireguardTunnel(provider, result)
+            startVpnService(provider)
+            result.success(true)
         }
     }
 
     fun stopVpn(result: MethodChannel.Result) {
-        KizenWireguardManager.stopTunnel(this) { success ->
-            result.success(success)
+        val intent = Intent(this, KizenVpnService::class.java).apply {
+            action = KizenVpnService.ACTION_STOP
         }
+        startService(intent)
+        result.success(true)
     }
 
-    private fun startWireguardTunnel(provider: String, result: MethodChannel.Result? = null) {
-        KizenWireguardManager.startTunnel(this, provider) { success ->
-            result?.success(success)
+    private fun startVpnService(provider: String) {
+        val intent = Intent(this, KizenVpnService::class.java).apply {
+            action = KizenVpnService.ACTION_START
+            putExtra("provider", provider)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, intent)
+        } else {
+            startService(intent)
         }
     }
 
@@ -55,7 +66,8 @@ class MainActivity : FlutterActivity() {
             val pending = pendingVpnResult
             pendingVpnResult = null
             if (resultCode == Activity.RESULT_OK) {
-                startWireguardTunnel(pendingProvider, pending)
+                startVpnService(pendingProvider)
+                pending?.success(true)
             } else {
                 pending?.success(false)
             }

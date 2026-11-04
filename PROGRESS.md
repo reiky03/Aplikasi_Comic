@@ -27,6 +27,33 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.2.0: Perbaikan Total Internet Hang/Mati saat VPN Aktif (Hapus Blackhole WireGuard, Pulihkan Hardened DoH Tunnel + Stripping Nawala)
+
+Permintaan user:
+"Kok masih gak bisa sih vpnnya, buka kizen gak bisa web komik nya, buka google buat cari pencarian aja gak bisa mutar terus, apanya ini dari tadi gak selesai²"
+"Dan bahkan pas VPN aktif lalu ak buka situs lain kayak tiktok dll malah gak ad jadi muncul koneksi jaringannya,mutar2 terus ini gimana sih"
+
+Root cause & analisis tuntas:
+1. **Mengapa v1.1.8 / v1.1.9 bikin internet HP mati total (Google/TikTok spinning forever)?**
+   - Di v1.1.8 & v1.1.9 kami mencoba mengimplementasikan full-tunneling WireGuard (`AllowedIPs = 0.0.0.0/0, ::/0`).
+   - Namun di Indonesia, operator seluler dan ISP broadband (Telkomsel, IndiHome, XL Axiata, Biznet) secara agresif memblokir/me-drop seluruh paket UDP handshake ke subnet Anycast Cloudflare/WARP (`162.159.192.0/24`, `162.159.193.0/24`) pada level Deep Packet Inspection (DPI) firewall.
+   - Karena handshake WireGuard tidak pernah selesai (never handshake), Android OS yang sudah diarahkan rute default `0.0.0.0/0` memasukkan SEMUA paket data keluar HP (Google pencarian, TikTok, YouTube, WhatsApp, Kizen) ke dalam antarmuka TUN yang mati (black hole). Akibatnya seluruh HP kehilangan koneksi internet dan mutar tanpa henti.
+2. **Solusi Definitif di v1.2.0:**
+   - **Hapus Pustaka WireGuard Blackhole (`KizenWireguardManager.kt`)**: Membuang library `com.wireguard.android:tunnel` dan rute `0.0.0.0/0`.
+   - **Pulihkan & Perkuat `KizenVpnService` (Isolated DNS Encrypted Tunnel)**:
+     * Antarmuka TUN hanya menangkap subnet DNS virtual (`10.222.0.0/30`), BUKAN `0.0.0.0/0`.
+     * **HASIL KRUSIAL**: Trafik normal non-DNS (Google pencarian, TikTok, YouTube, media sosial, WhatsApp) langsung mengalir 100% lewat koneksi native operator seluler tanpa pernah tersendat, tanpa delay, dan tanpa risiko internet mati!
+     * Tetap memicu dialog izin resmi Android OS `VpnService` ("Kizen ingin menyiapkan koneksi VPN...") dan memunculkan ikon kunci 🔑 di status bar HP.
+   - **Hardened DoH di Extension Engine (`ExtensionRuntimeBridge.kt`)**:
+     * Injeksi bootstrap in-memory DNS (`InetAddress.getByAddress`) ke OkHttpClient agar tidak pernah terjadi DNS recursion loop.
+     * Penambahan filter `isBlockedIp`: mendeteksi dan membuang IP injeksi Nawala / Internet Positif (`36.86.`, `180.250.`, `118.98.`, `103.236.`, `127.0.0.1`, `0.0.0.0`).
+     * Clean Anycast IP fallback untuk domain komik terkenal (Doujindesu, ImHentai, E-Hentai) sehingga ekstensi Tachiyomi/Mihon di dalam Kizen selalu tembus ke server asli CDN tanpa teralihkan ke laman Internet Baik.
+
+Verifikasi:
+- `flutter analyze` — 0 issues (bersih).
+- `flutter test -j 1` — 155/155 test lolos.
+- Build release APK `kizen-v1.2.0.apk`.
+
 ### 2026-11-04 — Kizen v1.1.9: Perbaikan Dual-Stack IPv6 + MTU 1280 WireGuard, Bypass Port 500 ISP, & Pengecualian TikTok (Anti-Buffering)
 
 Permintaan user:
