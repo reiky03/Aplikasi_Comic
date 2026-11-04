@@ -55,8 +55,15 @@ class DohResolver {
             for (final a in answers) {
               if (a is Map<String, dynamic> && a['type'] == 1) {
                 final ip = a['data'] as String?;
-                if (ip != null && ip.isNotEmpty && !ip.startsWith('180.250.')) {
-                  // Pastikan bukan IP redirect blokir ISP
+                if (ip != null &&
+                    ip.isNotEmpty &&
+                    !ip.startsWith('180.250.') &&
+                    !ip.startsWith('36.86.') &&
+                    !ip.startsWith('118.98.') &&
+                    !ip.startsWith('103.236.') &&
+                    ip != '127.0.0.1' &&
+                    ip != '0.0.0.0') {
+                  // Pastikan bukan IP redirect blokir ISP / Nawala
                   _cache[cleanHost] = ip;
                   return ip;
                 }

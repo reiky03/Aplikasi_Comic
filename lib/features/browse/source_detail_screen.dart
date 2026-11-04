@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/extension_runtime.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/repository_state.dart';
@@ -15,6 +16,7 @@ import '../../sources/manga_source.dart';
 import '../../sources/source_catalog.dart';
 import '../detail/comic_detail_screen.dart';
 import 'add_source_screen.dart';
+import 'repo_browse_tab.dart';
 import 'web_view_screen.dart';
 
 enum _DiscoverTab { popular, latest, search }
@@ -646,76 +648,208 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     );
   }
 
+  bool _installingExtension = false;
+
+  Future<void> _installExtensionFromRepo(RepoSourceMatch match) async {
+    final apkUrl = repositoryApkUrl(
+      match.repository.url,
+      match.source.apk,
+    );
+    final apk = match.source.apk;
+    if (apkUrl == null || apk == null) {
+      AppToast.show(context, 'Link APK extension tidak ditemukan');
+      return;
+    }
+    setState(() => _installingExtension = true);
+    try {
+      await const ExtensionRuntimeBridge().installExtensionApk(
+        apkUrl: apkUrl,
+        fileName: apk,
+      );
+      if (!mounted) return;
+      ref.invalidate(installedExtensionPackagesProvider);
+      AppToast.show(context, 'Installer ekstensi dibuka di HP kamu.');
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, 'Gagal membuka installer: $e');
+    } finally {
+      if (mounted) setState(() => _installingExtension = false);
+    }
+  }
+
   Widget _buildDiscoverError(ComicSource source) {
+    RepoSourceMatch? repoMatch;
+    if (source.repoPackage != null) {
+      repoMatch = findRepoSource(
+        repositories: ref.read(repositoriesProvider),
+        rawUrl: source.url,
+        packageName: source.repoPackage,
+        sourceId: source.repoSourceId,
+      );
+    }
+    final installedPackages = ref.watch(installedExtensionPackagesProvider);
+    final isInstalled = source.repoPackage != null &&
+        installedPackages.maybeWhen(
+          data: (pkgs) => pkgs.containsKey(source.repoPackage),
+          orElse: () => false,
+        );
+
+    final isMissingExtension =
+        source.repoPackage != null && !isInstalled && repoMatch != null;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(30, 40, 30, 0),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
       child: Column(
         children: [
+          if (isMissingExtension) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.4),
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    LucideIcons.packagePlus,
+                    color: AppColors.accent,
+                    size: 34,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Ekstensi ${source.name} Belum Terpasang',
+                    style: AppTypography.jakarta(
+                      size: 14.5,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Sumber ini memerlukan ekstensi resmi Keiyoushi agar komik dan chapter dapat dimuat secara lancar (seperti di Tachiyomi/Mihon).',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.jakarta(
+                      size: 12,
+                      weight: FontWeight.w400,
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 40,
+                    child: FilledButton.icon(
+                      onPressed: _installingExtension
+                          ? null
+                          : () => _installExtensionFromRepo(repoMatch!),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      icon: _installingExtension
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(LucideIcons.download, size: 16),
+                      label: Text(
+                        _installingExtension
+                            ? 'Membuka Installer...'
+                            : 'Pasang Ekstensi Sekarang',
+                        style: AppTypography.jakarta(
+                          size: 13,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Text(
-            'Gagal memuat daftar komik.\n${_discoverError ?? ''}',
+            isMissingExtension
+                ? 'Atau gunakan metode browser di bawah jika belum ingin memasang ekstensi:'
+                : 'Gagal memuat daftar komik.\n${_discoverError ?? ''}',
             textAlign: TextAlign.center,
             style: AppTypography.jakarta(
-              size: 13,
-              weight: FontWeight.w600,
+              size: 12.5,
+              weight: FontWeight.w500,
               color: AppColors.textSecondary,
             ),
           ),
           const SizedBox(height: 14),
-          InkWell(
-            onTap: () => _loadDiscover(source),
-            borderRadius: BorderRadius.circular(11),
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              InkWell(
+                onTap: () => _loadDiscover(source),
                 borderRadius: BorderRadius.circular(11),
-                border: Border.all(color: AppColors.borderStrong),
-              ),
-              child: Text(
-                'Coba Lagi',
-                style: AppTypography.jakarta(
-                  size: 13,
-                  weight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          InkWell(
-            onTap: () => _openWebView(
-              source,
-              initialUrl: _discoverWebViewUrl ?? source.url,
-            ),
-            borderRadius: BorderRadius.circular(11),
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(11),
-                border: Border.all(
-                  color: AppColors.accent.withValues(alpha: 0.4),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(LucideIcons.globe, size: 16),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Buka WebView',
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: AppColors.borderStrong),
+                  ),
+                  child: Text(
+                    'Coba Lagi',
                     style: AppTypography.jakarta(
                       size: 13,
                       weight: FontWeight.w700,
                       color: AppColors.textPrimary,
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: () => _openWebView(
+                  source,
+                  initialUrl: _discoverWebViewUrl ?? source.url,
+                ),
+                borderRadius: BorderRadius.circular(11),
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: AppColors.accent.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.globe, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Buka WebView',
+                        style: AppTypography.jakarta(
+                          size: 13,
+                          weight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

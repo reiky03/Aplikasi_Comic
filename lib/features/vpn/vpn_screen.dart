@@ -241,20 +241,20 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
                   ),
 
                   const SizedBox(height: 10),
-                  _eyebrow('Server / Provider Terowongan'),
+                  _eyebrow('Lokasi Server VPN & Terowongan'),
                   _card([
                     for (final p in VpnProvider.values)
                       _serverOption(
                         title: p.label,
                         subtitle: p == VpnProvider.hongkong
-                            ? 'Server Hong Kong (Bypass cepat doujin & galeri Asia)'
+                            ? 'Server Hong Kong (Bypass cepat komik doujin & galeri Asia)'
                             : (p == VpnProvider.cloudflare
-                                ? 'Rekomendasi (Ping tercepat & tembus semua komik)'
+                                ? 'Server Singapura (Cloudflare Anycast - Ping tercepat)'
                                 : (p == VpnProvider.adguard
-                                    ? 'Proteksi iklan popup & malware web'
-                                    : 'Alternatif global stabil')),
+                                    ? 'Server AdGuard (Proteksi iklan popup & malware)'
+                                    : 'Server Global (Google DNS Anycast)')),
                         selected: vpn.provider == p,
-                        onTap: () => notifier.setProvider(p),
+                        onTap: () => _handleSelectProvider(context, vpn, notifier, p),
                         showDivider: p != VpnProvider.values.last,
                       ),
                   ]),
@@ -437,6 +437,128 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _handleSelectProvider(
+    BuildContext context,
+    VpnState vpn,
+    VpnNotifier notifier,
+    VpnProvider target,
+  ) async {
+    if (vpn.isConnecting) return;
+
+    if (vpn.provider == target) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Server ${target.label} sedang aktif digunakan.'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (vpn.isEnabled) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          title: Row(
+            children: [
+              const Icon(
+                LucideIcons.arrowLeftRight,
+                color: AppColors.accent,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Ganti Server VPN?',
+                style: AppTypography.jakarta(size: 16, weight: FontWeight.w700),
+              ),
+            ],
+          ),
+          content: Text(
+            'Koneksi VPN saat ini sedang aktif di:\n• ${vpn.provider.label}\n\nApakah kamu ingin memindahkan koneksi VPN ke:\n• ${target.label}?',
+            style: AppTypography.jakarta(
+              size: 13,
+              weight: FontWeight.w400,
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(
+                'Batal',
+                style: AppTypography.jakarta(
+                  size: 13,
+                  weight: FontWeight.w500,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                'Pindahkan Server',
+                style: AppTypography.jakarta(
+                  size: 13,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true || !context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mengalihkan koneksi ke ${target.label}...'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      await notifier.setProvider(target);
+
+      if (!context.mounted) return;
+      final currentVpn = ref.read(vpnProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Terhubung ke ${target.label} (${currentVpn.pingMs} ms)',
+          ),
+          backgroundColor: const Color(0xFF047857),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      await notifier.setProvider(target);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Server ${target.label} dipilih. Aktifkan VPN untuk mulai terhubung.',
+          ),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _serverOption({

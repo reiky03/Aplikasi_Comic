@@ -2,6 +2,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
+import '../data/kizen_http_client.dart';
 import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
@@ -13,7 +14,7 @@ import 'manga_source.dart';
 /// tidak didukung `package:html` di Dart — bagian itu ditulis ulang
 /// sebagai traversal manual, logikanya tetap sama.
 class KomikuSource implements MangaSource {
-  KomikuSource({http.Client? client}) : _client = client ?? http.Client();
+  KomikuSource({http.Client? client}) : _client = client ?? createKizenHttpClient();
 
   final http.Client _client;
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../data/kizen_http_client.dart';
 import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
@@ -10,7 +11,7 @@ import 'manga_source.dart';
 /// `keiyoushi/extensions-source` (src/id/shinigami) supaya jalan native
 /// di Flutter tanpa perlu menjalankan APK Tachiyomi.
 class ShinigamiSource implements MangaSource {
-  ShinigamiSource({http.Client? client}) : _client = client ?? http.Client();
+  ShinigamiSource({http.Client? client}) : _client = client ?? createKizenHttpClient();
 
   final http.Client _client;
 

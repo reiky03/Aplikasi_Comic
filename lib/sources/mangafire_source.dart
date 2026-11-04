@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
+import '../data/kizen_http_client.dart';
 import 'manga_source.dart';
 
 /// Parser API MangaFire. Situs ini tidak mengirim katalog/chapter lewat HTML;
@@ -14,7 +15,7 @@ class MangaFireSource implements MangaSource {
     String? lang,
     http.Client? client,
   }) : lang = _normalizeLang(lang),
-       _client = client ?? http.Client();
+       _client = client ?? createKizenHttpClient();
 
   @override
   final String name;

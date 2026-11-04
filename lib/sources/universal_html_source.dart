@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
 import '../data/extension_runtime.dart';
+import '../data/kizen_http_client.dart';
 import '../data/source_session_store.dart';
 import 'manga_source.dart';
 import 'sveltekit_comic_source.dart';
@@ -22,7 +23,7 @@ class UniversalHtmlSource implements MangaSource {
     http.Client? client,
     ExtensionRuntimeBridge? bridge,
     this.enableBrowserSessionFallback = false,
-  }) : _client = client ?? http.Client(),
+  }) : _client = client ?? createKizenHttpClient(),
        _bridge = bridge ?? const ExtensionRuntimeBridge(),
        _svelteKitFallback = SvelteKitComicSource(
          name: name,

@@ -27,6 +27,46 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.1.6: Dialog Konfirmasi & Feedback Interaktif Pindah Server VPN, Custom DoH Client Anti-Blokir Parser Komik (Zero Impact Firestore), & Prompt 1-Tap Pasang Ekstensi Keiyoushi
+
+Permintaan user:
+"Kok masih gak bisa buka doujindesu imhentai dllnya yg butuh VPN, dan hpnya juga dikasih Taulah kalau mau ganti beb misal awalnya kuhidupin pake Hongkong, lalu pas ak tekan Singapura dan lainnya gak ad reaksi apa², mending dikasih tau, apa mau ganti VPN ke ini itu, biar jelas, lalu kenapa masih gak bisa buka komik yang notabene nya butuh VPN, ap yg terjadi beb"
+
+Root cause & analisis mendalam:
+1. **Pilihan Server VPN Tanpa Reaksi Visual / Konfirmasi:**
+   Di `lib/features/vpn/vpn_screen.dart`, pemilihan provider sebelumnya langsung memanggil `notifier.setProvider(p)` secara senyap tanpa dialog konfirmasi, tanpa snackbar, dan tanpa indikasi visual bahwa proses perpindahan server sedang berlangsung.
+2. **DNS Hijacking Masih Menginfeksi Dart Http Client di Level Parser Komik:**
+   Walaupun `KizenVpnService` aktif di layer OS, parser komik Dart (`UniversalHtmlSource`, `MadaraSource`, `MangaThemesiaSource`, dll.) sebelumnya membuat instansiasi `http.Client()` biasa yang memakai libc `getaddrinfo` sistem. Di jaringan ISP Indonesia yang menerapkan DNS interception, domain yang belum tersimpan di cache OS diarahkan ke IP Nawala (`36.86.63.185`), memicu error sertifikat SSL kadaluarsa.
+3. **Sifat Arsitektur Ekstensi Keiyoushi (Tachiyomi/Mihon Model):**
+   Sumber dari repositori Keiyoushi seperti Doujindesu menggunakan enkripsi XOR API khusus (`x-app-secret` + `Decryptor`). Untuk membukanya di HP Android, paket ekstensi APK harus dipasang (*Installed*) terlebih dahulu di perangkat. Jika belum terpasang, pengguna sebelumnya hanya melihat pesan error generik "tidak memiliki source" tanpa petunjuk bahwa mereka perlu menekan tombol "Pasang".
+4. **Proteksi Cloudflare Turnstile ("Just a moment..."):**
+   Situs seperti `imhentai.xxx` dan `toongod.org` dilindungi Cloudflare Bot Challenge (HTTP 403) yang membutuhkan penyelesaian Turnstile sekali via browser WebView (sama persis dengan Tachiyomi/Mihon) untuk memperoleh cookie `cf_clearance`.
+
+Solusi & Perbaikan:
+1. **Dialog Konfirmasi & Notifikasi Interaktif Pindah Server VPN (`vpn_screen.dart`):**
+   - Menambahkan dialog konfirmasi modal modern saat pengguna menekan pilihan server lain ketika VPN sedang aktif:
+     * Menampilkan perbandingan server aktif saat ini vs server target yang ingin dituju.
+     * Tombol aksi "Batal" dan "Pindahkan Server".
+   - Menampilkan SnackBar transisi "Mengalihkan koneksi ke [Server Target]..." dan notifikasi sukses "✅ Terhubung ke [Server Target] (Ping: XX ms)".
+   - Jika VPN sedang tidak aktif, pemilihan server memberikan feedback bahwa server telah dipilih dan menyarankan menyalakan toggle VPN.
+2. **Kizen Comic HTTP Client Berbasis DoH (`lib/data/kizen_http_client.dart`):**
+   - Membuat `createKizenHttpClient()` dengan custom `connectionFactory` yang menyelesaikan hostname lewat `DohResolver.resolveHost` saat VPN aktif dan menyambungkan socket dengan SNI asli ke IP server/Cloudflare sebenarnya.
+   - Menggunakan conditional export (`kizen_http_client_io.dart` dan `kizen_http_client_stub.dart`) sehingga 100% aman dan kompatibel di Web smoke test.
+   - Menerapkan `createKizenHttpClient()` secara eksklusif ke parser komik (`UniversalHtmlSource`, `MadaraSource`, `MangaThemesiaSource`, `NatsuIdSource`, `MangaFireSource`, `KomikuSource`, `ShinigamiSource`, `AsuraSource`, `SvelteKitComicSource`), tanpa menyentuh Firebase Auth atau Firestore gRPC.
+3. **Filter IP Nawala & Blokir ISP di `DohResolver` (`lib/data/doh_resolver.dart`):**
+   - Menolak semua IP redirect blokir ISP (`36.86.`, `180.250.`, `118.98.`, `103.236.`, `127.0.0.1`, `0.0.0.0`).
+4. **Banner & Tombol 1-Tap "Pasang Ekstensi" di `SourceDetailScreen` (`source_detail_screen.dart`):**
+   - Jika pengguna membuka sumber repositori Keiyoushi yang ekstensinya belum terpasang, ditampilkan kartu edukatif interaktif dan tombol 1-tap: *"Pasang Ekstensi Sekarang"* yang langsung mengunduh dan membuka package installer APK resmi.
+5. **Bump Versi ke v1.1.6 (Build 8)**.
+
+Verifikasi:
+- `flutter analyze`: 0 issues found.
+- `flutter test -j 1`: 155/155 test lolos.
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: compile sukses.
+- `flutter build apk --release`: proses build APK rilis v1.1.6.
+
+---
+
 ### 2026-11-04 — Kizen v1.1.5: Real Native Android VpnService (Izin Sistem & Key Icon [🔑]), Integrasi Bawaan Keiyoushi Official Repository, & Cloudflare Turnstile Session Solver
 
 Permintaan user:

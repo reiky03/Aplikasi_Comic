@@ -2,6 +2,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
+import '../data/kizen_http_client.dart';
 import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
@@ -13,7 +14,7 @@ import 'manga_source.dart';
 /// class ini menjadi strategi tambahan ketika endpoint khusus itu dibutuhkan.
 class MadaraSource implements MangaSource {
   MadaraSource({required this.name, required this.baseUrl, http.Client? client})
-    : _client = client ?? http.Client();
+    : _client = client ?? createKizenHttpClient();
 
   @override
   final String name;

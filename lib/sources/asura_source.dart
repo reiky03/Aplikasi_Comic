@@ -4,6 +4,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 
+import '../data/kizen_http_client.dart';
 import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
@@ -12,7 +13,7 @@ import 'manga_source.dart';
 /// Listing/search/chapter metadata tersedia lewat API publik Asura, sedangkan
 /// detail dan halaman chapter juga dibawa sebagai props SSR di HTML Astro.
 class AsuraSource implements MangaSource {
-  AsuraSource({http.Client? client}) : _client = client ?? http.Client();
+  AsuraSource({http.Client? client}) : _client = client ?? createKizenHttpClient();
 
   @override
   String get name => 'Asura Scans';
