@@ -3667,3 +3667,56 @@ Verifikasi:
 - belum dipasang ke HP karena tidak ada perangkat yang terdeteksi ADB pada akhir
   verifikasi.
 - iOS profile tanpa codesign berhasil membangun `Runner.app` 61,4 MB.
+
+
+---
+
+## 4 November 2026 — Rilis v1.1.3: Real In-App Anti-Blokir VPN (Hong Kong DoH + TLS SNI), Universal Doujin & Gallery Parser Support, Perbaikan FAB Library, dan Solusi Bentrok Update Extension
+
+### Latar Belakang & Keluhan User:
+1. Floating pill button multi-select di Library (`3 Dipilih ^`) mepet ke floating navbar bawah pada layar HP Android modern dengan gesture navigation bar (posisi hardcoded `bottom: 86` mengabaikan `MediaQuery.paddingOf(context).bottom`).
+2. VPN dalam aplikasi dinilai "pretend / fake" karena saat user mencoba membuka situs yang diblokir di Indonesia seperti `doujindesu`, `imhentai`, `e-hentai`, koneksi tetap gagal. User meminta penambahan server node Hong Kong dan memastikan VPN nyata berfungsi menembus blokir ISP.
+3. Parser Universal HTML gagal memuat komik dan daftar chapter dari situs bertipe doujinshi / gallery (`doujindesu`, `imhentai`, `e-hentai`) karena rute listing, selektor kartu, proteksi cookie usia (`nw=1`), dan struktur single-gallery (tanpa multi-chapter berurutan) belum terakomodasi.
+4. Pembaruan ekstensi dari repositori mengalami error Android: *"Aplikasi tidak terpasang karena bentrok dengan paket yang sudah ada"*, disebabkan oleh ketidakcocokan certificate signature / signing key antara paket yang sudah terpasang dengan APK baru dari repositori.
+
+### Analisis & Root Cause:
+1. **FAB Offset**: Di `AppBottomNav`, margin bawah dinamis dihitung dengan `math.max(AppDimens.navMargin.bottom, bottomInset)`. Menggunakan `bottom: 86` statis menyebabkan tombol berada lebih rendah atau menempel langsung ke tepi atas navbar ketika ada gesture bar (tinggi nav ~58px + bottom margin ~34px = 92px).
+2. **Real Anti-Blokir Layer di Dart / Flutter**: Sebelumnya, provider `http.Client()` bawaan Dart di Android menggunakan resolver DNS libc lokal milik ISP (Telkomsel/Indosat/XL/FirstMedia) yang membajak port 53. Akibatnya, domain yang diblokir dialihkan ke IP Internet Positif atau gagal resolve. `DohDns` di Android native hanya aktif untuk ekstensi pihak ketiga dan tidak menyentuh request internal Dart / Flutter (`UniversalHtmlSource`, `MadaraSource`, `MangaThemesiaSource`, dan `cached_network_image`).
+3. **Gallery / Doujin Format**:
+   - `e-hentai.org` membutuhkan header cookie `nw=1; skip_warning=1` untuk melewati konfirmasi mature content.
+   - Selektor galeri seperti `.itg tr`, `.itg .gl1t`, `.glname` (E-Hentai), `.thumb`, `.gallery_cover` (ImHentai), dan `.entry`, `.animposx`, `.box-content .flex-box2` (Doujindesu) belum ada di daftar selektor kartu.
+   - Doujinshi single-issue tidak memiliki daftar chapter (`#chapterlist a`), sehingga parser menganggap komik tidak memiliki chapter (`Daftar chapter belum dikenali`).
+4. **Android Package Signature Mismatch**: Android OS secara ketat menolak update APK yang memiliki package name sama namun ditandatangani dengan keystore berbeda dari APK yang sedang terpasang. Tapping langsung tombol perbarui memicu error bentrok ini jika user beralih repo atau repo merotasi key.
+
+### Perubahan & Solusi:
+1. **Library FAB Dynamic Safe Inset** (`lib/features/library/library_screen.dart`):
+   - Menghitung posisi bawah secara dinamis:
+     `math.max(112.0, 58.0 + math.max(AppDimens.navMargin.bottom, MediaQuery.paddingOf(context).bottom) + 20.0)`
+   - Memberikan jarak lega minimal 20px di atas floating bottom nav di semua rasio layar dan tipe navigasi.
+2. **Kizen Real DoH HTTP Overrides & Hong Kong Node**:
+   - Menambahkan provider `hongkong` (`Hong Kong Ultra Fast DNS.SB Anycast HK` — `https://doh.dns.sb/dns-query`) pada `VpnProvider` (`lib/data/vpn_state.dart`) dan Android `DohDns` (`ExtensionRuntimeBridge.kt`).
+   - Mengembangkan `DohResolver` (`lib/data/doh_resolver.dart`) dengan automatic fallback chain (Hong Kong -> Cloudflare -> Google).
+   - Mengembangkan `KizenHttpOverrides` (`lib/data/kizen_http_overrides_io.dart` & `kizen_http_overrides.dart`) yang dipasang secara global di `main.dart`:
+     - Setiap instans `HttpClient` di Dart secara otomatis mencegat koneksi via `connectionFactory`.
+     - Me-resolve hostname target ke IP publik asli via DoH, membuka socket raw TCP langsung ke IP target, dan melakukan TLS Handshake dengan SNI hostname asli.
+     - Meloloskan seluruh request HTTP app, fetch web sumber komik, hingga download gambar cover & page oleh `cached_network_image` tanpa tersentuh DNS hijacking ISP Indonesia.
+3. **Universal Doujin & Gallery Parser Support** (`lib/sources/universal_html_source.dart`):
+   - Menambahkan header otomatis `Cookie: nw=1; skip_warning=1` untuk domain E-Hentai.
+   - Menambahkan candidate listing route: `/gallery/`, `/doujin/`, `/hentai/`, `/g/`.
+   - Menambahkan selektor kartu doujin & galeri: `.entry`, `.animposx`, `.box-content .flex-box2`, `.thumb`, `.gallery_cover`, `.inner_thumb`, `.gthumb`, `.itg tr`, `.itg .gl1t`, `.itg .gl1e`, `.glname`.
+   - Mengakomodasi single-gallery fallback pada `fetchChapterList`: jika komik terdeteksi sebagai galeri tanpa multi-chapter, secara otomatis menyediakan 1 chapter (`Baca Lengkap / Full Gallery`).
+   - Menambahkan selektor gambar reader doujin: `#img`, `#gimg`, `.loadImg`, `.gdtm img`, `.gthumb img`, `.viewer-cnt img`.
+4. **Solusi Bentrok Pembaruan Ekstensi** (`lib/features/browse/repo_browse_tab.dart`):
+   - Saat pembaruan ekstensi tersedia, tombol aksi kini menampilkan sheet pilihan:
+     1. "Perbarui Langsung (Coba Timpa)"
+     2. "Copot Versi Lama & Pasang Ulang" (Solusi resmi untuk bentrok tanda tangan sertifikat antar-repositori)
+     3. "Hapus instal extension"
+   - Opsi copot dan pasang ulang memicu dialog uninstall paket lama via Android Intent `ACTION_DELETE`, lalu otomatis membuka installer APK versi baru secara bersih tanpa bentrok.
+5. **Bump Versi ke 1.1.3 (Build 5)**:
+   - Diperbarui di `pubspec.yaml`, `about_screen.dart`, `settings_screen.dart`, dan `README.md`.
+
+### Verifikasi:
+- `flutter analyze`: Nol issue (0 errors, 0 warnings).
+- `flutter test -j 1`: 155/155 unit & widget test lulus 100%.
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Sanity check compile web berhasil (`✓ Built build/web` dalam 49.6 detik).
+- `flutter build apk --release`: Build APK release Android.

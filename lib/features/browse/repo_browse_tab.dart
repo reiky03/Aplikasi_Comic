@@ -730,12 +730,82 @@ class _ExtensionInstallButtonState
       AppToast.show(
         context,
         widget.updateAvailable
-            ? 'Installer pembaruan extension dibuka'
+            ? 'Installer pembaruan dibuka. Jika bentrok, copot versi lama dulu.'
             : 'Installer extension dibuka',
       );
     } catch (e) {
       if (!mounted) return;
       AppToast.show(context, 'Gagal membuka installer: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _showUpdateOptions(String packageName) async {
+    if (_busy) return;
+    await showAppSheet<void>(
+      context,
+      menuStyle: true,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ContextMenuPreview(
+            cover: comicCover(widget.data.source.hue),
+            title: widget.data.source.name,
+            subtitle: widget.data.source.version == null
+                ? 'Pembaruan tersedia'
+                : 'Pembaruan ke v${widget.data.source.version}',
+          ),
+          AppSheetMenuRow(
+            icon: AppIcons.refresh,
+            iconColor: AppColors.accent,
+            label: 'Perbarui Langsung',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _install();
+            },
+          ),
+          AppSheetMenuRow(
+            icon: LucideIcons.trash2,
+            iconColor: AppColors.warningAlt,
+            label: 'Copot Versi Lama & Pasang Ulang',
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _uninstallAndReinstall(packageName);
+            },
+          ),
+          AppSheetMenuRow(
+            icon: AppIcons.delete,
+            label: 'Hapus instal extension',
+            destructive: true,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _uninstall(packageName);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _uninstallAndReinstall(String packageName) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      AppToast.show(context, 'Mencopot versi lama... Konfirmasi di layar HP');
+      await const ExtensionRuntimeBridge().uninstallExtensionPackage(
+        packageName,
+      );
+      if (!mounted) return;
+      _refreshOnResume = true;
+      // Delay sejenak agar dialog uninstall selesai
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+      await _install();
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, 'Gagal copot dan pasang ulang: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -763,10 +833,10 @@ class _ExtensionInstallButtonState
             label: 'Extension sudah terpasang',
             onTap: () => Navigator.pop(sheetContext),
           ),
-          if (widget.updateAvailable)
+          if (widget.updateAvailable) ...[
             AppSheetMenuRow(
               icon: AppIcons.refresh,
-              iconColor: AppColors.warningAlt,
+              iconColor: AppColors.accent,
               label: widget.data.source.version == null
                   ? 'Perbarui extension'
                   : 'Perbarui ke ${widget.data.source.version}',
@@ -775,6 +845,16 @@ class _ExtensionInstallButtonState
                 _install();
               },
             ),
+            AppSheetMenuRow(
+              icon: LucideIcons.trash2,
+              iconColor: AppColors.warningAlt,
+              label: 'Copot & Pasang Ulang (Solusi jika bentrok)',
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _uninstallAndReinstall(packageName);
+              },
+            ),
+          ],
           AppSheetMenuRow(
             icon: AppIcons.delete,
             label: 'Hapus instal extension',
@@ -824,7 +904,14 @@ class _ExtensionInstallButtonState
         onTap: widget.loading || _busy
             ? null
             : widget.updateAvailable
-            ? _install
+            ? () {
+                final pkg = widget.data.source.pkg;
+                if (pkg != null) {
+                  _showUpdateOptions(pkg);
+                } else {
+                  _install();
+                }
+              }
             : widget.installed
             ? _showInstalledOptions
             : _install,

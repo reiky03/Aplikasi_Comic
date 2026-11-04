@@ -11,6 +11,7 @@ const _channel = MethodChannel('kizen/extension_runtime');
 
 /// Pilihan provider DNS-over-HTTPS / Tunnel anti-blokir
 enum VpnProvider {
+  hongkong('hongkong', 'Hong Kong Ultra Fast (DNS.SB Anycast HK)', 'https://doh.dns.sb/dns-query'),
   cloudflare('cloudflare', 'Cloudflare 1.1.1.1 (Singapore)', 'https://cloudflare-dns.com/dns-query'),
   google('google', 'Google Public DNS (Global)', 'https://dns.google/resolve'),
   adguard('adguard', 'AdGuard Shield (Anti-Ad & Malware)', 'https://dns.adguard-dns.com/dns-query');
@@ -67,14 +68,17 @@ class VpnState {
 
 /// Notifier pengelola status VPN & Anti-Blokir Kizen
 class VpnNotifier extends Notifier<VpnState> {
+  static bool currentVpnEnabled = true;
+  static String currentProviderId = 'hongkong';
+
   @override
   VpnState build() {
     // Muat konfigurasi tersimpan dari SharedPreferences
     _loadPreferences();
     return const VpnState(
       isEnabled: true, // Default aktif agar pengguna langsung bebas dari blokir
-      provider: VpnProvider.cloudflare,
-      pingMs: 24,
+      provider: VpnProvider.hongkong,
+      pingMs: 22,
       isConnecting: false,
     );
   }
@@ -83,8 +87,11 @@ class VpnNotifier extends Notifier<VpnState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final enabled = prefs.getBool(_kPrefVpnEnabled) ?? true;
-      final providerId = prefs.getString(_kPrefVpnProvider) ?? 'cloudflare';
+      final providerId = prefs.getString(_kPrefVpnProvider) ?? 'hongkong';
       final provider = VpnProvider.fromId(providerId);
+
+      currentVpnEnabled = enabled;
+      currentProviderId = provider.id;
 
       state = state.copyWith(
         isEnabled: enabled,
@@ -107,6 +114,8 @@ class VpnNotifier extends Notifier<VpnState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kPrefVpnEnabled, nextState);
       await _syncNative(nextState, state.provider.id);
+
+      currentVpnEnabled = nextState;
 
       int ping = state.pingMs;
       if (nextState) {
@@ -134,6 +143,8 @@ class VpnNotifier extends Notifier<VpnState> {
       await prefs.setString(_kPrefVpnProvider, provider.id);
       await _syncNative(state.isEnabled, provider.id);
 
+      currentProviderId = provider.id;
+
       final ping = await _measurePing(provider);
       state = state.copyWith(
         provider: provider,
@@ -148,9 +159,11 @@ class VpnNotifier extends Notifier<VpnState> {
 
   Future<void> testConnection() async {
     final hosts = {
+      'Hong Kong HK': 'doh.dns.sb',
+      'Doujindesu': 'doujindesu.tv',
+      'E-Hentai': 'e-hentai.org',
       'Shinigami': 'shinigami.cx',
       'Komiku': 'api.komiku.id',
-      'Komikindo': 'komikindo.ch',
       'Asura Comic': 'asuracomic.net',
     };
 
@@ -158,7 +171,7 @@ class VpnNotifier extends Notifier<VpnState> {
     for (final entry in hosts.entries) {
       try {
         final uri = Uri.parse(
-          'https://cloudflare-dns.com/dns-query?name=${entry.value}&type=A',
+          '${state.provider.endpoint}?name=${entry.value}&type=A',
         );
         final res = await http.get(
           uri,

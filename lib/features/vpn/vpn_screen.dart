@@ -246,11 +246,13 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
                     for (final p in VpnProvider.values)
                       _serverOption(
                         title: p.label,
-                        subtitle: p == VpnProvider.cloudflare
-                            ? 'Rekomendasi (Ping tercepat & tembus semua komik)'
-                            : (p == VpnProvider.adguard
-                                ? 'Proteksi iklan popup & malware web'
-                                : 'Alternatif global stabil'),
+                        subtitle: p == VpnProvider.hongkong
+                            ? 'Server Hong Kong (Bypass cepat doujin & galeri Asia)'
+                            : (p == VpnProvider.cloudflare
+                                ? 'Rekomendasi (Ping tercepat & tembus semua komik)'
+                                : (p == VpnProvider.adguard
+                                    ? 'Proteksi iklan popup & malware web'
+                                    : 'Alternatif global stabil')),
                         selected: vpn.provider == p,
                         onTap: () => notifier.setProvider(p),
                         showDivider: p != VpnProvider.values.last,

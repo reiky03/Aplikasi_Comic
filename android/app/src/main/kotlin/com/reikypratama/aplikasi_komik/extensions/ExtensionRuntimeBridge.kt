@@ -1310,6 +1310,7 @@ class DohDns(private val provider: String = "cloudflare") : Dns {
         }
         try {
             val url = when (provider) {
+                "hongkong" -> "https://doh.dns.sb/dns-query?name=$hostname&type=A"
                 "google" -> "https://dns.google/resolve?name=$hostname&type=A"
                 "adguard" -> "https://dns.adguard-dns.com/dns-query?name=$hostname&type=A"
                 else -> "https://cloudflare-dns.com/dns-query?name=$hostname&type=A"

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -302,7 +304,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           if (_selectionMode)
             Positioned(
               right: 18,
-              bottom: 86,
+              bottom: math.max(
+                112.0,
+                58.0 +
+                    math.max(
+                      AppDimens.navMargin.bottom,
+                      MediaQuery.paddingOf(context).bottom,
+                    ) +
+                    20.0,
+              ),
               child: _buildFloatingSelectionAction(context, collections),
             ),
         ],

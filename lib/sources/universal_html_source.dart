@@ -55,13 +55,23 @@ class UniversalHtmlSource implements MangaSource {
   static const _maxInlineJsonScriptLength = 220000;
   static const _maxRawImageScanLength = 450000;
 
-  Map<String, String> get _headers => {
-    'Referer': '$baseUrl/',
-    'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    ...SourceSessionStore.headersFor(baseUrl),
-  };
+  Map<String, String> get _headers {
+    final sessionHeaders = SourceSessionStore.headersFor(baseUrl);
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
+    final isEHentai =
+        host.contains('e-hentai.org') || host.contains('exhentai.org');
+    return {
+      'Referer': '$baseUrl/',
+      'User-Agent': sessionHeaders['User-Agent'] ??
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+      if (isEHentai) 'Cookie': 'nw=1; skip_warning=1',
+      ...sessionHeaders,
+    };
+  }
 
   Uri _absUri(Uri uri) => Uri.parse(baseUrl).resolveUri(uri);
 
@@ -556,6 +566,9 @@ class UniversalHtmlSource implements MangaSource {
         base
             .resolve('/filterList')
             .replace(queryParameters: {'keyword': query, 'page': '$page'}),
+        base
+            .resolve('/')
+            .replace(queryParameters: {'f_search': query, 'page': '${page - 1}'}),
       ];
     }
     return [
@@ -567,11 +580,6 @@ class UniversalHtmlSource implements MangaSource {
                 'm_orderby': order == 'update' ? 'latest' : 'trending',
               },
             ),
-      // Toongod menaruh katalog manhwa di route khusus ini, bukan di
-      // `/manga/`. Taruh paling awal supaya halaman katalog yang benar
-      // dipakai sebelum fallback theme umum mencoba route lain.
-      // Bentuk archive resmi Madara/MangaBooth. Kandidat lama di bawah tetap
-      // dipertahankan, ini cuma menambah parameter sort yang benar.
       base
           .resolve(page <= 1 ? '/manga/' : '/manga/page/$page/')
           .replace(
@@ -582,11 +590,11 @@ class UniversalHtmlSource implements MangaSource {
       base
           .resolve('/manga/')
           .replace(queryParameters: {'page': '$page', 'order': order}),
-      // Route tipe konten tetap dicoba, tetapi sesudah archive `/manga/`.
-      // Banyak WordPress mengalihkan route asing ke homepage dengan status
-      // 200; kalau ditaruh di depan, Populer dan Terbaru salah-sama membaca
-      // section homepage yang identik.
       base.resolve('/webtoons/').replace(queryParameters: {'page': '$page'}),
+      base.resolve('/gallery/').replace(queryParameters: {'page': '$page'}),
+      base.resolve('/doujin/').replace(queryParameters: {'page': '$page'}),
+      base.resolve('/hentai/').replace(queryParameters: {'page': '$page'}),
+      base.resolve('/g/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/webtoon/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/webton/').replace(queryParameters: {'page': '$page'}),
       base.resolve('/manhwa/').replace(queryParameters: {'page': '$page'}),
@@ -624,6 +632,18 @@ class UniversalHtmlSource implements MangaSource {
       '.post-item',
       '.item-summary',
       '.row.c-tabs-item__content',
+      '.entry',
+      '.animposx',
+      '.box-content .flex-box2',
+      '.thumb',
+      '.gallery_cover',
+      '.inner_thumb',
+      '.gthumb',
+      '.itg tr',
+      '.itg .gl1t',
+      '.itg .gl1e',
+      '.itg .gl3e',
+      '.glname',
       '[data-manga-id]',
       '[data-testid*="manga"]',
       '[data-testid*="comic"]',
@@ -648,7 +668,8 @@ class UniversalHtmlSource implements MangaSource {
 
     for (final a in document.querySelectorAll(
       'a[href*="/manga/"], a[href*="/comic/"], a[href*="/komik/"], '
-      'a[href*="/series/"], a[href*="/webtoon/"], a[href*="/title/"]',
+      'a[href*="/series/"], a[href*="/webtoon/"], a[href*="/title/"], '
+      'a[href*="/gallery/"], a[href*="/doujin/"], a[href*="/g/"], a[href*="/hentai/"]',
     )) {
       final manga = _cardFromAnchor(a);
       if (manga == null || !seen.add(manga.url)) continue;
@@ -972,7 +993,11 @@ class UniversalHtmlSource implements MangaSource {
   }
 
   SourceManga? _cardFromElement(Element el) {
+    final titleEl = el.querySelector(
+      '.glink, .glname a, .caption a, .title a, a[title], h3 a, h2 a, .tt a, .post-title a',
+    );
     final a =
+        titleEl ??
         el.querySelector('a[title]') ??
         el.querySelector('h3 a, h2 a, .tt a, .post-title a, a');
     if (a == null) return null;
@@ -981,9 +1006,21 @@ class UniversalHtmlSource implements MangaSource {
 
   SourceManga? _cardFromAnchor(Element a, {Element? root}) {
     final href = a.attributes['href'];
-    if (href == null || href.isEmpty || href.startsWith('#')) return null;
-    final img = (root ?? a).querySelector('img') ?? a.querySelector('img');
+    if (href == null ||
+        href.isEmpty ||
+        href.startsWith('#') ||
+        href.startsWith('javascript:')) {
+      return null;
+    }
+    final container = root ?? a;
+    final img = container.querySelector('img') ?? a.querySelector('img');
     final title =
+        container
+            .querySelector('.glink, .glname a, .caption a, .title')
+            ?.text
+            .trim()
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .ifEmptyNull() ??
         a.attributes['title']?.trim().ifEmptyNull() ??
         img?.attributes['alt']?.trim().ifEmptyNull() ??
         a.text.trim().replaceAll(RegExp(r'\s+'), ' ').ifEmptyNull();
@@ -1187,6 +1224,30 @@ class UniversalHtmlSource implements MangaSource {
       chapters.addAll(await _chapterListFromApi(mangaUrl, seen));
     }
     if (chapters.isEmpty) {
+      final isGallery =
+          mangaUrl.contains('/gallery/') ||
+          mangaUrl.contains('/g/') ||
+          mangaUrl.contains('/doujin/') ||
+          document.querySelector(
+                '#gdt, .gdtm, .gallery_cover, .thumb_slides, #image-container, .reader-area, .gthumb',
+              ) !=
+              null;
+      if (isGallery) {
+        final readBtn = document.querySelector(
+          'a[href*="/view/"], a[href*="/read/"], a.btn-read',
+        );
+        final targetUrl =
+            readBtn?.attributes['href'] != null
+                ? _absUrl(readBtn!.attributes['href']!)
+                : mangaUrl;
+        return [
+          SourceChapter(
+            url: targetUrl,
+            name: 'Baca Lengkap / Full Gallery',
+            dateUpload: null,
+          ),
+        ];
+      }
       throw MangaSourceException('Daftar chapter $name belum dikenali.');
     }
     return chapters;
@@ -1201,7 +1262,8 @@ class UniversalHtmlSource implements MangaSource {
         '#chapterlist a, .eplister a, .listing-chapters_wrap a, '
         '.wp-manga-chapter a, .chapter-list a, .cl a, .bxcl a, '
         '.episodelist a, .lchx a, .eph-num a, [data-chapter] a, '
-        '[class*="chapter"] a',
+        '[class*="chapter"] a, .eps_lst a, .box-content a, '
+        'a.btn-read, a[href*="/read/"], a[href*="/view/"], a[href*="/ch/"]',
       ),
       ...document.querySelectorAll('a[href*="chapter"], a[href*="episode"]'),
     ];
@@ -1777,6 +1839,7 @@ class UniversalHtmlSource implements MangaSource {
       '#chapter-content img, .read-content img, .comic-content img, .post-content img, '
       '.chapter-image img, #image-container img, .reader-body img, .webtoon-image img, '
       '.vung-doc img, .container-chapter-reader img, .reading-box img, '
+      '#img, #gimg, .loadImg, .gdtm img, .gthumb img, .viewer-cnt img, '
       'div[id*="reader"] img, div[class*="reader"] img, div[class*="reading"] img, '
       'div[class*="chapter"] img, div[class*="page"] img, noscript img',
     );
