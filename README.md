@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.1/kizen-v1.1.1.apk">
-    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.1.1)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.2/kizen-v1.1.2.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.1.2)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
   <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
     <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru&style=for-the-badge" alt="Rilis Terbaru" />
@@ -31,6 +31,7 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## ✨ Fitur-Fitur Seru
 
+- 🛡️ **Kizen VPN & Anti-Blokir (DoH)**: Buka web komik yang terblokir di Indonesia (Internet Positif / DNS hijacking) langsung di dalam aplikasi tanpa perlu install VPN luar atau izin root. Dilengkapi pilihan server Cloudflare 1.1.1.1, Google DNS, dan AdGuard Shield, pengukur ping live, dan tes status akses otomatis.
 - 🚀 **In-App Direct Update & Install**: Cek pembaruan langsung di Pengaturan > Tentang, unduh APK rilis langsung di dalam aplikasi dengan progress bar real-time, dan pasang otomatis tanpa ribet bolak-balik browser.
 - 🌐 **Universal Web Parser**: Tinggal tempel link homepage web komik favorit kamu di *"Sumber Saya"*, Kizen bakal coba deteksi dan parse daftarnya otomatis (support MangaThemesia, Madara CMS, dan berbagai web custom).
 - 🧩 **Support Extension Repo (Tachiyomi / Mihon style)**: Punya link repository extension? Pasang di tab Repository dan langsung nikmati ribuan sumber komik dari berbagai bahasa.
@@ -39,8 +40,9 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
   - Mode Webtoon vertikal yang smooth, gak patah-patah, dan seekbar presisi.
   - Mode Halaman (manga/buku) dengan rail zoom yang stabil tanpa bikin buram.
   - Bookmark per-halaman biar gak lupa panel favorit kamu.
-- 📚 **Library Rapi & Multi-Select**:
-  - Bisa pilih banyak komik sekaligus (*multi-select*) buat langsung dipindahin ke koleksi atau dihapus massal.
+- 📚 **Library Rapi & Floating Multi-Select**:
+  - Filter langsung per koleksi bacaan tanpa tab menumpuk.
+  - Mode pilih banyak dengan **tombol aksi melayang** (*floating action button*) di atas navbar untuk memindahkan komik antar koleksi, menandai tamat, atau menghapus massal dalam sekali tap.
   - Menu *"Kelola Berdasarkan Sumber"* buat ngecek ada berapa komik dari tiap situs, lengkap dengan opsi filter atau hapus per sumber.
 - ☁️ **Login Google & Cloud Sync**: Data library dan riwayat baca tersimpan aman di cloud Firebase. Pindah HP? Tinggal login ulang dan semua komik kamu balik lagi.
 - 🌓 **Tampilan Gelap Bersih**: Desain dark modern bernuansa obsidian yang adem di mata pas maraton malam-malam.
@@ -49,8 +51,8 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## 📲 Cara Download & Pasang (Android)
 
-1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.1/kizen-v1.1.1.apk)** di atas, atau pilih versi lainnya di halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)**.
-2. Unduh file `kizen-v1.1.1.apk`.
+1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.1.2/kizen-v1.1.2.apk)** di atas, atau pilih versi lainnya di halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)**.
+2. Unduh file `kizen-v1.1.2.apk`.
 3. Buka file APK yang sudah didownload di HP kamu.
 4. Kalau ada peringatan *"Izinkan instalasi dari sumber tidak dikenal"*, centang izinkan/lanjutkan.
 5. Buka **Kizen** dan langsung nikmati baca komik tanpa gangguan!
