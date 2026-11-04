@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases">
-    <img src="https://img.shields.io/badge/Download-APK%20Android-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.0.0/kizen-v1.0.0.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.0.0)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases">
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
     <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru&style=for-the-badge" alt="Rilis Terbaru" />
   </a>
   <img src="https://img.shields.io/badge/Flutter-v3.29+-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter" />
@@ -48,8 +48,8 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## 📲 Cara Download & Pasang (Android)
 
-1. Buka halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)** atau langsung klik tombol download di atas.
-2. Unduh file `.apk` versi paling baru.
+1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.0.0/kizen-v1.0.0.apk)** di atas, atau pilih versi lainnya di halaman **[Releases](https://github.com/reiky03/Aplikasi_Comic/releases)**.
+2. Unduh file `kizen-v1.0.0.apk`.
 3. Buka file APK yang sudah didownload di HP kamu.
 4. Kalau ada peringatan *"Izinkan instalasi dari sumber tidak dikenal"*, centang izinkan/lanjutkan.
 5. Buka **Kizen** dan langsung nikmati baca komik tanpa gangguan!
