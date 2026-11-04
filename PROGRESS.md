@@ -27,6 +27,59 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-05 — Kizen v1.2.3: Perbaikan Total Parsing IMHentai (Native Single-Gallery Engine, Dynamic Image CDN Routing, & Anycast DoH Wildcard)
+
+Permintaan user:
+"tinggal yang imhentai yang belum beb untuk doujindesu"
+
+Root cause & analisis mendalam:
+1. **Arsitektur Galeri Tunggal (Single-Gallery) & Embedded Script JSON**:
+   - `imhentai.xxx` bukan situs manga berseri multi-chapter, melainkan galeri komik/doujinshi tunggal di mana setiap URL komik (`/gallery/{id}/`) langsung berisikan seluruh halaman baca.
+   - Halaman pembaca IMHentai tidak merender tag `<img>` reader secara langsung di HTML server-side, melainkan menyematkan metadata gambar di script JavaScript:
+     `<script>var g_th = $.parseJSON('{"1":"j,1100,1148","2":"p,1100,1148",...}');</script>`
+     bersama dengan input hidden: `<input id="load_server">`, `<input id="load_dir">`, `<input id="load_id">`, dan `<input id="load_pages">`.
+   - Parser HTML generik sebelumnya tidak dapat menemukan chapter atau gambar reader karena mencari selector bab dan reader konvensional.
+2. **CDN Subdomain & DNS Wildcard Poisoning di Jaringan Indonesia**:
+   - Gambar reader IMHentai disajikan dari cluster server dinamis seperti `https://m1.imhentai.xxx/...`, `https://m2.imhentai.xxx/...`, `https://m3.imhentai.xxx/...`.
+   - ISP lokal di Indonesia (Telkom/Indihome/Nawala) memblokir wildcard `*.imhentai.xxx` dengan membelokkan DNS ke IP injeksi `36.86.63.185` (sertifikat SSL invalid).
+   - `DohResolver.dart` dan Kotlin `DohDns` sebelumnya hanya menangani exact host `imhentai.xxx`. Akibatnya, request HTML utama mungkin tembus, tetapi seluruh request gambar reader ke subdomain `m*.imhentai.xxx` gagal dimuat (ERR_CERT_COMMON_NAME_INVALID / connection timeout).
+3. **Ekstensi Gambar Terenkode (Mapping Kode Ekstensi)**:
+   - Metadata JSON menyimpan kode tipe gambar: `'j'` = JPG, `'p'` = PNG, `'b'` = BMP, `'g'` = GIF, `'w'` = WEBP. URL gambar final harus dikonstruksi secara akurat: `https://m{load_server}.imhentai.xxx/{load_dir}/{load_id}/{page}.{ext}`.
+
+Solusi:
+1. **Native ImhentaiSource di Dart (`lib/sources/imhentai_source.dart`)**:
+   - Mengimplementasikan `MangaSource` lengkap:
+     * `fetchPopular`: mem-parse galeri populer dari `/popular/?page=$page`.
+     * `fetchLatest`: mem-parse galeri terbaru dari `/?page=$page`.
+     * `fetchSearch`: mem-parse pencarian dari `/search/?key=$cleanQuery&page=$page`.
+     * `fetchMangaDetails`: mengekstrak judul, cover, tags, artis/author, total pages, dan subtitle.
+     * `fetchChapterList`: otomatis membuat bab tunggal "Full Gallery" mengarah ke URL galeri.
+     * `fetchPageList`: mengekstrak JSON `g_th` dan menyusun URL resolusi penuh ke server CDN dinamis. Dilengkapi fallback ganda: thumbnail URL striping (`1t.jpg` -> `1.jpg`) dan iterasi berurutan.
+     * Deteksi Cloudflare 403 / Turnstile yang otomatis melempar `MangaSourceWebViewException` untuk membuka WebView solver.
+2. **Fallback Native Mirror di Android Bridge Kotlin (`ExtensionRuntimeBridge.kt`)**:
+   - Menambahkan 4 fungsi native direct: `fetchImhentaiCatalogDirect`, `fetchImhentaiDetailsDirect`, `fetchImhentaiChaptersDirect`, dan `fetchImhentaiPagesDirect`.
+   - Ketika membuka sumber IMHentai, baik ekstensi APK Tachiyomi terpasang atau tidak, bridge native langsung mem-bypass parsing lambat dan melayani request seketika.
+3. **Hardened Wildcard DNS Anycast Routing**:
+   - Di `lib/data/doh_resolver.dart`: pattern `imhentai.xxx` dan `final s when s.endsWith('.imhentai.xxx')` dipetakan ke Cloudflare Anycast IP `104.26.11.15`.
+   - Di `ExtensionRuntimeBridge.kt` (`DohDns`): kondisi `hostLower == "imhentai.xxx" || hostLower.endsWith(".imhentai.xxx")` dipetakan ke Anycast IP `104.26.11.15`, `172.67.73.234`, dan `104.26.10.15`.
+4. **Source Catalog Integration (`lib/sources/source_catalog.dart` & `extension_runtime_source.dart`)**:
+   - Menambahkan deteksi otomatis domain `imhentai.xxx`, `imhentai.com`, `imhentai.to` ke `ImhentaiSource` di `buildGeneric`, `buildAutomatic`, dan `_knownPreferredSource`.
+5. **Verifikasi & Testing**:
+   - Menambahkan 8 unit test komprehensif di `test/sources/imhentai_source_test.dart` (semua lulus).
+   - Seluruh test suite (`flutter test -j 1`) lulus: 169 passed, 0 failed, 3 skipped.
+   - `flutter analyze` 100% bersih, 0 issues.
+
+Perubahan file:
+- `lib/sources/imhentai_source.dart`: Native Dart source parser untuk IMHentai.
+- `lib/sources/source_catalog.dart`: Integrasi routing otomatis IMHentai.
+- `lib/sources/extension_runtime_source.dart`: Fallback default terarah ke `ImhentaiSource`.
+- `lib/data/doh_resolver.dart`: Dukungan wildcard domain `*.imhentai.xxx` ke Anycast IP Cloudflare.
+- `android/app/src/main/kotlin/com/reikypratama/aplikasi_komik/extensions/ExtensionRuntimeBridge.kt`: Fallback direct Kotlin untuk IMHentai dan pembaruan `DohDns` wildcard.
+- `test/sources/imhentai_source_test.dart`: 8 unit test pengujian parser IMHentai.
+- `pubspec.yaml`, `about_screen.dart`, `settings_screen.dart`, `README.md`: Bump versi ke v1.2.3+15.
+
+---
+
 ### 2026-11-04 — Kizen v1.2.2: Perbaikan Tuntas Parsing Doujindesu (Native XOR Decryptor Engine) & IMHentai (Cloudflare Turnstile Sync & User-Agent Parity)
 
 Permintaan user:

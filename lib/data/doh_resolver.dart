@@ -78,7 +78,8 @@ class DohResolver {
 
     final safeFallback = switch (cleanHost) {
       'doujin.desu.xxx' || 'doujindesu.tv' || 'doujindesu.bid' => '104.26.1.249',
-      'imhentai.xxx' => '104.26.11.15',
+      'imhentai.xxx' || 'imhentai.com' || 'imhentai.to' => '104.26.11.15',
+      final s when s.endsWith('.imhentai.xxx') => '104.26.11.15',
       'e-hentai.org' => '104.20.134.21',
       'toongod.org' || 'www.toongod.org' || 'toongod.cc' => '104.21.32.187',
       _ => null,

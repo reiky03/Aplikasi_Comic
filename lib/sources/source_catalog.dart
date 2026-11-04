@@ -2,6 +2,7 @@ import 'asura_source.dart';
 import 'adaptive_source.dart';
 import 'doujindesu_source.dart';
 import 'extension_runtime_source.dart';
+import 'imhentai_source.dart';
 import 'komiku_source.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
@@ -102,6 +103,9 @@ abstract final class SourceCatalog {
     if (_isDoujindesu(baseUrl) || name.trim().toLowerCase().contains('doujindesu')) {
       return DoujindesuSource(name: name, baseUrl: baseUrl);
     }
+    if (_isImhentai(baseUrl) || name.trim().toLowerCase().contains('imhentai')) {
+      return ImhentaiSource(name: name, baseUrl: baseUrl);
+    }
     if (kind.startsWith('extension-runtime:')) {
       // Extension Soulscans yang terpasang bisa tertinggal dari API situsnya.
       // Untuk katalog/chapter, parser API langsung lebih dapat dipercaya.
@@ -143,6 +147,14 @@ abstract final class SourceCatalog {
         host == 'doujindesu.tv' ||
         host == 'doujindesu.bid' ||
         host?.endsWith('.desu.xxx') == true;
+  }
+
+  static bool _isImhentai(String url) {
+    final host = Uri.tryParse(url)?.host.toLowerCase();
+    return host == 'imhentai.xxx' ||
+        host == 'imhentai.com' ||
+        host == 'imhentai.to' ||
+        host?.endsWith('.imhentai.xxx') == true;
   }
 
   static bool _isSoulScans(String url) {
@@ -195,6 +207,8 @@ abstract final class SourceCatalog {
     if (extension != null) return extension;
     final doujin = preferred.whereType<DoujindesuSource>().firstOrNull;
     if (doujin != null) return doujin;
+    final imhentai = preferred.whereType<ImhentaiSource>().firstOrNull;
+    if (imhentai != null) return imhentai;
     return AdaptiveSource(
       name: name,
       baseUrl: normalizedBase,
@@ -211,6 +225,7 @@ abstract final class SourceCatalog {
       'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
       'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
       'doujindesu' => DoujindesuSource(name: name, baseUrl: baseUrl),
+      'imhentai' => ImhentaiSource(name: name, baseUrl: baseUrl),
       _ => null,
     };
   }

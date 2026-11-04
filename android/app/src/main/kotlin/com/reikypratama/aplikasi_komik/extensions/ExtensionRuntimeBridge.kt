@@ -648,6 +648,8 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
 
         val isDoujin = packageName.contains("doujindesu", ignoreCase = true) ||
             call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+        val isImhentai = packageName.contains("imhentai", ignoreCase = true) ||
+            call.argument<String>("baseUrl")?.contains("imhentai", ignoreCase = true) == true
 
         Thread {
             val sessionHeaders = call.sessionHeaders()
@@ -676,6 +678,28 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                                     "className" to "DoujindesuNative",
                                 ),
                                 "hasNextPage" to (fallback.size >= 24),
+                                "mangas" to fallback,
+                            ),
+                        )
+                        return@Thread
+                    }
+                }
+
+                if (source == null && isImhentai) {
+                    val fallback = runCatching {
+                        fetchImhentaiCatalogDirect(mode, query, page, sessionHeaders)
+                    }.getOrDefault(emptyList())
+                    if (fallback.isNotEmpty()) {
+                        Log.i(TAG, "IMHentai direct catalog OK count=${fallback.size}")
+                        result.success(
+                            mapOf(
+                                "source" to mapOf(
+                                    "packageName" to packageName,
+                                    "sourceDir" to "",
+                                    "extensionClass" to "IMHentaiNative",
+                                    "className" to "IMHentaiNative",
+                                ),
+                                "hasNextPage" to (fallback.size >= 20),
                                 "mangas" to fallback,
                             ),
                         )
@@ -746,6 +770,23 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                             return@Thread
                         }
                     }
+                    if (isImhentai) {
+                        val fallback = runCatching {
+                            fetchImhentaiCatalogDirect(mode, query, page, sessionHeaders)
+                        }.getOrDefault(emptyList())
+
+                        if (fallback.isNotEmpty()) {
+                            Log.i(TAG, "IMHentai fallback parser OK count=${fallback.size}")
+                            result.success(
+                                mapOf(
+                                    "source" to source.toMap(),
+                                    "hasNextPage" to (fallback.size >= 20),
+                                    "mangas" to fallback,
+                                ),
+                            )
+                            return@Thread
+                        }
+                    }
                     throw parseError
                 }
                 val mangas = parsed.callOrNull("getMangas") as? List<*> ?: constEmptyList
@@ -785,6 +826,27 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                         return@Thread
                     }
                 }
+                if (isImhentai) {
+                    val fallback = runCatching {
+                        fetchImhentaiCatalogDirect(mode, query, page, sessionHeaders)
+                    }.getOrDefault(emptyList())
+                    if (fallback.isNotEmpty()) {
+                        Log.i(TAG, "IMHentai direct catalog catch-fallback OK count=${fallback.size}")
+                        result.success(
+                            mapOf(
+                                "source" to mapOf(
+                                    "packageName" to packageName,
+                                    "sourceDir" to "",
+                                    "extensionClass" to "IMHentaiNative",
+                                    "className" to "IMHentaiNative",
+                                ),
+                                "hasNextPage" to (fallback.size >= 20),
+                                "mangas" to fallback,
+                            ),
+                        )
+                        return@Thread
+                    }
+                }
                 Log.e(TAG, "fetchMangaPage failed mode=$mode for $packageName", e)
                 result.error("fetch_failed", e.safeMessage(), e.stackTraceToString())
             }
@@ -801,6 +863,9 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         val isDoujin = packageName.contains("doujindesu", ignoreCase = true) ||
             mangaUrl.contains("doujin", ignoreCase = true) ||
             call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+        val isImhentai = packageName.contains("imhentai", ignoreCase = true) ||
+            mangaUrl.contains("imhentai", ignoreCase = true) ||
+            call.argument<String>("baseUrl")?.contains("imhentai", ignoreCase = true) == true
 
         Thread {
             val sessionHeaders = call.sessionHeaders()
@@ -816,6 +881,11 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
 
                 if (source == null && isDoujin) {
                     val direct = fetchDoujindesuDetailsDirect(mangaUrl, sessionHeaders)
+                    result.success(direct)
+                    return@Thread
+                }
+                if (source == null && isImhentai) {
+                    val direct = fetchImhentaiDetailsDirect(mangaUrl, sessionHeaders)
                     result.success(direct)
                     return@Thread
                 }
@@ -870,6 +940,16 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                         return@Thread
                     }
                 }
+                if (isImhentai) {
+                    val direct = runCatching {
+                        fetchImhentaiDetailsDirect(mangaUrl, sessionHeaders)
+                    }.getOrNull()
+                    if (direct != null) {
+                        Log.i(TAG, "IMHentai direct details fallback OK")
+                        result.success(direct)
+                        return@Thread
+                    }
+                }
                 Log.e(TAG, "fetchMangaDetails failed for $packageName", e)
                 result.error("details_failed", e.safeMessage(), e.stackTraceToString())
             }
@@ -886,8 +966,12 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         val isDoujin = packageName.contains("doujindesu", ignoreCase = true) ||
             mangaUrl.contains("doujin", ignoreCase = true) ||
             call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+        val isImhentai = packageName.contains("imhentai", ignoreCase = true) ||
+            mangaUrl.contains("imhentai", ignoreCase = true) ||
+            call.argument<String>("baseUrl")?.contains("imhentai", ignoreCase = true) == true
 
         Thread {
+            val sessionHeaders = call.sessionHeaders()
             try {
                 val source = runCatching {
                     loadExtensionSource(
@@ -900,6 +984,11 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
 
                 if (source == null && isDoujin) {
                     val direct = fetchDoujindesuChaptersDirect(mangaUrl)
+                    result.success(direct)
+                    return@Thread
+                }
+                if (source == null && isImhentai) {
+                    val direct = fetchImhentaiChaptersDirect(mangaUrl, sessionHeaders)
                     result.success(direct)
                     return@Thread
                 }
@@ -953,6 +1042,16 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                         return@Thread
                     }
                 }
+                if (isImhentai) {
+                    val direct = runCatching {
+                        fetchImhentaiChaptersDirect(mangaUrl, sessionHeaders)
+                    }.getOrNull()
+                    if (direct != null && direct.isNotEmpty()) {
+                        Log.i(TAG, "IMHentai direct chapters fallback OK count=${direct.size}")
+                        result.success(direct)
+                        return@Thread
+                    }
+                }
                 Log.e(TAG, "fetchChapterList failed for $packageName", e)
                 result.error("chapters_failed", e.safeMessage(), e.stackTraceToString())
             }
@@ -971,6 +1070,11 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             chapterUrl.contains("/chapter/") ||
             chapterUrl.contains("/api/chapters/") ||
             call.argument<String>("baseUrl")?.contains("doujin", ignoreCase = true) == true
+        val isImhentai = packageName.contains("imhentai", ignoreCase = true) ||
+            chapterUrl.contains("imhentai", ignoreCase = true) ||
+            chapterUrl.contains("/gallery/") ||
+            chapterUrl.contains("/view/") ||
+            call.argument<String>("baseUrl")?.contains("imhentai", ignoreCase = true) == true
 
         Thread {
             val sessionHeaders = call.sessionHeaders()
@@ -986,6 +1090,11 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
 
                 if (source == null && isDoujin) {
                     val direct = fetchDoujindesuPagesDirect(chapterUrl, sessionHeaders)
+                    result.success(direct)
+                    return@Thread
+                }
+                if (source == null && isImhentai) {
+                    val direct = fetchImhentaiPagesDirect(chapterUrl, sessionHeaders)
                     result.success(direct)
                     return@Thread
                 }
@@ -1026,6 +1135,16 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     }.getOrDefault(emptyList())
                     if (fallback.isNotEmpty()) {
                         Log.i(TAG, "Doujindesu direct pages fallback OK count=${fallback.size}")
+                        result.success(fallback)
+                        return@Thread
+                    }
+                }
+                if (isImhentai) {
+                    val fallback = runCatching {
+                        fetchImhentaiPagesDirect(chapterUrl, sessionHeaders)
+                    }.getOrDefault(emptyList())
+                    if (fallback.isNotEmpty()) {
+                        Log.i(TAG, "IMHentai direct pages fallback OK count=${fallback.size}")
                         result.success(fallback)
                         return@Thread
                     }
@@ -1557,6 +1676,224 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         }
     }
 
+    private fun fetchImhentaiCatalogDirect(
+        mode: String,
+        query: String,
+        page: Int,
+        sessionHeaders: Map<String, String>,
+    ): List<Map<String, Any?>> {
+        val url = when {
+            query.isNotBlank() -> "https://imhentai.xxx/search/?key=${java.net.URLEncoder.encode(query.trim(), "UTF-8")}&page=$page"
+            mode == "latest" -> "https://imhentai.xxx/?page=$page"
+            else -> "https://imhentai.xxx/popular/?page=$page"
+        }
+        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val reqBuilder = Request.Builder()
+            .url(url)
+            .header("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            .header("Referer", "https://imhentai.xxx/")
+        sessionHeaders["Cookie"]?.let { reqBuilder.header("Cookie", it) }
+        val body = client.newCall(reqBuilder.build()).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            resp.body.string()
+        }
+        val doc = org.jsoup.Jsoup.parse(body, "https://imhentai.xxx/")
+        val thumbs = doc.select("div.thumb")
+        return buildList {
+            for (thumb in thumbs) {
+                val captionEl = thumb.selectFirst(".caption")
+                val title = captionEl?.text()?.trim() ?: ""
+                if (title.isBlank()) continue
+                val linkEl = thumb.selectFirst(".inner_thumb a")
+                val href = linkEl?.attr("href")?.trim() ?: ""
+                if (href.isBlank()) continue
+                val imgEl = thumb.selectFirst(".inner_thumb img")
+                val thumbUrl = imgEl?.attr("data-src")?.ifBlank { null }
+                    ?: imgEl?.attr("src")?.ifBlank { null }
+                val fullUrl = if (href.startsWith("http://") || href.startsWith("https://")) href else "https://imhentai.xxx$href"
+                add(
+                    mapOf(
+                        "title" to title,
+                        "url" to fullUrl,
+                        "thumbnailUrl" to thumbUrl,
+                        "headers" to mapOf("Referer" to "https://imhentai.xxx/"),
+                        "status" to SManga.COMPLETED,
+                    )
+                )
+            }
+        }
+    }
+
+    private fun fetchImhentaiDetailsDirect(
+        mangaUrl: String,
+        sessionHeaders: Map<String, String>,
+    ): Map<String, Any?> {
+        val fullUrl = if (mangaUrl.startsWith("http://") || mangaUrl.startsWith("https://")) {
+            mangaUrl
+        } else {
+            "https://imhentai.xxx${if (mangaUrl.startsWith("/")) "" else "/"}$mangaUrl"
+        }
+        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val reqBuilder = Request.Builder()
+            .url(fullUrl)
+            .header("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            .header("Referer", "https://imhentai.xxx/")
+        sessionHeaders["Cookie"]?.let { reqBuilder.header("Cookie", it) }
+        val body = client.newCall(reqBuilder.build()).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            resp.body.string()
+        }
+        val doc = org.jsoup.Jsoup.parse(body, "https://imhentai.xxx/")
+        val title = doc.selectFirst("h1")?.text()?.trim() ?: "Untitled"
+        val coverEl = doc.selectFirst(".left_cover img") ?: doc.selectFirst(".cover img")
+        val coverUrl = coverEl?.attr("data-src")?.ifBlank { null } ?: coverEl?.attr("src")?.ifBlank { null }
+        val tags = doc.select("a.tag").map { it.text().trim() }.filter { it.isNotBlank() }.distinct()
+        val authorEl = doc.select("li").firstOrNull { it.selectFirst(".tags_text")?.text()?.contains("Artists:") == true }
+            ?.select("a.tag")?.firstOrNull()
+        val author = authorEl?.text()?.trim()
+        val totalPages = doc.selectFirst("input#load_pages")?.attr("value")?.trim()
+        val subtitle = doc.selectFirst("h1 + h2, .subtitle")?.text()?.trim()
+        val descParts = mutableListOf<String>()
+        if (!totalPages.isNullOrBlank()) descParts.add("Pages: $totalPages")
+        if (!subtitle.isNullOrBlank()) descParts.add("Subtitle: $subtitle")
+
+        return mapOf(
+            "title" to title,
+            "url" to fullUrl,
+            "thumbnailUrl" to coverUrl,
+            "headers" to mapOf("Referer" to "https://imhentai.xxx/"),
+            "author" to author,
+            "artist" to author,
+            "description" to descParts.joinToString("\n").ifBlank { null },
+            "genre" to tags.joinToString(", ").ifBlank { null },
+            "status" to SManga.COMPLETED,
+        )
+    }
+
+    private fun fetchImhentaiChaptersDirect(
+        mangaUrl: String,
+        sessionHeaders: Map<String, String>,
+    ): List<Map<String, Any?>> {
+        val fullUrl = if (mangaUrl.startsWith("http://") || mangaUrl.startsWith("https://")) {
+            mangaUrl
+        } else {
+            "https://imhentai.xxx${if (mangaUrl.startsWith("/")) "" else "/"}$mangaUrl"
+        }
+        return listOf(
+            mapOf(
+                "url" to fullUrl,
+                "name" to "Full Gallery",
+                "dateUpload" to System.currentTimeMillis(),
+                "chapterNumber" to 1.0f,
+                "scanlator" to null,
+            )
+        )
+    }
+
+    private fun fetchImhentaiPagesDirect(
+        chapterUrl: String,
+        sessionHeaders: Map<String, String>,
+    ): List<Map<String, Any?>> {
+        val fullUrl = if (chapterUrl.startsWith("http://") || chapterUrl.startsWith("https://")) {
+            chapterUrl
+        } else {
+            "https://imhentai.xxx${if (chapterUrl.startsWith("/")) "" else "/"}$chapterUrl"
+        }
+        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val reqBuilder = Request.Builder()
+            .url(fullUrl)
+            .header("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            .header("Referer", "https://imhentai.xxx/")
+        sessionHeaders["Cookie"]?.let { reqBuilder.header("Cookie", it) }
+        val body = client.newCall(reqBuilder.build()).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            resp.body.string()
+        }
+        val doc = org.jsoup.Jsoup.parse(body, "https://imhentai.xxx/")
+        val loadServer = doc.selectFirst("input#load_server")?.attr("value")?.trim() ?: ""
+        val loadDir = doc.selectFirst("input#load_dir")?.attr("value")?.trim() ?: ""
+        val loadId = doc.selectFirst("input#load_id")?.attr("value")?.trim() ?: ""
+        val totalPages = doc.selectFirst("input#load_pages")?.attr("value")?.trim()?.toIntOrNull() ?: 0
+        val serverHost = if (loadServer.isNotBlank()) "m$loadServer.imhentai.xxx" else "m1.imhentai.xxx"
+
+        val imageHeaders = buildMap {
+            put("Referer", "https://imhentai.xxx/")
+            put("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            putAll(sessionHeaders)
+        }
+
+        val scriptContent = doc.select("script").map { it.data() }.firstOrNull { it.contains("parseJSON(") } ?: ""
+        val pages = mutableListOf<Map<String, Any?>>()
+
+        if (scriptContent.isNotBlank() && loadDir.isNotBlank() && loadId.isNotBlank()) {
+            val match = Regex("""parseJSON\('([^']+)'\)""").find(scriptContent)
+            val rawJson = match?.groupValues?.getOrNull(1)
+            if (!rawJson.isNullOrBlank()) {
+                runCatching {
+                    val jsonObj = JSONObject(rawJson)
+                    val keys = jsonObj.keys().asSequence().toList().sortedBy { it.toIntOrNull() ?: 0 }
+                    for (k in keys) {
+                        val rawVal = jsonObj.optString(k, "")
+                        val extCode = rawVal.split(",").firstOrNull()?.replace("\"", "")?.trim() ?: ""
+                        val ext = when (extCode) {
+                            "p" -> "png"
+                            "b" -> "bmp"
+                            "g" -> "gif"
+                            "w" -> "webp"
+                            else -> "jpg"
+                        }
+                        val pageNum = k.toIntOrNull() ?: 1
+                        val pageIdx = pageNum - 1
+                        val imgUrl = "https://$serverHost/$loadDir/$loadId/$k.$ext"
+                        pages.add(
+                            mapOf(
+                                "index" to pageIdx,
+                                "url" to "https://imhentai.xxx/view/$loadId/$k/",
+                                "imageUrl" to imgUrl,
+                                "headers" to imageHeaders,
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        if (pages.isNotEmpty()) return pages
+
+        val thumbImgs = doc.select(".gthumb img, .gallery_thumb img")
+        if (thumbImgs.isNotEmpty()) {
+            for (i in thumbImgs.indices) {
+                val tUrl = thumbImgs[i].attr("data-src").ifBlank { null } ?: thumbImgs[i].attr("src").ifBlank { null } ?: ""
+                if (tUrl.isBlank()) continue
+                val fullImgUrl = tUrl.replace(Regex("""t\.([a-zA-Z]+)$"""), ".$1")
+                pages.add(
+                    mapOf(
+                        "index" to i,
+                        "url" to "https://imhentai.xxx/view/$loadId/${i + 1}/",
+                        "imageUrl" to fullImgUrl,
+                        "headers" to imageHeaders,
+                    )
+                )
+            }
+            return pages
+        }
+
+        if (totalPages > 0 && loadDir.isNotBlank() && loadId.isNotBlank()) {
+            for (i in 1..totalPages) {
+                pages.add(
+                    mapOf(
+                        "index" to (i - 1),
+                        "url" to "https://imhentai.xxx/view/$loadId/$i/",
+                        "imageUrl" to "https://$serverHost/$loadDir/$loadId/$i.jpg",
+                        "headers" to imageHeaders,
+                    )
+                )
+            }
+        }
+
+        return pages
+    }
+
     private fun org.jsoup.nodes.Document.absUrl(raw: String, base: String): String =
         runCatching {
             java.net.URI.create(base).resolve(raw).toString()
@@ -1780,22 +2117,23 @@ class DohDns(private val provider: String = "cloudflare") : Dns {
         }
 
         // Jangan fallback ke DNS sistem yang diinjeksi Nawala jika domain komik terkenal
-        val safeFallback = when (hostname.lowercase()) {
-            "doujindesu.tv", "doujin.desu.xxx", "doujindesu.bid" -> listOf(
+        val hostLower = hostname.lowercase()
+        val safeFallback = when {
+            hostLower == "doujindesu.tv" || hostLower == "doujin.desu.xxx" || hostLower == "doujindesu.bid" -> listOf(
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 1, 249.toByte())),
                 InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 72, 203.toByte())),
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 0, 249.toByte())),
             )
-            "imhentai.xxx" -> listOf(
+            hostLower == "imhentai.xxx" || hostLower.endsWith(".imhentai.xxx") || hostLower == "imhentai.com" || hostLower == "imhentai.to" -> listOf(
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 11, 15)),
                 InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 73, 234.toByte())),
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 26, 10, 15)),
             )
-            "e-hentai.org" -> listOf(
+            hostLower == "e-hentai.org" -> listOf(
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 20, 134.toByte(), 21)),
                 InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 2.toByte(), 187.toByte())),
             )
-            "toongod.org", "www.toongod.org", "toongod.cc" -> listOf(
+            hostLower == "toongod.org" || hostLower == "www.toongod.org" || hostLower == "toongod.cc" -> listOf(
                 InetAddress.getByAddress(hostname, byteArrayOf(104, 21, 32, 187.toByte())),
                 InetAddress.getByAddress(hostname, byteArrayOf(172.toByte(), 67, 189.toByte(), 155.toByte())),
             )

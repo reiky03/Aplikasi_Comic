@@ -4,6 +4,7 @@ import '../data/source_url.dart';
 import 'adaptive_source.dart';
 import 'alternative_source_methods.dart';
 import 'doujindesu_source.dart';
+import 'imhentai_source.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
 import 'sveltekit_comic_source.dart';
@@ -84,6 +85,13 @@ class ExtensionRuntimeSource implements MangaSource {
         host?.endsWith('.desu.xxx') == true ||
         name.trim().toLowerCase().contains('doujindesu')) {
       return DoujindesuSource(name: name, baseUrl: baseUrl);
+    }
+    if (host == 'imhentai.xxx' ||
+        host == 'imhentai.com' ||
+        host == 'imhentai.to' ||
+        host?.endsWith('.imhentai.xxx') == true ||
+        name.trim().toLowerCase().contains('imhentai')) {
+      return ImhentaiSource(name: name, baseUrl: baseUrl);
     }
     if (host == 'soulscans.asia' || host?.endsWith('.soulscans.asia') == true) {
       return SvelteKitComicSource(name: name, baseUrl: baseUrl);
