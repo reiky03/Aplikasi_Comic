@@ -114,7 +114,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     }
 
     private fun getVpnStatus(result: MethodChannel.Result) {
-        val running = com.reikypratama.aplikasi_komik.vpn.KizenVpnService.isRunning
+        val running = com.reikypratama.aplikasi_komik.vpn.KizenWireguardManager.isRunning
         result.success(
             mapOf(
                 "enabled" to (running || vpnEnabled),

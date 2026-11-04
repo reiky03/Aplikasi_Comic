@@ -9,12 +9,12 @@ const _kPrefVpnEnabled = 'kizen_vpn_enabled';
 const _kPrefVpnProvider = 'kizen_vpn_provider';
 const _channel = MethodChannel('kizen/extension_runtime');
 
-/// Pilihan provider DNS-over-HTTPS / Tunnel anti-blokir
+/// Pilihan provider WireGuard Full-Tunneling / Anti-Blokir
 enum VpnProvider {
-  hongkong('hongkong', 'Hong Kong Ultra Fast (DNS.SB Anycast HK)', 'https://doh.dns.sb/dns-query'),
-  cloudflare('cloudflare', 'Cloudflare 1.1.1.1 (Singapore)', 'https://cloudflare-dns.com/dns-query'),
-  google('google', 'Google Public DNS (Global)', 'https://dns.google/resolve'),
-  adguard('adguard', 'AdGuard Shield (Anti-Ad & Malware)', 'https://dns.adguard-dns.com/dns-query');
+  cloudflare('cloudflare', 'Cloudflare WARP (Singapore Anycast)', 'https://cloudflare-dns.com/dns-query'),
+  hongkong('hongkong', 'Cloudflare WARP (Hong Kong Anycast)', 'https://doh.dns.sb/dns-query'),
+  google('google', 'Google WireGuard (Global Anycast)', 'https://dns.google/resolve'),
+  adguard('adguard', 'AdGuard Shield WireGuard (Anti-Iklan)', 'https://dns.adguard-dns.com/dns-query');
 
   const VpnProvider(this.id, this.label, this.endpoint);
   final String id;

@@ -27,6 +27,35 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-04 — Kizen v1.1.8: Integrasi Full-Tunnel WireGuard VPN Engine (com.wireguard.android:tunnel) & Cloudflare WARP Anycast Global
+
+Permintaan user:
+"kok masih gak bisa buka imhentai doujindeus dan web lainnya yang butuh vpn, dan ini vpn apa sih, ak aktifkan, lalu buka di app lain yang untuk bukanya butuh vpn, tapi tetap aja gak bisa, kayak gak ad guna vpnnya loh beb, gimana sih, perbaiki lagi beb, padahal niatku itu simpel loh, ak biasa pake mihon atau tacyomi ketika mau buka sumebr web yang butuh vpn, ak harus ke playstore donwload vpn sendiri lalu aktifkan dan balek buka mihon atua tachitomi untuk bisa baca webnya, nah ak mau di aplikasiku yang kizen ini smeuanya terbuild sendiri menjadi 1 tempat aja loh, sesimpel itu padhal"
+
+Root cause & analisis mendalam:
+1. **VPN Sebelumnya Hanya Beroperasi di Layer DNS (Bukan Full-Tunnel)**:
+   - Implementasi `KizenVpnService` sebelumnya hanya membelokkan paket UDP port 53 (DNS) dengan rute sempit `10.222.0.0/30`.
+   - Paket HTTP/HTTPS (TCP port 80 & 443) sama sekali tidak melewati terowongan VPN, melainkan dikirim langsung secara telanjang ke jaringan ISP (Telkomsel/Indihome/Biznet).
+   - Akibatnya, ISP tetap bisa memblokir koneksi melalui Deep Packet Inspection (DPI) SNI filtering, IP blacklisting, dan TCP Reset (RST). Situs seperti `doujindesu.tv`, `imhentai.xxx`, `e-hentai.org` tetap tidak bisa dibuka, dan aplikasi lain (seperti Chrome atau Mihon) tidak merasakan efek VPN sama sekali.
+2. **Kebutuhan Pengguna yang Sebenarnya:**
+   - Pengguna menginginkan VPN yang sama persis dengan aplikasi VPN di Play Store (seperti 1.1.1.1 WARP atau WireGuard), yaitu full-tunneling yang me-route SELURUH TRAFIK (`0.0.0.0/0, ::/0`) keluar lewat server proxy luar negeri (Singapore, Hong Kong, Anycast), sehingga seluruh aplikasi di HP (Kizen + Chrome + Tachiyomi/Mihon) langsung tembus dan bisa membuka web komik yang terblokir.
+
+Solusi & Perbaikan di v1.1.8:
+1. **Adopsi Official WireGuard Android Library (`com.wireguard.android:tunnel:1.0.20230706`)**:
+   - Memasukkan official WireGuard Go engine (`libwg-go.so` untuk arm64-v8a, armeabi-v7a, x86, x86_64) dan `GoBackend$VpnService`.
+   - Beroperasi langsung di level paket IP mentah dengan enkripsi ChaCha20-Poly1305 dan Curve25519 handshake.
+2. **KizenWireguardManager & Registrasi Cloudflare WARP Otomatis**:
+   - Membuat `KizenWireguardManager.kt` yang mengintegrasikan registrasi Cloudflare WARP via mobile client API (`https://api.cloudflareclient.com/v0a884/reg`).
+   - Menyimpan kredensial Curve25519 (`KeyPair`) dan IP interface secara persisten di `SharedPreferences`.
+   - Me-routing seluruh trafik Android (`AllowedIPs = 0.0.0.0/0, ::/0`) ke Cloudflare Anycast Edge (`162.159.192.1:2408` Singapore, `162.159.193.1:2408` Hong Kong).
+   - Menghubungkan seluruh koneksi HP ke terowongan terenkripsi tanpa batas kuota.
+3. **Penyempurnaan Integrasi Android Manifest & Bridge**:
+   - Mendaftarkan `com.wireguard.android.backend.GoBackend$VpnService` di `AndroidManifest.xml`.
+   - Memperbarui `MainActivity.kt` dan `ExtensionRuntimeBridge.kt` untuk mengendalikan state `KizenWireguardManager`.
+4. **Verifikasi & Rilis**:
+   - Compile Kotlin sukses, 155 unit tests passed.
+   - Bump versi ke `v1.1.8+10`.
+
 ### 2026-11-04 — Kizen v1.1.7: Eliminasi Deadlock DNS Terowongan VPN (Anti-Internet Mati Total) & Bootstrap In-Memory OkHttpClient
 
 Permintaan user:

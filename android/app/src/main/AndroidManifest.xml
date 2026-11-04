@@ -56,7 +56,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
         <service
-            android:name="com.reikypratama.aplikasi_komik.vpn.KizenVpnService"
+            android:name="com.wireguard.android.backend.GoBackend$VpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:foregroundServiceType="specialUse"
             android:exported="false">
@@ -65,7 +65,7 @@
             </intent-filter>
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Encrypted DNS-over-HTTPS tunnel for anti-blocking manga domains" />
+                android:value="Full WireGuard VPN tunnel for comic reader and external apps" />
         </service>
     </application>
     <!-- Required to query activities that can process text, see:
