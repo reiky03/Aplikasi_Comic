@@ -615,6 +615,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         try {
             val intent = Intent(Intent.ACTION_DELETE).apply {
                 data = "package:$packageName".toUri()
+                putExtra(Intent.EXTRA_RETURN_RESULT, true)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)

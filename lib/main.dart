@@ -12,6 +12,10 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Perbesar batas cache bitmap Flutter agar chapter webtoon panjang (puluhan strip
+  // resolusi tinggi) tidak terus-menerus di-evict dan di-decode ulang saat discroll.
+  PaintingBinding.instance.imageCache.maximumSize = 2000;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 512 * 1024 * 1024; // 512 MB
   await SourceSessionStore.initialize();
   SystemChrome.setSystemUIOverlayStyle(AppTheme.systemOverlayStyle);
   // FAKE_AUTH (web preview di sandbox) tidak butuh Firebase asli — lewati

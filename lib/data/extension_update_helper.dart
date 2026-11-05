@@ -16,7 +16,8 @@ import 'sources_state.dart';
 /// Menangani pencegahan bentrok signature (INSTALL_FAILED_UPDATE_INCOMPATIBLE)
 /// saat ekstensi lama yang di-sign oleh official Tachiyomi ingin diperbarui
 /// ke versi Keiyoushi.
-abstract final class ExtensionUpdateHelper {
+class ExtensionUpdateHelper {
+  const ExtensionUpdateHelper._();
   /// Buka sheet opsi pembaruan ekstensi dengan penjelasan signature conflict.
   static Future<void> showUpdateSheet(
     BuildContext context, {
@@ -40,48 +41,13 @@ abstract final class ExtensionUpdateHelper {
             cover: comicCover(hue ?? 330),
             title: name,
             subtitle: newVersion == null
-                ? 'Pembaruan tersedia'
-                : 'Pembaruan ke v$newVersion',
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.warningAlt.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.warningAlt.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    LucideIcons.info,
-                    size: 16,
-                    color: AppColors.warningAlt,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Jika sebelumnya terpasang dari Tachiyomi lama, Android mewajibkan pencopotan versi lama terlebih dahulu agar tidak bentrok signature. Data favorit & histori tetap aman.',
-                      style: AppTypography.jakarta(
-                        size: 11.5,
-                        weight: FontWeight.w500,
-                        height: 1.45,
-                        color: AppColors.warningAlt,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ? 'Pilihan ekstensi'
+                : 'Tersedia pembaruan v$newVersion',
           ),
           AppSheetMenuRow(
-            icon: LucideIcons.trash2,
-            iconColor: AppColors.warningAlt,
-            label: 'Copot Versi Lama & Pasang Otomatis',
+            icon: AppIcons.refresh,
+            iconColor: AppColors.accent,
+            label: 'Perbarui Otomatis',
             onTap: () {
               Navigator.pop(sheetContext);
               uninstallAndReinstall(
@@ -96,9 +62,8 @@ abstract final class ExtensionUpdateHelper {
             },
           ),
           AppSheetMenuRow(
-            icon: AppIcons.refresh,
-            iconColor: AppColors.accent,
-            label: 'Coba Perbarui Langsung',
+            icon: LucideIcons.download,
+            label: 'Coba Timpa Langsung',
             onTap: () {
               Navigator.pop(sheetContext);
               installDirect(
@@ -112,15 +77,14 @@ abstract final class ExtensionUpdateHelper {
           ),
           AppSheetMenuRow(
             icon: AppIcons.delete,
-            label: 'Copot & Hapus Extension',
+            label: 'Copot Ekstensi',
             destructive: true,
             onTap: () async {
               Navigator.pop(sheetContext);
               final confirmed = await showConfirmSheet(
                 context,
                 title: 'Copot Ekstensi?',
-                message:
-                    'Copot "$name" dari perangkat agar bisa diinstal ulang dengan bersih.',
+                message: 'Copot "$name" dari perangkat?',
                 confirmLabel: 'Oke, Hapus',
               );
               if (!confirmed || !context.mounted) return;
@@ -172,7 +136,7 @@ abstract final class ExtensionUpdateHelper {
     VoidCallback? onInstalled,
   }) async {
     try {
-      AppToast.show(context, 'Mengunduh APK pembaruan $name...');
+      AppToast.show(context, 'Mengunduh pembaruan...');
       // 1. Unduh APK terlebih dahulu ke cache agar siap instan
       await const ExtensionRuntimeBridge().prepareExtensionApk(
         apkUrl: apkUrl,
@@ -180,10 +144,7 @@ abstract final class ExtensionUpdateHelper {
       );
 
       if (!context.mounted) return;
-      AppToast.show(
-        context,
-        'Tekan "OK" pada dialog pencopotan versi lama di layar HP',
-      );
+      AppToast.show(context, 'Membuka pencopotan...');
 
       // 2. Buka dialog pencopotan OS
       await const ExtensionRuntimeBridge().uninstallExtensionPackage(
@@ -214,19 +175,13 @@ abstract final class ExtensionUpdateHelper {
 
       if (!uninstalled) {
         if (!context.mounted) return;
-        AppToast.show(
-          context,
-          'Pencopotan versi lama dibatalkan. Ekstensi tetap versi lama.',
-        );
+        AppToast.show(context, 'Pencopotan dibatalkan');
         return;
       }
 
       // 4. Paket lama sudah berhasil dicopot! Buka installer versi baru
       if (!context.mounted) return;
-      AppToast.show(
-        context,
-        'Versi lama dicopot. Membuka installer versi baru...',
-      );
+      AppToast.show(context, 'Memasang versi baru...');
 
       await const ExtensionRuntimeBridge().installExtensionApk(
         apkUrl: apkUrl,
@@ -241,7 +196,7 @@ abstract final class ExtensionUpdateHelper {
       onInstalled?.call();
     } catch (e) {
       if (!context.mounted) return;
-      AppToast.show(context, 'Gagal copot dan pasang ulang: $e');
+      AppToast.show(context, 'Gagal memperbarui: $e');
     }
   }
 
@@ -252,7 +207,7 @@ abstract final class ExtensionUpdateHelper {
     required String packageName,
   }) async {
     try {
-      AppToast.show(context, 'Membuka dialog pencopotan...');
+      AppToast.show(context, 'Membuka pencopotan...');
       await const ExtensionRuntimeBridge().uninstallExtensionPackage(
         packageName,
       );
@@ -277,24 +232,18 @@ abstract final class ExtensionUpdateHelper {
       }
 
       if (!context.mounted) return;
-      if (ref != null) {
-        ref.invalidate(installedExtensionPackagesProvider);
-        ref
-            .read(sourcesProvider.notifier)
-            .syncWithRepositories(ref.read(repositoriesProvider));
-      }
-
       if (uninstalled) {
-        AppToast.show(
-          context,
-          'Ekstensi berhasil dicopot. Siap diinstal ulang.',
-        );
-      } else {
-        AppToast.show(context, 'Pencopotan dibatalkan atau belum selesai.');
+        AppToast.show(context, 'Ekstensi berhasil dicopot');
+        if (ref != null) {
+          ref.invalidate(installedExtensionPackagesProvider);
+          ref
+              .read(sourcesProvider.notifier)
+              .syncWithRepositories(ref.read(repositoriesProvider));
+        }
       }
     } catch (e) {
       if (!context.mounted) return;
-      AppToast.show(context, 'Gagal membuka hapus instal: $e');
+      AppToast.show(context, 'Gagal mencopot: $e');
     }
   }
 }

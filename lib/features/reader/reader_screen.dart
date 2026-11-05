@@ -72,6 +72,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   late int _chapter = widget.chapter;
   int _page = 0;
+  final ValueNotifier<int> _pageNotifier = ValueNotifier<int>(0);
   bool _showChrome = true;
   bool _suppressScroll = false;
   final _scrollController = ScrollController();
@@ -217,6 +218,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     }
     _pageGeometryLoads.clear();
     _scrollController.dispose();
+    _pageNotifier.dispose();
     _webtoonTransform.dispose();
     _zoomRailScale.dispose();
     _webtoonDecodeTimer?.cancel();
@@ -580,7 +582,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         position.pixels >= position.maxScrollExtent - 4) {
       final last = _totalPages - 1;
       if (last != _page) {
-        setState(() => _page = last);
+        _page = last;
+        _pageNotifier.value = last;
         _scheduleProgressSave();
       }
       return;
@@ -595,16 +598,34 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     // extent) — biar peta tidak terus membesar sepanjang chapter panjang.
     _pageKeys.removeWhere((_, key) => key.currentContext == null);
     int? best;
-    for (final entry in _pageKeys.entries) {
-      final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
+    // Cek window di sekitar _page dulu untuk meminimalkan beban kalkulasi GPU/CPU
+    final startWindow = math.max(0, _page - 2);
+    final endWindow = math.min(_totalPages - 1, _page + 5);
+    for (var i = startWindow; i <= endWindow; i++) {
+      final key = _pageKeys[i];
+      if (key == null) continue;
+      final box = key.currentContext?.findRenderObject() as RenderBox?;
       if (box == null || !box.attached) continue;
       final top = box.localToGlobal(Offset.zero).dy;
-      if (top <= targetY && (best == null || entry.key > best)) {
-        best = entry.key;
+      if (top <= targetY) {
+        best = i;
+      } else {
+        break; // Halaman berikutnya dipastikan berada lebih bawah
+      }
+    }
+    if (best == null) {
+      for (final entry in _pageKeys.entries) {
+        final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
+        if (box == null || !box.attached) continue;
+        final top = box.localToGlobal(Offset.zero).dy;
+        if (top <= targetY && (best == null || entry.key > best)) {
+          best = entry.key;
+        }
       }
     }
     if (best != null && best != _page) {
-      setState(() => _page = best!);
+      _page = best;
+      _pageNotifier.value = best;
       _scheduleProgressSave();
       _precacheNearbyPages();
     }
@@ -614,7 +635,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   void _seekToPage(int idx) {
     final settings = ref.read(readerSettingsProvider);
     if (!settings.isWebtoon) _resetMangaZoom();
-    setState(() => _page = idx);
+    _page = idx;
+    _pageNotifier.value = idx;
     _scheduleProgressSave();
     _precacheNearbyPages(center: idx);
     if (settings.isWebtoon && _scrollController.hasClients) {
@@ -623,6 +645,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       Future<void>.delayed(const Duration(milliseconds: 80), () {
         if (mounted) _suppressScroll = false;
       });
+    } else {
+      setState(() {});
     }
   }
 
@@ -668,6 +692,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     setState(() {
       _chapter = next;
       _page = 0;
+      _pageNotifier.value = 0;
       _showChrome = true;
       _pageKeys.clear();
       _precachedPageKeys.clear();
@@ -698,6 +723,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       _sourceChapterIndex = newIndex;
       _chapter = chapters.length - newIndex;
       _page = 0;
+      _pageNotifier.value = 0;
       _showChrome = true;
       _pageKeys.clear();
       _precachedPageKeys.clear();
@@ -1049,14 +1075,20 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
 
   void _nextPage() {
     _resetMangaZoom();
-    setState(() => _page = (_page + 1).clamp(0, _totalPages - 1));
+    final next = (_page + 1).clamp(0, _totalPages - 1);
+    _page = next;
+    _pageNotifier.value = next;
+    setState(() {});
     _scheduleProgressSave();
     _precacheNearbyPages();
   }
 
   void _prevPage() {
     _resetMangaZoom();
-    setState(() => _page = (_page - 1).clamp(0, _totalPages - 1));
+    final prev = (_page - 1).clamp(0, _totalPages - 1);
+    _page = prev;
+    _pageNotifier.value = prev;
+    setState(() {});
     _scheduleProgressSave();
     _precacheNearbyPages();
   }
@@ -1427,8 +1459,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         (webtoonZoomed ? _webtoonDecodeScale : 1);
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final current = (center ?? _page).clamp(0, pages.length - 1);
-    final start = (current - 1).clamp(0, pages.length - 1);
-    final end = (current + 2).clamp(0, pages.length - 1);
+    final start = (current - 2).clamp(0, pages.length - 1);
+    final end = (current + 6).clamp(0, pages.length - 1);
     for (var i = start; i <= end; i++) {
       final page = pages[i];
       final cacheWidth = webtoonZoomed
@@ -1458,7 +1490,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
           controller: _scrollController,
           padding: EdgeInsets.zero,
           clipBehavior: Clip.none,
-          scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          scrollCacheExtent: const ScrollCacheExtent.viewport(4.0),
           itemCount: _totalPages + 2,
           itemBuilder: (context, index) {
             if (index == 0) {
@@ -1856,55 +1891,63 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xEB12141D),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        width: 1,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x66000000),
-                          blurRadius: 4,
-                          offset: Offset(0, 1),
+              ValueListenableBuilder<int>(
+                valueListenable: _pageNotifier,
+                builder: (context, currentPage, _) {
+                  return Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      _pageCountKnown ? '${_page + 1} / $_totalPages' : '–',
-                      style:
-                          AppTypography.jakarta(
+                        decoration: BoxDecoration(
+                          color: const Color(0xEB12141D),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.14),
+                            width: 1,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x66000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          _pageCountKnown
+                              ? '${currentPage + 1} / $_totalPages'
+                              : '–',
+                          style: AppTypography.jakarta(
                             size: 11.5,
                             weight: FontWeight.w600,
                             color: Colors.white,
                           ).copyWith(
                             fontFeatures: const [FontFeature.tabularFigures()],
                           ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _pageCountKnown
-                        ? _ReaderSlider(
-                            value: _page.toDouble(),
-                            max: (_totalPages - 1).toDouble(),
-                            onChanged: (v) => _seekToPage(v.round()),
-                          )
-                        : const _ReaderSlider(
-                            value: 0,
-                            max: 1,
-                            onChanged: null,
-                          ),
-                  ),
-                ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _pageCountKnown
+                            ? _ReaderSlider(
+                                value: currentPage
+                                    .toDouble()
+                                    .clamp(0, (_totalPages - 1).toDouble()),
+                                max: (_totalPages - 1).toDouble(),
+                                onChanged: (v) => _seekToPage(v.round()),
+                              )
+                            : const _ReaderSlider(
+                                value: 0,
+                                max: 1,
+                                onChanged: null,
+                              ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 12),
               Row(
@@ -2186,6 +2229,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         _sourceChapterIndex = targetIndex;
         _chapter = chapters.length - targetIndex;
         _page = (item.page - 1).clamp(0, 999);
+        _pageNotifier.value = _page;
         _showChrome = true;
         _pageKeys.clear();
       });
@@ -2198,6 +2242,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       setState(() {
         _chapter = item.chNum;
         _page = (item.page - 1).clamp(0, _totalPages - 1);
+        _pageNotifier.value = _page;
         _showChrome = true;
       });
       if (_scrollController.hasClients) _scrollController.jumpTo(0);

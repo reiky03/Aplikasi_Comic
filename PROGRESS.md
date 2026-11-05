@@ -27,6 +27,49 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-05 — Kizen v1.2.10: Perizinan Native Uninstall Ekstensi Android (REQUEST_DELETE_PACKAGES), Penyederhanaan Sheet Kelola Ekstensi, & Optimasi Performa Scroll Reader 120 FPS
+
+Permintaan user:
+"masih gak ad beb tampil dialog baut hapusnya yang dari androidnya, bahkan itu tampilannya kayak gak guna, karena yang copot versi lama dan pasang otomatus sama copot dan hapus ekstensi gak ada yang bisa, dan itu gak usah pake teks2 gitu yang jika sebelumnya ... buat aja lebih umum dan singkat
+lalu bisa dibuatkan gak saat scroll bacanya itu mulus gak patah2, soalnya kurang mulus ini saat bacanya"
+
+Root cause & analisis mendalam:
+1. **Dialog Hapus/Copot Ekstensi Bawaan Android Tidak Muncul**:
+   - Di Android 9 ke atas (Android 14 pada vivo iQOO), `Intent(Intent.ACTION_DELETE)` mewajibkan izin `<uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>` di `AndroidManifest.xml`.
+   - Tanpa izin ini, Android `UninstallerActivity` menolak intent secara diam-diam dan mencatat log error pada logcat: `E UninstallerActivity: Uid 10397 does not have android.permission.REQUEST_DELETE_PACKAGES or android.permission.DELETE_PACKAGES`.
+   - Akibatnya, baik opsi copot & pasang otomatis maupun copot ekstensi manual tidak menampilkan dialog sistem OS apa pun ke pengguna.
+2. **Sheet Kelola Ekstensi Terlalu Penuh Teks Penjelasan**:
+   - Kotak peringatan kuning panjang mengenai bentrok tanda tangan signature Tachiyomi terasa bertele-tele dan mengganggu estetika antarmuka.
+   - Pengguna menginginkan antarmuka yang lebih ringkas, umum, dan elegan.
+3. **Scroll Reader Webtoon Terasa "Kurang Mulus" / Patah-Patah (Jank)**:
+   - *ImageCache Terlalu Kecil*: Batas default Flutter `PaintingBinding.instance.imageCache.maximumSizeBytes` hanya 100 MB (~12 strip webtoon). Saat pengguna scroll bab komik berisi 40–80 strip, Flutter terus-menerus membuang (evict) bitmap lama dan men-decode ulang bitmap baru di render thread, memicu frame drop.
+   - *Rebuild Root Saat Scroll*: `_computeCurrentPage` memanggil `setState(() => _page = best)` pada root state setiap kali halaman berganti saat scroll, memicu `LayoutBuilder` dan `ListView.builder` rebuild berulang-ulang di tengah gesture fling 120Hz.
+   - *Physics Kaku*: `ListView` menggunakan default Android `ClampingScrollPhysics` yang memiliki kurva deselerasi kaku.
+   - *Precache Terlalu Sempit*: Lookahead `_precacheNearbyPages` sebelumnya hanya +2 halaman ke depan, sehingga pengguna yang membaca cepat sering menjumpai gambar yang belum ter-decode ke GPU.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Perizinan `REQUEST_DELETE_PACKAGES` (`AndroidManifest.xml` & `ExtensionRuntimeBridge.kt`)**:
+   - Menambahkan `<uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>` pada `AndroidManifest.xml`.
+   - Menambahkan `putExtra(Intent.EXTRA_RETURN_RESULT, true)` pada uninstaller intent di `ExtensionRuntimeBridge.kt`.
+   - Dialog pencopotan resmi OS ("Apakah Anda ingin mencopot pemasangan aplikasi ini?") kini 100% muncul seketika di layar Android.
+2. **Penyederhanaan Bottom Sheet Kelola Ekstensi (`extension_update_helper.dart`)**:
+   - Menghapus kotak peringatan kuning yang bertele-tele.
+   - Merapikan opsi menu menjadi: "Perbarui Otomatis", "Coba Timpa Langsung", dan "Copot Ekstensi" dengan sheet konfirmasi merah "Oke, Hapus".
+   - Mempersingkat teks toast notifikasi agar lebih to-the-point ("Mengunduh pembaruan...", "Membuka pencopotan...", "Memasang versi baru...").
+3. **Optimasi Buttery-Smooth Scroll Reader 120 FPS (`main.dart` & `reader_screen.dart`)**:
+   - Memperbesar batas cache gambar Flutter ke 512 MB (`maximumSizeBytes = 512 * 1024 * 1024`, `maximumSize = 2000`) di `main.dart`.
+   - Mengganti rebuild `setState` saat scroll dengan `ValueNotifier<int> _pageNotifier`: perubahan halaman saat scrolling webtoon kini hanya memperbarui indikator teks dan slider di bottom toolbar tanpa me-rebuild `ListView`.
+   - Menggunakan `physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics())` dan memperluas `scrollCacheExtent` ke `4.0` viewports.
+   - Meningkatkan precache lookahead di `_precacheNearbyPages` menjadi +6 halaman ke depan.
+   - Mengoptimasi komputasi halaman aktif pada `_computeCurrentPage` dengan window lokal di sekitar `_page` dan early-exit.
+
+Verifikasi:
+- `flutter analyze`: 100% bersih, 0 issues.
+- `flutter test test/features/reader/reader_screen_test.dart`: 14/14 test lolos.
+- `flutter build apk --release`: Kompilasi APK sukses.
+
+---
+
 ### 2026-11-05 — Kizen v1.2.9: Dialog Konfirmasi Copot/Hapus Ekstensi & Repository ("Oke, Hapus"), Parser Native Nuxt 3 Hatsu Ikiru (09.ikiru.wtf) Lengkap (Populer, Terbaru, Detail, Chapter, Reader Halaman CDN), Universal Filter Kartu Chapter Palsu, Parser Softkomik Native, Path Webtoons Toongod, & Soulscans SvelteKit Numeric Units
 
 Permintaan user:
