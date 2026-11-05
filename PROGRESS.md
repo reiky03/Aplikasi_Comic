@@ -79,6 +79,8 @@ Verifikasi:
 - `flutter analyze`: 0 issues found (bersih).
 - `flutter test -j 1`: 188/188 tests passed (3 skipped, semua test lama dan test baru terkait bookmark, history confirmation, sort latest update, dan swipe library lolos 100%).
 - `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Berhasil dikompilasi tanpa error (sanity check lolos).
+- `flutter build apk --release`: Sukses menghasilkan APK rilis `kizen-v1.2.12.apk` (69.7 MB).
+- Publikasi GitHub Releases: Rilis resmi `v1.2.12` dan asset `kizen-v1.2.12.apk` berhasil dipublikasikan di `https://github.com/reiky03/Aplikasi_Comic/releases/tag/v1.2.12` (SHA-256: `1dd685b1136022655e17e1d60cf5a69b7f51cabe0a59e2964f443bfc3095133c`). Endpoint `/releases/latest` kini resmi mengembalikan v1.2.12.
 
 ---
 
