@@ -20,7 +20,8 @@ http.Client createKizenHttpClient() {
     if (VpnNotifier.currentVpnEnabled ||
         targetHost.contains('doujin') ||
         targetHost.contains('imhentai') ||
-        targetHost.contains('toongod')) {
+        targetHost.contains('toongod') ||
+        targetHost.contains('ikiru')) {
       targetIp = await DohResolver.resolveHost(
         targetHost,
         provider: VpnNotifier.currentProviderId,

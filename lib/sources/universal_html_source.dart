@@ -129,6 +129,14 @@ class UniversalHtmlSource implements MangaSource {
           )
           .timeout(const Duration(seconds: 20));
       if (html.trim().length < 80) return null;
+      final lower = html.toLowerCase();
+      if (lower.contains('cf-turnstile') ||
+          lower.contains('/cdn-cgi/challenge-platform/') ||
+          lower.contains('attention required! | cloudflare') ||
+          lower.contains('just a moment...')) {
+        // Halaman ini masih tertahan challenge Turnstile Cloudflare yang butuh interaksi user di WebView asli
+        return null;
+      }
       return html_parser.parse(html);
     } catch (_) {
       return null;
@@ -1027,10 +1035,17 @@ class UniversalHtmlSource implements MangaSource {
         a.text.trim().replaceAll(RegExp(r'\s+'), ' ').ifEmptyNull();
     if (title == null || title.length < 2) return null;
     final normalizedTitle = title.toLowerCase();
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
     if (normalizedTitle.contains('chapter') ||
         normalizedTitle == 'home' ||
         normalizedTitle == 'next' ||
-        normalizedTitle == 'previous') {
+        normalizedTitle == 'previous' ||
+        normalizedTitle == host ||
+        normalizedTitle.contains('cloudflare') ||
+        normalizedTitle.contains('turnstile') ||
+        normalizedTitle.endsWith('.wtf') ||
+        normalizedTitle.endsWith('.xxx') ||
+        normalizedTitle.endsWith('.com')) {
       return null;
     }
     final thumbnailUrl = img == null ? null : _imgAttr(img);

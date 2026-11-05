@@ -34,7 +34,7 @@ abstract final class SourceCatalog {
     // user: 11.shinigami.asia), sedangkan parser API kanonis memakai
     // g.shinigami.asia. Cocokkan domain induknya supaya keduanya satu sumber.
     'Shinigami': ['shinigami.asia', 'shngm.io', 'shngm.id'],
-    'Ikiru': ['ikiru.id', 'ikiru.wtf', '07.ikiru.wtf'],
+    'Ikiru': ['09.ikiru.wtf', 'ikiru.id', '07.ikiru.wtf', 'ikiru.wtf'],
   };
 
   /// Cari parser yang host base URL-nya cocok dengan [url] yang diketik user.
@@ -130,7 +130,11 @@ abstract final class SourceCatalog {
       ),
       'sveltekit-comic' => SvelteKitComicSource(name: name, baseUrl: baseUrl),
       'mangathemesia' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
-      'natsuid' => NatsuIdSource(name: name, baseUrl: baseUrl),
+      'natsuid' => NatsuIdSource(
+        name: name,
+        baseUrl: baseUrl,
+        fallbackBaseUrls: fallbackBaseUrls,
+      ),
       'madara' => MadaraSource(name: name, baseUrl: baseUrl),
       'universal-html' => UniversalHtmlSource(
         name: name,
@@ -243,8 +247,15 @@ abstract final class SourceCatalog {
       return SvelteKitComicSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('ikiru') || host.contains('ikiru')) {
-      final effectiveUrl = host.contains('ikiru.wtf') ? 'https://ikiru.id' : baseUrl;
-      return NatsuIdSource(name: name, baseUrl: effectiveUrl);
+      final effectiveUrl = host.contains('ikiru.wtf') ? 'https://09.ikiru.wtf' : baseUrl;
+      return NatsuIdSource(
+        name: name,
+        baseUrl: effectiveUrl,
+        fallbackBaseUrls: {
+          baseUrl,
+          ..._knownMirrorFallbacks(name, baseUrl),
+        },
+      );
     }
     if (lower.contains('kiryu') || lower.contains('kiryuu') || host.contains('kiryuu')) {
       final effectiveUrl = (host.contains('kiryuu01') || host == 'kiryuu.id')
@@ -288,6 +299,7 @@ abstract final class SourceCatalog {
     final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
     if (lower == 'ikiru' ||
         host.contains('ikiru')) {
+      yield 'https://09.ikiru.wtf';
       yield 'https://ikiru.id';
       yield 'https://07.ikiru.wtf';
     }

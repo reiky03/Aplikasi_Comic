@@ -61,6 +61,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             "readWebViewSession" -> readWebViewSession(call, result)
             "renderHtmlWithWebView" -> renderHtmlWithWebView(call, result)
             "listInstalledExtensions" -> result.success(listInstalledExtensions())
+            "prepareExtensionApk" -> prepareExtensionApk(call, result)
             "installExtensionApk" -> installExtensionApk(call, result)
             "downloadAndInstallAppUpdate" -> downloadAndInstallAppUpdate(call, result)
             "cancelUpdateDownload" -> cancelUpdateDownload(result)
@@ -336,6 +337,53 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         }
     }
 
+    private fun prepareExtensionApk(call: MethodCall, result: MethodChannel.Result) {
+        val apkUrl = call.argument<String>("apkUrl")
+        val rawFileName = call.argument<String>("fileName")
+        if (apkUrl.isNullOrBlank()) {
+            result.error("bad_args", "apkUrl kosong", null)
+            return
+        }
+
+        Thread {
+            try {
+                val fileName = rawFileName
+                    ?.substringAfterLast('/')
+                    ?.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    ?.takeIf { it.endsWith(".apk", ignoreCase = true) }
+                    ?: "tachiyomi-extension.apk"
+                val dir = File(context.cacheDir, "extension-apks").apply { mkdirs() }
+                val apkFile = File(dir, fileName)
+                if (!apkFile.exists() || apkFile.length() == 0L) {
+                    val request = Request.Builder()
+                        .url(apkUrl)
+                        .header(
+                            "User-Agent",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        )
+                        .get()
+                        .build()
+                    OkHttpClient().newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            throw IllegalStateException("Download APK gagal: HTTP ${response.code}")
+                        }
+                        apkFile.outputStream().use { output ->
+                            response.body.byteStream().copyTo(output)
+                        }
+                    }
+                }
+                Handler(Looper.getMainLooper()).post {
+                    result.success(true)
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "prepareExtensionApk failed for $apkUrl", e)
+                Handler(Looper.getMainLooper()).post {
+                    result.error("prepare_failed", e.safeMessage(), e.stackTraceToString())
+                }
+            }
+        }.start()
+    }
+
     private fun installExtensionApk(call: MethodCall, result: MethodChannel.Result) {
         val apkUrl = call.argument<String>("apkUrl")
         val rawFileName = call.argument<String>("fileName")
@@ -353,20 +401,22 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                     ?: "tachiyomi-extension.apk"
                 val dir = File(context.cacheDir, "extension-apks").apply { mkdirs() }
                 val apkFile = File(dir, fileName)
-                val request = Request.Builder()
-                    .url(apkUrl)
-                    .header(
-                        "User-Agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    )
-                    .get()
-                    .build()
-                OkHttpClient().newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        throw IllegalStateException("Download APK gagal: HTTP ${response.code}")
-                    }
-                    apkFile.outputStream().use { output ->
-                        response.body.byteStream().copyTo(output)
+                if (!apkFile.exists() || apkFile.length() == 0L) {
+                    val request = Request.Builder()
+                        .url(apkUrl)
+                        .header(
+                            "User-Agent",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        )
+                        .get()
+                        .build()
+                    OkHttpClient().newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            throw IllegalStateException("Download APK gagal: HTTP ${response.code}")
+                        }
+                        apkFile.outputStream().use { output ->
+                            response.body.byteStream().copyTo(output)
+                        }
                     }
                 }
                 val uri = FileProvider.getUriForFile(
@@ -381,10 +431,14 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
                 }
                 context.startActivity(intent)
                 Log.i(TAG, "installExtensionApk opened installer for $apkUrl")
-                result.success(null)
+                Handler(Looper.getMainLooper()).post {
+                    result.success(null)
+                }
             } catch (e: Throwable) {
                 Log.e(TAG, "installExtensionApk failed for $apkUrl", e)
-                result.error("install_failed", e.safeMessage(), e.stackTraceToString())
+                Handler(Looper.getMainLooper()).post {
+                    result.error("install_failed", e.safeMessage(), e.stackTraceToString())
+                }
             }
         }.start()
     }

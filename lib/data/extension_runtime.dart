@@ -390,6 +390,21 @@ class ExtensionRuntimeBridge {
         .toList();
   }
 
+  Future<bool> prepareExtensionApk({
+    required String apkUrl,
+    required String fileName,
+  }) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('prepareExtensionApk', {
+        'apkUrl': apkUrl,
+        'fileName': fileName,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> installExtensionApk({
     required String apkUrl,
     required String fileName,

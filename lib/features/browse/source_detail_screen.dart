@@ -7,6 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/extension_runtime.dart';
+import '../../data/extension_update_helper.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
 import '../../data/repository_state.dart';
@@ -66,50 +67,84 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
   void initState() {
     super.initState();
     _gridScrollController.addListener(_onGridScroll);
-    final source =
-        ref
-            .read(sourcesProvider)
-            .where((s) => s.id == widget.sourceId)
-            .firstOrNull ??
-        widget.fallbackSource;
+    _initMatchedSource();
+    final source = _source;
     if (source != null) {
-      // Coba 4 sumber native dulu, baru parser tema generik yang sudah
-      // ke-auto-detect saat sumber ini ditambahkan (lihat
-      // `ComicSource.parserKind` & `add_source_screen.dart`) — supaya
-      // sumber custom juga bisa nampilin grid discover, bukan cuma
-      // fallback ke WebView.
-      _matchedSource =
-          SourceCatalog.matchByUrl(
-            source.url,
-            fallbackBaseUrls: source.urlAliases,
-          ) ??
-          SourceCatalog.matchByName(
-            source.name,
-            source.url,
-          ) ??
-          (source.parserKind != null &&
-                  !source.parserKind!.startsWith('extension-runtime:')
-              ? SourceCatalog.buildGeneric(
-                  source.parserKind!,
-                  source.name,
-                  source.url.startsWith('http')
-                      ? source.url
-                      : 'https://${source.url}',
-                  fallbackBaseUrls: source.urlAliases,
-                )
-              : null) ??
-          _repoMatchedSource(source) ??
-          SourceCatalog.buildAutomatic(
-            source.name,
-            source.url.startsWith('http')
-                ? source.url
-                : 'https://${source.url}',
-            preferredKind: source.parserKind,
-            lang: source.lang,
-            fallbackBaseUrls: source.urlAliases,
-          );
       if (_matchedSource != null) _loadDiscover(source);
+      _checkDomainHealth(source);
     }
+  }
+
+  void _initMatchedSource() {
+    final source = _source;
+    if (source == null) return;
+    _matchedSource =
+        SourceCatalog.matchByUrl(
+          source.url,
+          fallbackBaseUrls: source.urlAliases,
+        ) ??
+        SourceCatalog.matchByName(
+          source.name,
+          source.url,
+        ) ??
+        (source.parserKind != null &&
+                !source.parserKind!.startsWith('extension-runtime:')
+            ? SourceCatalog.buildGeneric(
+                source.parserKind!,
+                source.name,
+                source.url.startsWith('http')
+                    ? source.url
+                    : 'https://${source.url}',
+                fallbackBaseUrls: source.urlAliases,
+              )
+            : null) ??
+        _repoMatchedSource(source) ??
+        SourceCatalog.buildAutomatic(
+          source.name,
+          source.url.startsWith('http')
+              ? source.url
+              : 'https://${source.url}',
+          preferredKind: source.parserKind,
+          lang: source.lang,
+          fallbackBaseUrls: source.urlAliases,
+        );
+  }
+
+  Future<void> _checkDomainHealth(ComicSource source) async {
+    try {
+      final probe = await const ExtensionRuntimeBridge().probeUrl(source.url);
+      final finalUrl = probe.finalUrl;
+      if (finalUrl.isNotEmpty) {
+        final newUri = Uri.tryParse(finalUrl);
+        final oldUri = Uri.tryParse(
+          source.url.startsWith('http') ? source.url : 'https://${source.url}',
+        );
+        final oldHost = oldUri?.host.toLowerCase() ?? '';
+        final newHost = newUri?.host.toLowerCase() ?? '';
+        if (oldHost.isNotEmpty &&
+            newHost.isNotEmpty &&
+            oldHost != newHost &&
+            !newHost.contains('turnstile') &&
+            !newHost.contains('challenges.cloudflare') &&
+            !newHost.contains('internetpositif')) {
+          final newBaseUrl = '${newUri!.scheme}://${newUri.host}';
+          final updated = await ref
+              .read(sourcesProvider.notifier)
+              .updateSourceUrl(source.id, newBaseUrl);
+          if (updated && mounted) {
+            AppToast.show(
+              context,
+              '🌐 Domain ${source.name} dialihkan ke ${newUri.host}. Alamat sumber otomatis disesuaikan.',
+            );
+            _initMatchedSource();
+            final updatedSource = _source;
+            if (updatedSource != null) {
+              _loadDiscover(updatedSource);
+            }
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   MangaSource? _repoMatchedSource(ComicSource source) {
@@ -121,6 +156,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       rawUrl: baseUrl,
       packageName: source.repoPackage,
       sourceId: source.repoSourceId,
+      name: source.name,
+      nameAliases: source.nameAliases,
+      urlAliases: source.urlAliases,
     );
     final packageName = match?.source.pkg;
     if (packageName == null) return null;
@@ -356,7 +394,10 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
         ),
       ),
     ).then((_) {
-      if (mounted) _retry();
+      if (mounted) {
+        _initMatchedSource();
+        _retry();
+      }
     });
   }
 
@@ -375,6 +416,32 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       // Sumber dihapus saat layar terbuka — kembali.
       return const Scaffold(backgroundColor: AppColors.bg, body: SizedBox());
     }
+
+    final repoMatch = findRepoSource(
+      repositories: ref.watch(repositoriesProvider),
+      rawUrl: source.url,
+      packageName: source.repoPackage,
+      sourceId: source.repoSourceId,
+      name: source.name,
+      nameAliases: source.nameAliases,
+      urlAliases: source.urlAliases,
+    );
+    final installedPackages = ref.watch(installedExtensionPackagesProvider);
+    final installedMap = installedPackages.maybeWhen(
+      data: (pkgs) => pkgs,
+      orElse: () => const <String, InstalledExtensionPackage>{},
+    );
+    final installedPkg = repoMatch?.source.pkg != null
+        ? installedMap[repoMatch!.source.pkg]
+        : null;
+    final isInstalled = installedPkg != null;
+    final updateAvailable = isInstalled &&
+        repoMatch != null &&
+        repositoryUpdateAvailable(
+          source: repoMatch.source,
+          installedVersionCode: installedPkg.versionCode,
+          installedVersionName: installedPkg.versionName,
+        );
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -454,6 +521,11 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                 ],
               ),
             ),
+            if (updateAvailable)
+              _buildRepoUpdateBanner(
+                repoMatch: repoMatch,
+                installedPkg: installedPkg,
+              ),
             Expanded(
               child: _canUseAutomaticReader(source)
                   ? _buildParsable(source)
@@ -461,6 +533,146 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildRepoUpdateBanner({
+    required RepoSourceMatch repoMatch,
+    required InstalledExtensionPackage installedPkg,
+  }) {
+    final apkUrl = repositoryApkUrl(
+      repoMatch.repository.url,
+      repoMatch.source.apk,
+    );
+    final apk = repoMatch.source.apk;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.warningAlt.withValues(alpha: 0.55),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.warningAlt.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.warningAlt.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              LucideIcons.packagePlus,
+              size: 19,
+              color: AppColors.warningAlt,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        'Pembaruan Ekstensi',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.jakarta(
+                          size: 13,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.warningAlt.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'v${repoMatch.source.version ?? 'terbaru'}',
+                        style: AppTypography.mono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          color: AppColors.warningAlt,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Tersedia di ${repoMatch.repository.name}. Perbarui agar web lancar.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.jakarta(
+                    size: 11,
+                    weight: FontWeight.w400,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          ElevatedButton(
+            onPressed: apkUrl == null || apk == null
+                ? null
+                : () {
+                    ExtensionUpdateHelper.showUpdateSheet(
+                      context,
+                      ref: ref,
+                      name: repoMatch.source.name,
+                      packageName: repoMatch.source.pkg!,
+                      apkUrl: apkUrl,
+                      fileName: apk,
+                      newVersion: repoMatch.source.version,
+                      hue: repoMatch.source.hue,
+                      onInstalled: () {
+                        _initMatchedSource();
+                        final s = _source;
+                        if (s != null) _loadDiscover(s);
+                      },
+                    );
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.warningAlt,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(9),
+              ),
+              elevation: 0,
+            ),
+            child: Text(
+              'Perbarui',
+              style: AppTypography.jakarta(
+                size: 12,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -685,22 +897,47 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       match.source.apk,
     );
     final apk = match.source.apk;
-    if (apkUrl == null || apk == null) {
+    final pkg = match.source.pkg;
+    if (apkUrl == null || apk == null || pkg == null) {
       AppToast.show(context, 'Link APK extension tidak ditemukan');
       return;
     }
     setState(() => _installingExtension = true);
     try {
-      await const ExtensionRuntimeBridge().installExtensionApk(
-        apkUrl: apkUrl,
-        fileName: apk,
+      final installedPackages = ref.read(installedExtensionPackagesProvider);
+      final isInstalled = installedPackages.maybeWhen(
+        data: (pkgs) => pkgs.containsKey(pkg),
+        orElse: () => false,
       );
-      if (!mounted) return;
-      ref.invalidate(installedExtensionPackagesProvider);
-      AppToast.show(context, 'Installer ekstensi dibuka di HP kamu.');
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, 'Gagal membuka installer: $e');
+      if (isInstalled) {
+        await ExtensionUpdateHelper.showUpdateSheet(
+          context,
+          ref: ref,
+          name: match.source.name,
+          packageName: pkg,
+          apkUrl: apkUrl,
+          fileName: apk,
+          newVersion: match.source.version,
+          hue: match.source.hue,
+          onInstalled: () {
+            _initMatchedSource();
+            final s = _source;
+            if (s != null) _loadDiscover(s);
+          },
+        );
+      } else {
+        await ExtensionUpdateHelper.installDirect(
+          context,
+          ref: ref,
+          apkUrl: apkUrl,
+          fileName: apk,
+          onInstalled: () {
+            _initMatchedSource();
+            final s = _source;
+            if (s != null) _loadDiscover(s);
+          },
+        );
+      }
     } finally {
       if (mounted) setState(() => _installingExtension = false);
     }

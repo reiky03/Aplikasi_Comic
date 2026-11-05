@@ -6,6 +6,7 @@ import 'package:aplikasi_komik/data/source_resolver.dart';
 import 'package:aplikasi_komik/data/sources_state.dart';
 import 'package:aplikasi_komik/sources/adaptive_source.dart';
 import 'package:aplikasi_komik/sources/extension_runtime_source.dart';
+import 'package:aplikasi_komik/sources/source_catalog.dart';
 
 void main() {
   test(
@@ -255,5 +256,40 @@ void main() {
     final resolved = resolveMangaSource('WestManga', customSources, repositories);
     expect(resolved, isNotNull);
     expect(resolved, isA<AdaptiveSource>());
+  });
+
+  test('updateSourceUrl menyimpan domain lama ke urlAliases secara rapi', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(sourcesProvider.notifier);
+    const initialSource = ComicSource(
+      id: 'ikiru-test',
+      name: 'Ikiru',
+      url: 'https://07.ikiru.wtf',
+      lang: 'ID',
+      hue: 120,
+    );
+    await notifier.add(initialSource);
+
+    final changed = await notifier.updateSourceUrl(
+      'ikiru-test',
+      'https://09.ikiru.wtf',
+    );
+    expect(changed, isTrue);
+
+    final updated = container.read(sourcesProvider).firstWhere((s) => s.id == 'ikiru-test');
+    expect(updated.url, 'https://09.ikiru.wtf');
+    expect(updated.urlAliases, contains('https://07.ikiru.wtf'));
+  });
+
+  test('SourceCatalog mengenali domain baru Ikiru 09.ikiru.wtf dan portal ikiru.id', () {
+    final match09 = SourceCatalog.matchByUrl('https://09.ikiru.wtf/manga/test-title');
+    expect(match09, isNotNull);
+    expect(match09!.name, 'Ikiru');
+
+    final matchPortal = SourceCatalog.matchByUrl('https://ikiru.id');
+    expect(matchPortal, isNotNull);
+    expect(matchPortal!.name, 'Ikiru');
   });
 }

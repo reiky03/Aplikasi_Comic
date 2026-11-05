@@ -297,6 +297,36 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
     });
   }
 
+  /// Perbarui URL sumber (misalnya ketika situs melakukan migrasi/redirect domain).
+  /// Membawa URL lama ke dalam `urlAliases` sehingga komik-komik lama di Library
+  /// tetap dapat dibuka dan dicocokkan.
+  Future<bool> updateSourceUrl(String id, String newUrl) async {
+    final current = state.where((s) => s.id == id).firstOrNull;
+    if (current == null) return false;
+    final normalizedNew = normalizeSourceBaseUrl(newUrl);
+    final normalizedOld = normalizeSourceBaseUrl(current.url);
+    if (normalizedNew.isEmpty || normalizedNew == normalizedOld) return false;
+
+    final updatedAliases = <String>{
+      ...current.urlAliases,
+      current.url,
+      if (normalizedOld.isNotEmpty) normalizedOld,
+    }
+        .where(
+          (u) =>
+              u.trim().isNotEmpty &&
+              normalizeSourceBaseUrl(u) != normalizedNew,
+        )
+        .toList();
+
+    final updated = current.copyWith(
+      url: normalizedNew,
+      urlAliases: updatedAliases,
+    );
+    await update(updated);
+    return true;
+  }
+
   /// Sinkronkan "Sumber Saya" dengan repositori yang terpasang.
   /// Bila ditemukan kecocokan (nama, URL, alias, atau ID package), perbarui
   /// URL aktif ke mirror repo terbaru, tautkan repoPackage & repoSourceId,

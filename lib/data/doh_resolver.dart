@@ -82,6 +82,7 @@ class DohResolver {
       final s when s.endsWith('.imhentai.xxx') => '104.26.11.15',
       'e-hentai.org' => '104.20.134.21',
       'toongod.org' || 'www.toongod.org' || 'toongod.cc' => '104.21.32.187',
+      final s when s.contains('ikiru.wtf') || s == 'ikiru.id' => '103.95.7.7',
       _ => null,
     };
     if (safeFallback != null) {

@@ -94,6 +94,29 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
     } catch (_) {}
   }
 
+  Future<void> _checkDomainRedirect(String url) async {
+    try {
+      final newUri = Uri.tryParse(url);
+      final source = _source;
+      if (source == null || newUri == null || newUri.host.isEmpty) return;
+      final oldUri = Uri.tryParse(
+        source.url.startsWith('http') ? source.url : 'https://${source.url}',
+      );
+      final oldHost = oldUri?.host.toLowerCase() ?? '';
+      final newHost = newUri.host.toLowerCase();
+      if (oldHost.isNotEmpty &&
+          oldHost != newHost &&
+          !newHost.contains('turnstile') &&
+          !newHost.contains('challenges.cloudflare') &&
+          !newHost.contains('internetpositif')) {
+        final newBaseUrl = '${newUri.scheme}://${newUri.host}';
+        await ref
+            .read(sourcesProvider.notifier)
+            .updateSourceUrl(source.id, newBaseUrl);
+      }
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -147,6 +170,7 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
               _canGoBack = back;
               _canGoForward = fwd;
             });
+            await _checkDomainRedirect(url);
             await _checkCloudflareClearance(url);
           },
           onWebResourceError: (_) {

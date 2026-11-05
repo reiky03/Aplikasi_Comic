@@ -22,7 +22,11 @@ class NatsuIdSource implements MangaSource {
     required this.name,
     required this.baseUrl,
     http.Client? client,
-  }) : _client = client ?? createKizenHttpClient();
+    Iterable<String> fallbackBaseUrls = const [],
+  })  : _client = client ?? createKizenHttpClient(),
+        _fallbackBaseUrls = fallbackBaseUrls.toList() {
+    _currentBaseUrl = baseUrl;
+  }
 
   @override
   final String name;
@@ -30,22 +34,35 @@ class NatsuIdSource implements MangaSource {
   @override
   final String baseUrl;
 
+  late String _currentBaseUrl;
+  final List<String> _fallbackBaseUrls;
   final http.Client _client;
   final _random = Random();
   String? _searchNonce;
 
+  String get currentBaseUrl => _currentBaseUrl;
+
   Map<String, String> get _headers => {
-    'Referer': '$baseUrl/',
+    'Referer': '$_currentBaseUrl/',
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
         '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    ...SourceSessionStore.headersFor(baseUrl),
+    ...SourceSessionStore.headersFor(_currentBaseUrl),
   };
 
   Future<http.Response> _get(Uri url) async {
     try {
-      return await _client.get(url, headers: _headers);
+      final res = await _client.get(url, headers: _headers);
+      if (res.statusCode == 403) {
+        throw MangaSourceWebViewException(
+          message:
+              '$name terdeteksi Cloudflare Turnstile (403). Selesaikan verifikasi di WebView sekali agar sesi aktif.',
+          url: url.toString(),
+        );
+      }
+      return res;
     } catch (e) {
+      if (e is MangaSourceWebViewException) rethrow;
       throw MangaSourceException('Gagal menghubungi $name: $e');
     }
   }
@@ -58,8 +75,17 @@ class NatsuIdSource implements MangaSource {
       ..headers.addAll(_headers)
       ..fields.addAll(fields);
     try {
-      return await http.Response.fromStream(await _client.send(request));
+      final res = await http.Response.fromStream(await _client.send(request));
+      if (res.statusCode == 403) {
+        throw MangaSourceWebViewException(
+          message:
+              '$name terdeteksi Cloudflare Turnstile (403). Selesaikan verifikasi di WebView sekali agar sesi aktif.',
+          url: url.toString(),
+        );
+      }
+      return res;
     } catch (e) {
+      if (e is MangaSourceWebViewException) rethrow;
       throw MangaSourceException('Gagal menghubungi $name: $e');
     }
   }
@@ -79,26 +105,51 @@ class NatsuIdSource implements MangaSource {
   Future<String> _getSearchNonce({bool refresh = false}) async {
     final cached = _searchNonce;
     if (!refresh && cached != null) return cached;
-    final url = Uri.parse(
-      '$baseUrl/wp-admin/admin-ajax.php',
-    ).replace(queryParameters: {'type': 'search_form', 'action': 'get_nonce'});
-    final response = await _get(url);
-    if (response.statusCode != 200) {
-      throw MangaSourceException(
-        '$name gagal mengambil token pencarian '
-        '(${response.statusCode}).',
-      );
+
+    final candidates = <String>[
+      _currentBaseUrl,
+      ..._fallbackBaseUrls.where((b) => b != _currentBaseUrl),
+    ];
+
+    Object? lastError;
+    for (final candidate in candidates) {
+      try {
+        final url = Uri.parse(
+          '$candidate/wp-admin/admin-ajax.php',
+        ).replace(queryParameters: {'type': 'search_form', 'action': 'get_nonce'});
+        final response = await _client.get(url, headers: {
+          'Referer': '$candidate/',
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          ...SourceSessionStore.headersFor(candidate),
+        });
+        if (response.statusCode == 403) {
+          throw MangaSourceWebViewException(
+            message:
+                '$name terdeteksi Cloudflare Turnstile (403). Selesaikan verifikasi di WebView sekali agar sesi aktif.',
+            url: candidate,
+          );
+        }
+        if (response.statusCode != 200) continue;
+        final nonce = html_parser
+            .parseFragment(response.body)
+            .querySelector('input[name="search_nonce"]')
+            ?.attributes['value']
+            ?.trim();
+        if (nonce != null && nonce.isNotEmpty) {
+          _currentBaseUrl = candidate;
+          _searchNonce = nonce;
+          return nonce;
+        }
+      } catch (e) {
+        lastError = e;
+        if (e is MangaSourceWebViewException) rethrow;
+      }
     }
-    final nonce = html_parser
-        .parseFragment(response.body)
-        .querySelector('input[name="search_nonce"]')
-        ?.attributes['value']
-        ?.trim();
-    if (nonce == null || nonce.isEmpty) {
-      throw MangaSourceException('Token pencarian $name tidak ditemukan.');
-    }
-    _searchNonce = nonce;
-    return nonce;
+
+    if (lastError is MangaSourceWebViewException) throw lastError;
+    throw MangaSourceException('Token pencarian $name tidak ditemukan.');
   }
 
   Future<SourceMangaPage> _advancedList({
@@ -109,7 +160,7 @@ class NatsuIdSource implements MangaSource {
   }) async {
     final nonce = await _getSearchNonce();
     final url = Uri.parse(
-      '$baseUrl/wp-admin/admin-ajax.php',
+      '$_currentBaseUrl/wp-admin/admin-ajax.php',
     ).replace(queryParameters: {'action': 'advanced_search'});
     final response = await _postMultipart(url, {
       'nonce': nonce,
@@ -213,7 +264,7 @@ class NatsuIdSource implements MangaSource {
     String? search,
     bool latest = false,
   }) async {
-    final url = Uri.parse('$baseUrl/wp-json/wp/v2/manga').replace(
+    final url = Uri.parse('$_currentBaseUrl/wp-json/wp/v2/manga').replace(
       queryParameters: {
         'page': '$page',
         'per_page': '20',

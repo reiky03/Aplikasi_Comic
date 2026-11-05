@@ -226,6 +226,7 @@ class AdaptiveSource implements MangaSource {
     ];
     T? firstUsable;
     int? firstUsableIndex;
+    MangaSourceWebViewException? lastWebViewException;
     for (final index in indexes) {
       final strategy = _strategies[index];
       try {
@@ -238,14 +239,23 @@ class AdaptiveSource implements MangaSource {
           firstUsable ??= result;
           firstUsableIndex ??= index;
         }
-      } catch (_) {
+      } catch (e) {
+        if (e is MangaSourceWebViewException) {
+          lastWebViewException ??= e;
+        }
         // Struktur/network tidak cocok: lanjut ke metode berikutnya.
       }
     }
-    if (firstUsableIndex != null) {
-      _rememberStrategy(cacheKey, firstUsableIndex);
+    if (firstUsable != null) {
+      if (firstUsableIndex != null) {
+        _rememberStrategy(cacheKey, firstUsableIndex);
+      }
+      return firstUsable;
     }
-    return firstUsable;
+    if (lastWebViewException != null) {
+      throw lastWebViewException;
+    }
+    return null;
   }
 
   String _catalogSignature(SourceMangaPage page) => page.mangas

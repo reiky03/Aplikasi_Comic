@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/extension_runtime.dart';
+import '../../data/extension_update_helper.dart';
 import '../../data/models.dart';
 import '../../data/demo_state.dart';
 import '../../data/repository_state.dart';
@@ -737,71 +738,25 @@ class _ExtensionInstallButtonState
 
   Future<void> _showUpdateOptions(String packageName) async {
     if (_busy) return;
-    await showAppSheet<void>(
-      context,
-      menuStyle: true,
-      builder: (sheetContext) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ContextMenuPreview(
-            cover: comicCover(widget.data.source.hue),
-            title: widget.data.source.name,
-            subtitle: widget.data.source.version == null
-                ? 'Pembaruan tersedia'
-                : 'Pembaruan ke v${widget.data.source.version}',
-          ),
-          AppSheetMenuRow(
-            icon: AppIcons.refresh,
-            iconColor: AppColors.accent,
-            label: 'Perbarui Langsung',
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _install();
-            },
-          ),
-          AppSheetMenuRow(
-            icon: LucideIcons.trash2,
-            iconColor: AppColors.warningAlt,
-            label: 'Copot Versi Lama & Pasang Ulang',
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _uninstallAndReinstall(packageName);
-            },
-          ),
-          AppSheetMenuRow(
-            icon: AppIcons.delete,
-            label: 'Hapus instal extension',
-            destructive: true,
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _uninstall(packageName);
-            },
-          ),
-        ],
-      ),
+    final apkUrl = repositoryApkUrl(
+      widget.data.repo.url,
+      widget.data.source.apk,
     );
-  }
-
-  Future<void> _uninstallAndReinstall(String packageName) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      AppToast.show(context, 'Mencopot versi lama... Konfirmasi di layar HP');
-      await const ExtensionRuntimeBridge().uninstallExtensionPackage(
-        packageName,
-      );
-      if (!mounted) return;
-      // Delay sejenak agar dialog uninstall selesai
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      if (!mounted) return;
-      await _install();
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, 'Gagal copot dan pasang ulang: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    final apk = widget.data.source.apk;
+    if (apkUrl == null || apk == null) {
+      AppToast.show(context, 'Link APK extension tidak ditemukan');
+      return;
     }
+    await ExtensionUpdateHelper.showUpdateSheet(
+      context,
+      ref: ref,
+      name: widget.data.source.name,
+      packageName: packageName,
+      apkUrl: apkUrl,
+      fileName: apk,
+      newVersion: widget.data.source.version,
+      hue: widget.data.source.hue,
+    );
   }
 
   Future<void> _showInstalledOptions() async {
@@ -835,16 +790,7 @@ class _ExtensionInstallButtonState
                   : 'Perbarui ke ${widget.data.source.version}',
               onTap: () {
                 Navigator.pop(sheetContext);
-                _install();
-              },
-            ),
-            AppSheetMenuRow(
-              icon: LucideIcons.trash2,
-              iconColor: AppColors.warningAlt,
-              label: 'Copot & Pasang Ulang (Solusi jika bentrok)',
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _uninstallAndReinstall(packageName);
+                _showUpdateOptions(packageName);
               },
             ),
           ],

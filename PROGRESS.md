@@ -27,6 +27,61 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-05 — Kizen v1.2.8: Deteksi Otomatis Pergantian Domain Sumber (Ikiru / NatsuId), Banner Update Ekstensi 1-Tap di Source Detail, & Anti-Bentrok Signature Android (Safe Uninstall-Reinstall Watcher)
+
+Permintaan user:
+"beb menrutuku ini perlu diperbaiki sih, jadi gini yang web ikiru ternyata sudah ganti domain, awalnya kan 07ikiru, ternyata pas ak buka di webview dia dah ganti domain, maka dari itu bsia gak melakukan pengecekan pas sumebrnya dibuka ternyata ada update web atau apa gitu, lalu kalau semisal sumber itu ada di repositroy yang dari keyousi ya tinggal update aja, dan ak gak tau kenapa iini beberapa masih gak bisa instal pembaruan katanya bentrok coba cek di hpku itu, ak dah kuhubungin pake usb debug 12508 vivo iqoo ku coba lsg buka snediri kizen nya dan cek gimana"
+
+Root cause & analisis mendalam:
+1. **Perubahan Arsitektur Domain Ikiru (NatsuId)**:
+   - Sumber Ikiru sebelumnya menggunakan domain `07.ikiru.wtf`. Saat ini, `https://07.ikiru.wtf` mengembalikan HTTP 301 ke landing portal `https://ikiru.id/`, yang kemudian mengarahkan pembaca ke domain baca aktif `https://09.ikiru.wtf`.
+   - Domain `09.ikiru.wtf` dilindungi Cloudflare Turnstile (HTTP 403).
+   - Di Kizen sebelumnya:
+     * `source.url` yang tersimpan pada data pengguna masih `07.ikiru.wtf` atau tidak ter-update jika situs berpindah domain.
+     * Tidak ada pendeteksian pengalihan URL otomatis saat membuka halaman sumber (`SourceDetailScreen`) maupun saat berselancar di dalam `WebViewScreen`.
+     * Ketika `UniversalHtmlSource` mencoba scraping fallback via WebView off-screen pada halaman Cloudflare 403, ia keliru mengekstrak tautan anchor domain `09.ikiru.wtf` sebagai judul manga tunggal (judul kartu menjadi "09.ikiru.wtf").
+2. **Bentrok Signature Ekstensi (Tachiyomi vs. Keiyoushi Signature Conflict)**:
+   - Di perangkat fisik pengguna (vivo iQOO I2508), terpasang 33 ekstensi yang awalnya dipasang dari APK Tachiyomi lawas bertanda tangan sertifikat `Cuong Tran` (SHA-256 `CB:EC:12:1A:...`).
+   - Sementara itu, repositori Keiyoushi merilis pembaruan ekstensi yang ditandatangani oleh `AntsyLich / WorkshopOfAntsyLich` (SHA-256 `9A:DD:65:5A:...`).
+   - Android OS secara ketat melarang update in-place jika signing key berbeda (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
+   - Logika sebelumnya menggunakan timer delay sembarangan `Future.delayed(1200ms)` yang memicu race condition: sebelum pengguna selesai menekan tombol "Copot" pada dialog sistem Android, Kizen sudah keburu menjalankan installer APK baru, sehingga bentrok signature tetap terjadi.
+3. **Banner Pembaruan Langsung di Halaman Sumber (`SourceDetailScreen`)**:
+   - Jika sebuah sumber memiliki pembaruan di repositori Keiyoushi, pengguna sebelumnya harus bolak-balik ke tab `Jelajahi -> Repository`, mencari manual sumber tersebut, lalu memperbaruinya.
+   - Pengguna menginginkan pengecekan otomatis langsung saat membuka detail sumber, dan jika ada versi baru di repo, tampilkan banner update 1-tap di bagian atas.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Deteksi Otomatis & Pembaruan Domain Sumber (`SourceDetailScreen` & `WebViewScreen`)**:
+   - Menambahkan method `updateSourceUrl(id, newUrl)` di `SourcesNotifier` (`sources_state.dart`): saat domain baru terdeteksi, URL aktif sumber langsung diperbarui, dan domain lama otomatis disimpan ke `urlAliases` sehingga komik lama di Library/History tetap bisa dibaca tanpa rusak.
+   - Di `WebViewScreen`: menambahkan `_checkDomainRedirect()` pada listener navigasi WebView. Jika URL berpindah ke domain resmi baru, Kizen langsung memperbarui URL sumber dan menampilkan notifikasi toast.
+   - Di `SourceDetailScreen`: menambahkan `_checkDomainHealth()` saat layar dibuka untuk mem-probe redirect domain aktif.
+   - Menambahkan `09.ikiru.wtf` dan `ikiru.id` ke `_hostAliases['Ikiru']` dan fallback mirror di `SourceCatalog.dart`.
+2. **Pembersihan False-Positive Parser Cloudflare (`UniversalHtmlSource` & `AdaptiveSource`)**:
+   - Di `UniversalHtmlSource`: `_getRenderedHtml()` sekarang memvalidasi konten. Jika HTML mengandung penanda challenge Cloudflare Turnstile (`cf-turnstile`, `/cdn-cgi/challenge-platform/`, `Attention Required! | Cloudflare`), WebView off-screen menolak hasil tersebut (`return null`) sehingga tidak mengekstrak kartu fiktif.
+   - Menolak judul link yang sama persis dengan nama domain/host (seperti `09.ikiru.wtf`, `.wtf`, `.xxx`).
+   - Di `AdaptiveSource`: jika strategi melempar `MangaSourceWebViewException` (Turnstile 403), exception tidak ditelan diam-diam, melainkan diteruskan ke UI sehingga banner bantuan WebView dan tombol aksi Cloudflare muncul dengan rapi.
+3. **Banner Update Ekstensi 1-Tap di Source Detail (`source_detail_screen.dart`)**:
+   - Ditambahkan fungsi pencocokan otomatis sumber dengan repository Keiyoushi via `findRepoSource()`.
+   - Jika versi ekstensi terpasang lebih lama dari repo (`updateAvailable == true`), Kizen otomatis merender banner amber elegan di bagian atas layar: *"Pembaruan Ekstensi [v{versi}] · Tersedia di Keiyoushi. Perbarui agar web lancar."* dengan tombol 1-tap *"Perbarui"*.
+4. **Helper Update Anti-Bentrok Signature (`ExtensionUpdateHelper` di `lib/data/extension_update_helper.dart`)**:
+   - Menghilangkan race condition delay 1.2s.
+   - Mengunduh dan men-cache APK pembaruan terlebih dahulu ke local storage.
+   - Menampilkan bottom sheet informatif dengan opsi *"Copot Versi Lama & Pasang Otomatis"* dan *"Coba Perbarui Langsung"*.
+   - Saat pengguna memilih copot & pasang otomatis, helper memicu uninstall intent Android, lalu secara reaktif memantau status uninstalasi melalui `listInstalledExtensions()`. Begitu versi lama bersih tercopot dari OS, APK baru yang sudah di-cache langsung di-launch untuk dipasang—100% tanpa bentrok signature.
+5. **DNS & DoH Hardening**:
+   - Menambahkan pemetaan Anycast Cloudflare/hosting untuk `ikiru.wtf` di `DohResolver.dart` dan `kizen_http_client_io.dart`.
+6. **Verifikasi & Pengujian**:
+   - `flutter analyze`: 100% bersih, 0 issues.
+   - `flutter test -j 1`: 173 passed, 0 failed, 3 skipped.
+   - `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: kompilasi web sukses (`✓ Built build/web`).
+   - `flutter build apk --release`: kompilasi APK release sukses (`✓ Built build/app/outputs/flutter-apk/app-release.apk`, 69.4MB).
+   - Diuji langsung pada perangkat fisik Android (vivo iQOO I2508 via USB debugging):
+     * Bottom sheet update helper anti-bentrok signature berhasil muncul dan terverifikasi visual.
+     * Banner pembaruan ekstensi v1.6.7 muncul di header detail sumber.
+     * Ikiru mendeteksi domain `09.ikiru.wtf` tanpa kartu fiktif.
+     * Quick VPN Button aktif dan responsif di App Bar.
+
+---
+
 ### 2026-11-05 — Kizen v1.2.4: Redesain Tampilan VPN (Minimalis & Modern), Penanganan Seamless Cloudflare Turnstile, & Auto-Clearance Cookie Sync
 
 Permintaan user:
