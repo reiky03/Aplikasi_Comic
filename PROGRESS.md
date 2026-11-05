@@ -4314,3 +4314,33 @@ Verifikasi:
 4. Overwrite rilis GitHub:
    - Mengunggah file APK baru `kizen-v1.2.6.apk` ke tag `v1.2.6` dengan opsi `--clobber` (SHA-256: `de21929999f4d37d000cc2e55219782e03c2077afdba3d8b7c2670caa5bfe192`).
    - Memperbarui catatan rilis di GitHub Releases dengan checksum yang cocok.
+
+---
+
+### 2026-11-05 — Hotfix Rilis v1.2.6 (Part 2): Sinkronisasi Versi Layar Setelan & Update Dokumentasi README
+
+**Keluhan User**:
+"oke dah bsia, tapi itu beb kok gak sinkron versinya, soalnya di setelan dibawah tombol keluar versinya mash 1.2.4 dan di tentang dah 1.2.6 kok bisa beda, perbaiki beb, dan sempurnakan kalau masih ada bug di 1.2.6"
+
+**Root Cause**:
+- Di `lib/features/settings/settings_screen.dart:290`, teks versi di bawah tombol "Keluar" sebelumnya ditulis sebagai literal string konstan `'Kizen v1.2.4'` secara hardcoded.
+- Sementara itu, di layar Tentang (`AboutScreen`), versi ditampilkan secara dinamis menggunakan konstanta `kAppVersion` (`'1.2.6'`) dan `kAppBuild` (`'18'`).
+- Akibatnya, saat user membuka menu Setelan, bagian bawah menampilkan `Kizen v1.2.4`, sedangkan menu Tentang menampilkan `v1.2.6 (build 18)`.
+
+**Solusi & Tindakan**:
+1. **Dinamisasi Versi di Setelan (`settings_screen.dart`)**:
+   - Mengganti `'Kizen v1.2.4'` menjadi `'Kizen v$kAppVersion'`.
+   - Membungkus teks versi dengan `InkWell` interaktif: jika diketuk, pengguna langsung diarahkan ke `AboutScreen()` untuk melihat informasi rilis, cek update, atau lisensi.
+2. **Pembaruan Link & Badge README (`README.md`)**:
+   - Memperbarui tautan unduhan APK dan badge versi dari `v1.2.4` menjadi `v1.2.6`.
+   - Menambahkan ringkasan fitur v1.2.6 (Quick Toggle VPN In-Screen, auto-reload 1-tap, dan peningkatan universal parser).
+3. **Pengujian Baru (`settings_screen_test.dart`)**:
+   - Dibuat unit test [settings_screen_test.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/test/features/settings/settings_screen_test.dart) yang memverifikasi bahwa:
+     * `SettingsScreen` menampilkan `Kizen v$kAppVersion`.
+     * String versi basi (`Kizen v1.2.4` dan `Kizen v1.2.5`) tidak ada sama sekali.
+     * Mengetuk teks versi membuka `AboutScreen` secara mulus.
+4. **Verifikasi Biner & Overwrite GitHub Release**:
+   - Kompilasi ulang `flutter build apk --release` (69.4MB).
+   - Verifikasi biner `libapp.so`: string `Kizen v1.2.6` dan `v1.2.6 (18)` terverifikasi ada, `Kizen v1.2.4` nihil.
+   - APK rilis `kizen-v1.2.6.apk` di-upload ulang ke GitHub Release `v1.2.6` (SHA-256: `ef607aba6b9083200b620cfda885be3b3fd695abc9d76e8b2747cb4de22b49e8`).
+   - `flutter analyze` 100% bersih, dan seluruh 171/171 unit test lolos.

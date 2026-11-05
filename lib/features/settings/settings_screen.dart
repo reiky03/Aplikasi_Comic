@@ -286,13 +286,24 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Kizen v1.2.4',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.jakarta(
-                    size: 11,
-                    weight: FontWeight.w400,
-                    color: AppColors.textFaintest,
+                InkWell(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AboutScreen(),
+                    ),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    child: Text(
+                      'Kizen v$kAppVersion',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.jakarta(
+                        size: 11,
+                        weight: FontWeight.w400,
+                        color: AppColors.textFaintest,
+                      ),
+                    ),
                   ),
                 ),
               ],

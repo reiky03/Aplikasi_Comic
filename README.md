@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.4/kizen-v1.2.4.apk">
-    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.4)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.6/kizen-v1.2.6.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.6)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
   <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
     <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru&style=for-the-badge" alt="Rilis Terbaru" />
@@ -31,11 +31,10 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ## ✨ Fitur-Fitur Seru
 
-- 🛡️ **Kizen VPN Terintegrasi (Built-in Anti-Blokir)**: Gak perlu lagi download aplikasi VPN luar dari Play Store atau bolak-balik ganti app cuma buat baca komik! Kizen sudah punya VPN native ter-build langsung di dalam aplikasi (memanfaatkan Android `VpnService` + DoH Wire-Format). Bebas membuka berbagai situs web komik dan galeri manga populer yang terblokir Internet Positif / DNS poisoning ISP Indonesia dengan pilihan server:
-  - 🇭🇰 **Hong Kong (DNS.SB Anycast)** — *Bypass tercepat galeri komik & server Asia (Rekomendasi)*
-  - 🇸🇬 **Singapura (Cloudflare 1.1.1.1)** — *Koneksi ultra-cepat Anycast latency rendah*
-  - 🛡️ **AdGuard Shield** — *Proteksi iklan popup & malware agresif*
-  - 🌐 **Google Public DNS** — *Server global dengan stabilitas tinggi*
+- 🛡️ **Kizen VPN Terintegrasi & Quick Toggle In-Screen**: Gak perlu lagi download aplikasi VPN luar dari Play Store atau bolak-balik ganti app cuma buat baca komik! Kizen sudah punya VPN native ter-build langsung di dalam aplikasi (memanfaatkan Android `VpnService` + DoH Wire-Format).
+  - **Quick Toggle In-Screen**: Tombol VPN tersedia langsung di toolbar Reader, Header Sumber, Detail Komik, dan Browser Internal. Jika komik terblokir saat sedang dibaca, cukup 1-tap untuk mengaktifkan VPN dan memuat ulang otomatis tanpa harus keluar ke menu Pengaturan.
+  - Pilihan server cepat: 🇭🇰 Hong Kong (DNS.SB Anycast), 🇸🇬 Singapura (Cloudflare 1.1.1.1), 🛡️ AdGuard Shield, dan 🌐 Google Public DNS.
+- ⚡ **Peningkatan Universal Parser & Fallback Cerdas**: Didukung multi-selector ekstraksi cerdas untuk arsitektur tema web populer (MangaThemesia, Madara, SvelteKit, NatsuID, galeri single-gallery, dll). Jika paket extension APK luar mengalami konflik instalasi (misal bentrok dengan Mihon), sistem otomatis beralih ke parser native yang sesuai tanpa error.
 - 🔓 **Advanced Web Engine & Cloudflare Solver**: Dibekali engine native decryptor untuk situs web komik berbasis SPA/API terenkripsi dan integrasi otomatis Cloudflare Turnstile solver, lengkap dengan routing Anycast CDN gambar berkecepatan tinggi.
 - 🚀 **In-App Direct Update & Install**: Cek pembaruan langsung di Pengaturan > Tentang, unduh APK rilis langsung di dalam aplikasi dengan progress bar real-time, dan pasang otomatis tanpa ribet bolak-balik browser.
 - 🌐 **Universal Web Parser**: Tinggal tempel link homepage web komik favorit kamu di *"Sumber Saya"*, Kizen bakal coba deteksi dan parse daftarnya otomatis (support MangaThemesia, Madara CMS, dan berbagai web custom).
