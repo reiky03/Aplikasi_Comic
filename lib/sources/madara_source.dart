@@ -342,7 +342,10 @@ class MadaraSource implements MangaSource {
   List<SourceChapter> _parseChapters(Document document) {
     final chapters = <SourceChapter>[];
     final seen = <String>{};
-    for (final row in document.querySelectorAll('li.wp-manga-chapter')) {
+    for (final row in document.querySelectorAll(
+      'li.wp-manga-chapter, ul.main.version-chap li, .chapter-li, '
+      'div.chapter-item, #chapterlist li, .listing-chapters_wrap li',
+    )) {
       final link = row.querySelector('a');
       final href = link?.attributes['href'];
       if (link == null || href == null || href.isEmpty) continue;
@@ -438,7 +441,8 @@ class MadaraSource implements MangaSource {
     for (final element in document.querySelectorAll(
       'div.page-break, li.blocks-gallery-item, '
       '.reading-content .text-left img, .reading-content img, '
-      '#readerarea img, .chapter-content img',
+      '#readerarea img, .chapter-content img, .wp-manga-chapter-img img, '
+      'div.page-break img, .entry-content img, div.item-content img',
     )) {
       final image = element.localName == 'img'
           ? element

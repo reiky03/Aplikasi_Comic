@@ -16,6 +16,7 @@ import '../../data/repository_state.dart';
 import '../../data/source_resolver.dart';
 import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
+import '../../data/vpn_state.dart';
 import '../../sources/manga_source.dart';
 import '../browse/web_view_screen.dart';
 import '../reader/reader_screen.dart';
@@ -119,6 +120,16 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _toggleVpnAndReload() async {
+    await ref.read(vpnProvider.notifier).toggle();
+    if (!mounted) return;
+    AppToast.show(
+      context,
+      '🛡️ VPN Kizen Aktif. Memuat ulang chapter...',
+    );
+    _loadReal();
   }
 
   /// Versi terkini dari library bila ada (progress bisa berubah).
@@ -277,26 +288,69 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                       ),
                     ),
                   )
-                : InkWell(
-                    onTap: _loadReal,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      height: 38,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!ref.watch(vpnProvider).isEnabled) ...[
+                        InkWell(
+                          onTap: _toggleVpnAndReload,
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            height: 40,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.55),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  LucideIcons.shieldCheck,
+                                  size: 16,
+                                  color: Color(0xFF10B981),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Nyalakan VPN & Muat Ulang Chapter',
+                                  style: AppTypography.jakarta(
+                                    size: 12.5,
+                                    weight: FontWeight.w700,
+                                    color: const Color(0xFF10B981),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      InkWell(
+                        onTap: _loadReal,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.borderStrong),
-                      ),
-                      child: Text(
-                        'Gagal memuat chapter — Coba Lagi',
-                        style: AppTypography.jakarta(
-                          size: 12.5,
-                          weight: FontWeight.w700,
-                          color: AppColors.danger,
+                        child: Container(
+                          height: 38,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.borderStrong),
+                          ),
+                          child: Text(
+                            'Gagal memuat chapter — Coba Lagi',
+                            style: AppTypography.jakarta(
+                              size: 12.5,
+                              weight: FontWeight.w700,
+                              color: AppColors.danger,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
           ),
         // Action row
@@ -492,24 +546,74 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                   16,
                   0,
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                    child: InkWell(
-                      onTap: () => Navigator.of(context).pop(),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        color: Colors.black.withValues(alpha: 0.4),
-                        child: const Icon(
-                          AppIcons.back,
-                          size: 20,
-                          color: Colors.white,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).pop(),
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            color: Colors.black.withValues(alpha: 0.4),
+                            child: const Icon(
+                              AppIcons.back,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                    Row(
+                      children: [
+                        KizenVpnQuickButton(
+                          compact: true,
+                          onToggled: (enabled) {
+                            if (enabled && _error != null) _loadReal();
+                          },
+                        ),
+                        if (widget.comic.sourceMangaUrl != null) ...[
+                          const SizedBox(width: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                              child: InkWell(
+                                onTap: () {
+                                  final url = widget.comic.sourceMangaUrl!;
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => WebViewScreen(
+                                        sourceId: widget.comic.src,
+                                        initialUrl: url,
+                                        fallbackSource: _comicSource,
+                                      ),
+                                    ),
+                                  ).then((_) {
+                                    if (mounted) _loadReal();
+                                  });
+                                },
+                                child: Container(
+                                  width: 40,
+                                  height: 40,
+                                  color: Colors.black.withValues(alpha: 0.4),
+                                  child: const Icon(
+                                    LucideIcons.globe,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 26),

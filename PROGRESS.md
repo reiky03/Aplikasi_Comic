@@ -4223,3 +4223,65 @@ Verifikasi:
 - `flutter test -j 1`: 169/169 unit & widget test lulus 100% (3 skipped).
 - `flutter build web`: Berhasil compile.
 - `flutter build apk --release`: Selesai dalam 84 detik (69.4MB).
+
+
+---
+
+## 5 November 2026 — Rilis v1.2.6: Quick VPN Toggle In-Screen saat Baca Komik & Penyempurnaan Engine Parsing Multi-Sumber Web Komik
+
+### Latar Belakang & Keluhan User:
+1. User meminta penambahan tombol/ekstensi VPN langsung di layar saat membaca komik (`ReaderScreen`), layar detail sumber, detail komik, maupun webview: jika user lupa menghidupkan VPN dari pengaturan dan komik gagal termuat, tombol VPN tersedia langsung di layar agar bisa diaktifkan 1-tap tanpa harus keluar ke menu Pengaturan.
+2. User melaporkan situs komik seperti IMHentai (Cloudflare Turnstile 403), Kiryu/Kiryuu, Komikcast, ToonGod, MGKomik, Softkomik, SoulScans, Ikiru, dan Doujindesu mengalami kendala saat ekstensi repo bentrok dengan instalasi aplikasi lain (misal Mihon) atau signature package clash: Kizen perlu memiliki parser native canggih dan fallback cerdas sehingga sumber komik tetap dapat dibuka dan dibaca lancar tanpa harus bergantung penuh pada update ekstensi APK luar.
+3. Menjaga seluruh stabilitas v1.2.5 (VPN auto-stop saat app ditutup, 3s splash, dsb) tanpa merusak fungsionalitas yang sudah ada.
+
+### Analisis & Root Cause:
+1. **Navigasi VPN Terpisah**: Sebelumnya status dan tombol toggle VPN hanya berada di menu Pengaturan. Saat user sedang asyik membaca atau menjelajahi katalog dan menemui error pemblokiran jaringan/ISP, user terpaksa harus kembali berulang kali ke Pengaturan.
+2. **Keterbatasan Atribut Lazy-Load & Script Parser**:
+   - `MangaThemesiaSource` hanya memeriksa `data-lazy-src`, `data-src`, dan `data-cfsrc`, sementara situs seperti Kiryuu & Komikcast menggunakan `data-original`, `data-url`, `data-image`, atau format script `ts_reader.run({...})` dengan format multi-baris (`dotAll` missing).
+   - `MadaraSource` (ToonGod, MGKomik) memiliki variasi wrapper chapter (`ul.main.version-chap`, `div.chapter-item`) yang belum masuk selector query.
+   - `ImhentaiSource` melempar exception 403 secara langsung tanpa mencoba headless rendering `renderHtmlWithWebView` bawaan Kizen.
+   - `ExtensionRuntimeSource` jika ekstensi APK tidak terpasang/gagal load hanya memetakan 4 domain lama sebelum masuk ke parser adaptif umum, belum secara langsung mengenali keluarga MangaThemesia (Kiryuu, Komikcast), Madara (ToonGod, MGKomik), NatsuID (Ikiru), dsb.
+3. **Session Save di WebView Terkunci**: Tombol simpan sesi browser di `WebViewScreen` ter-disable permanen jika flag sesi lama bernilai aktif, sehingga user tidak bisa memperbarui cookie jika sesi Cloudflare kedaluwarsa.
+
+### Perubahan & Solusi:
+1. **Widget Reusable `KizenVpnQuickButton`**:
+   - Dibuat di [vpn_quick_button.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/core/widgets/vpn_quick_button.dart) dan diekspor melalui [widgets.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/core/widgets/widgets.dart).
+   - Tampilan visual premium sesuai pedoman UI/UX Kizen: indikator emerald glowing saat aktif (`LucideIcons.shieldCheck`), amber warning saat nonaktif (`LucideIcons.shieldAlert`), dan animasi loading saat koneksi.
+   - Dilengkapi callback `onToggled` untuk auto-reload instan.
+2. **Integrasi Tombol VPN In-Screen**:
+   - **ReaderScreen** ([reader_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/reader/reader_screen.dart)):
+     - Disematkan di top app bar reader di samping tombol bookmark.
+     - Pada layar error muat halaman/chapter: jika VPN mati, muncul tombol utama mencolok **"Nyalakan VPN & Muat Ulang"** dengan aksen emerald yang langsung menyalakan VPN dan mengulang proses muat gambar.
+   - **SourceDetailScreen** ([source_detail_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/browse/source_detail_screen.dart)):
+     - Disematkan di header app bar bersama tombol refresh dan webview.
+     - Ditambahkan aksi **"Nyalakan VPN & Muat Ulang"** pada state error sumber.
+   - **ComicDetailScreen** ([comic_detail_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/detail/comic_detail_screen.dart)):
+     - Disematkan di top bar navigasi bersama back button dan webview shortcut.
+     - Banner error chapter menyediakan tombol **"Nyalakan VPN & Muat Ulang Chapter"**.
+   - **WebViewScreen** ([web_view_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/browse/web_view_screen.dart)):
+     - Disematkan di address bar webview.
+     - Tombol **"Sesi Aktif — Simpan & Kembali"** dapat ditekan kapan saja tanpa terkunci disabled.
+3. **Penyempurnaan Parser Multi-Sumber & Fallback Runtime**:
+   - **MangaThemesiaSource** ([mangathemesia_source.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/mangathemesia_source.dart)):
+     - Ditambahkan atribut lazy-load lengkap (`data-original`, `data-url`, `data-lazy`, `data-image`, `data-thumb`, `data-src-retina`, `srcset`).
+     - Regex ekstraksi gambar JavaScript script diperbarui dengan flag `dotAll: true` serta dukungan format script `ts_reader.run`.
+     - Ditambahkan fallback katalog `/daftar-komik/` untuk Komikcast.
+     - Selector chapter diperluas (`ul.clstyle li`, `.komik_info-chapters-item`, dsb).
+   - **MadaraSource** ([madara_source.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/madara_source.dart)):
+     - Selector chapter diperluas (`ul.main.version-chap li`, `.chapter-li`, `.listing-chapters_wrap li`).
+     - Selector gambar chapter diperluas (`.wp-manga-chapter-img img`, `div.item-content img`).
+   - **ImhentaiSource** ([imhentai_source.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/imhentai_source.dart)):
+     - Menambahkan fallback headless `renderHtmlWithWebView` dan auto-sync cookie session saat request HTTP menemui proteksi Cloudflare Turnstile.
+     - Header browser modern standar ditambahkan (`Sec-Fetch-*`, `Upgrade-Insecure-Requests`).
+   - **AdaptiveSource & SourceCatalog & ExtensionRuntimeSource**:
+     - Memetakan secara langsung nama dan domain sumber: `Kiryuu`, `Komikcast`, `ToonGod`, `MGKomik`, `Softkomik`, `SoulScans`, `Ikiru`, `Komiku`, `Doujindesu`, `IMHentai`.
+     - Jika ekstensi APK tidak terpasang atau bentrok signature dengan Mihon, runtime langsung beralih ke parser native yang sesuai tanpa error.
+4. **Bump Versi ke 1.2.6 (Build 18)**:
+   - `pubspec.yaml` dan `about_screen.dart` dinaikkan ke versi `1.2.6+18`.
+   - File APK release `kizen-v1.2.6.apk` berhasil di-build (SHA-256: `4fdffb5bd532721f4bbb1522ed4554d73cd43045591d9ff16a0a01fa1393c6eb`).
+
+### Verifikasi:
+- `flutter analyze`: Nol issue (0 errors, 0 warnings).
+- `flutter test -j 1`: 170/170 test lulus 100% (+1 test baru `vpn_quick_button_test.dart`, 3 skipped).
+- `flutter build web`: Berhasil compile.
+- `flutter build apk --release`: Berhasil ter-build (69.4MB, 65s).

@@ -61,12 +61,27 @@ class MangaThemesiaSource implements MangaSource {
 
   /// Setara `imgAttr()` Kotlin — situs lazy-load gambar via atribut lain.
   String? _imgAttr(Element img) {
-    for (final attr in ['data-lazy-src', 'data-src', 'data-cfsrc']) {
-      final v = img.attributes[attr];
-      if (_isRealImageUrl(v)) return _absUrl(v!);
+    for (final attr in [
+      'data-lazy-src',
+      'data-src',
+      'data-cfsrc',
+      'data-original',
+      'data-url',
+      'data-lazy',
+      'data-image',
+      'data-thumb',
+      'data-src-retina',
+      'srcset',
+      'src',
+    ]) {
+      var v = img.attributes[attr];
+      if (v == null) continue;
+      if (attr == 'srcset') {
+        v = v.split(',').first.trim().split(' ').first;
+      }
+      if (_isRealImageUrl(v)) return _absUrl(v);
     }
-    final src = img.attributes['src'];
-    return _isRealImageUrl(src) ? _absUrl(src!) : null;
+    return null;
   }
 
   bool _isRealImageUrl(String? url) {
@@ -87,26 +102,82 @@ class MangaThemesiaSource implements MangaSource {
     String query = '',
     required String order,
   }) async {
-    final url = Uri.parse('$baseUrl/manga/').replace(
+    Uri url = Uri.parse('$baseUrl/manga/').replace(
       queryParameters: {'title': query, 'page': '$page', 'order': order},
     );
-    final document = await _getHtml(url);
-    final mangas = document
+    Document document;
+    try {
+      document = await _getHtml(url);
+    } catch (_) {
+      // Fallback untuk varian Komikcast yang menggunakan /daftar-komik/
+      url = Uri.parse('$baseUrl/daftar-komik/').replace(
+        queryParameters: {'title': query, 'page': '$page', 'sortby': order},
+      );
+      document = await _getHtml(url);
+    }
+    var mangas = document
         .querySelectorAll(
-          '.utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx',
+          '.utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx, '
+          '.listupd .komiklist-item, .animepost, .film-list .item',
         )
         .map((el) {
           final a = el.querySelector('a');
           final img = el.querySelector('img');
+          final href = a?.attributes['href']?.trim() ?? '';
+          if (href.isEmpty) return null;
+          final title =
+              el.querySelector('.tt, h4, h3, .title')?.text.trim() ??
+              a?.attributes['title']?.trim() ??
+              a?.text.trim() ??
+              '';
           return SourceManga(
-            url: _absUrl(a?.attributes['href'] ?? ''),
-            title: a?.attributes['title'] ?? '',
+            url: _absUrl(href),
+            title: title.isEmpty ? 'Untitled' : title,
             thumbnailUrl: img == null ? null : _imgAttr(img),
           );
         })
+        .whereType<SourceManga>()
         .toList();
+
+    // Jika /manga/ menghasilkan kosong, coba cek katalog Komikcast di /daftar-komik/
+    if (mangas.isEmpty && !url.path.contains('daftar-komik')) {
+      try {
+        final altUrl = Uri.parse('$baseUrl/daftar-komik/').replace(
+          queryParameters: {'title': query, 'page': '$page', 'sortby': order},
+        );
+        final altDoc = await _getHtml(altUrl);
+        final altMangas = altDoc
+            .querySelectorAll(
+              '.utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx, '
+              '.listupd .komiklist-item, .animepost, .film-list .item',
+            )
+            .map((el) {
+              final a = el.querySelector('a');
+              final img = el.querySelector('img');
+              final href = a?.attributes['href']?.trim() ?? '';
+              if (href.isEmpty) return null;
+              final title =
+                  el.querySelector('.tt, h4, h3, .title')?.text.trim() ??
+                  a?.attributes['title']?.trim() ??
+                  a?.text.trim() ??
+                  '';
+              return SourceManga(
+                url: _absUrl(href),
+                title: title.isEmpty ? 'Untitled' : title,
+                thumbnailUrl: img == null ? null : _imgAttr(img),
+              );
+            })
+            .whereType<SourceManga>()
+            .toList();
+        if (altMangas.isNotEmpty) {
+          mangas = altMangas;
+          document = altDoc;
+        }
+      } catch (_) {}
+    }
+
     final hasNextPage =
-        document.querySelector('div.pagination .next, div.hpage .r') != null;
+        document.querySelector('div.pagination .next, div.hpage .r, a.next') != null;
     return SourceMangaPage(mangas: mangas, hasNextPage: hasNextPage);
   }
 
@@ -240,12 +311,13 @@ class MangaThemesiaSource implements MangaSource {
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
     final document = await _getHtml(Uri.parse(mangaUrl));
     final rows = document.querySelectorAll(
-      'div.bxcl li, div.cl li, #chapterlist li',
+      'div.bxcl li, div.cl li, #chapterlist li, ul.clstyle li, '
+      '.komik_info-chapters-item, li.wp-manga-chapter, .chapter-list li',
     );
     return rows.map((el) {
       final a = el.querySelector('a');
       final name =
-          el.querySelector('.lch a, .chapternum')?.text.trim() ??
+          el.querySelector('.lch a, .chapternum, .chapter-link-item')?.text.trim() ??
           a?.text.trim() ??
           '';
       final date = el.querySelector('.chapterdate')?.text.trim();
@@ -257,12 +329,18 @@ class MangaThemesiaSource implements MangaSource {
     }).toList();
   }
 
-  static final _imageListRegex = RegExp(r'"images"\s*:\s*(\[.*?\])');
+  static final _imageListRegex =
+      RegExp(r'"images"\s*:\s*(\[.*?\])', dotAll: true);
+  static final _tsReaderRegex =
+      RegExp(r'ts_reader\.run\(\s*(\{.*?\})\s*\);', dotAll: true);
 
   @override
   Future<List<SourcePage>> fetchPageList(String chapterUrl) async {
     final document = await _getHtml(Uri.parse(chapterUrl));
-    final imgs = document.querySelectorAll('div#readerarea img');
+    final imgs = document.querySelectorAll(
+      'div#readerarea img, div#chimg-conver img, .mainreading img, '
+      '#readerarea p img, .reading-content img, .chapter-image img',
+    );
     if (imgs.isNotEmpty) {
       final pages = [
         for (var i = 0; i < imgs.length; i++)
@@ -271,22 +349,38 @@ class MangaThemesiaSource implements MangaSource {
       ];
       if (pages.isNotEmpty) return pages;
     }
-    // Sejumlah situs memuat halaman lewat JavaScript — cari array
-    // "images": [...] tertanam di script.
-    final match = _imageListRegex.firstMatch(document.outerHtml);
-    if (match == null) {
-      throw MangaSourceException('Gambar chapter $name tidak ditemukan.');
+    // Sejumlah situs memuat halaman lewat JavaScript (ts_reader atau array "images": [...])
+    final htmlContent = document.outerHtml;
+    final match = _imageListRegex.firstMatch(htmlContent);
+    if (match != null) {
+      final rawList = match.group(1)!;
+      final urls = RegExp(
+        r'"([^"]+)"',
+      ).allMatches(rawList).map((m) => m.group(1)!).where(_isRealImageUrl).toList();
+      if (urls.isNotEmpty) {
+        return [
+          for (var i = 0; i < urls.length; i++)
+            SourcePage(index: i, imageUrl: urls[i]),
+        ];
+      }
     }
-    final urls = RegExp(
-      r'"([^"]+)"',
-    ).allMatches(match.group(1)!).map((m) => m.group(1)!).toList();
-    final pages = [
-      for (var i = 0; i < urls.length; i++)
-        SourcePage(index: i, imageUrl: urls[i]),
-    ];
-    if (pages.isEmpty) {
-      throw MangaSourceException('Gambar chapter $name tidak ditemukan.');
+
+    final tsMatch = _tsReaderRegex.firstMatch(htmlContent);
+    if (tsMatch != null) {
+      final rawJson = tsMatch.group(1)!;
+      final urls = RegExp(
+        r'"(https?:\\?/\\?/[^"]+)"',
+      ).allMatches(rawJson).map((m) {
+        return m.group(1)!.replaceAll(r'\/', '/');
+      }).where(_isRealImageUrl).toList();
+      if (urls.isNotEmpty) {
+        return [
+          for (var i = 0; i < urls.length; i++)
+            SourcePage(index: i, imageUrl: urls[i]),
+        ];
+      }
     }
-    return pages;
+
+    throw MangaSourceException('Gambar chapter $name tidak ditemukan.');
   }
 }

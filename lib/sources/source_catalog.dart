@@ -218,16 +218,49 @@ abstract final class SourceCatalog {
   }
 
   static MangaSource? _knownPreferredSource(String name, String baseUrl) {
-    return switch (name.trim().toLowerCase()) {
-      'asura scans' => AsuraSource(),
-      'shinigami' => ShinigamiSource(),
-      'komiku' => KomikuSource(),
-      'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
-      'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
-      'doujindesu' => DoujindesuSource(name: name, baseUrl: baseUrl),
-      'imhentai' => ImhentaiSource(name: name, baseUrl: baseUrl),
-      _ => null,
-    };
+    final lower = name.trim().toLowerCase();
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
+
+    if (lower.contains('asura') || host.contains('asuracomic') || host.contains('asurascans')) {
+      return AsuraSource();
+    }
+    if (lower.contains('shinigami') || host.contains('shinigami') || host.contains('shngm')) {
+      return ShinigamiSource();
+    }
+    if (lower.contains('komiku') || host.contains('komiku')) {
+      return KomikuSource();
+    }
+    if (lower.contains('doujindesu') || host.contains('doujindesu') || host.contains('doujin.desu')) {
+      return DoujindesuSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('imhentai') || host.contains('imhentai')) {
+      return ImhentaiSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('soulscans') || host.contains('soulscans')) {
+      return SvelteKitComicSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('ikiru') || host.contains('ikiru')) {
+      return NatsuIdSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('kiryu') || lower.contains('kiryuu') || host.contains('kiryuu')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('komikcast') || host.contains('komikcast')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('toongod') || host.contains('toongod')) {
+      return MadaraSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('mgkomik') || host.contains('mgkomik')) {
+      return MadaraSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('softkomik') || host.contains('softkomik')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('komikindo') || host.contains('komikindo')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    return null;
   }
 
   /// Mirror kanonis yang sudah diumumkan extension upstream. Ini hanya masuk
@@ -237,11 +270,28 @@ abstract final class SourceCatalog {
     String name,
     String baseUrl,
   ) sync* {
+    final lower = name.trim().toLowerCase();
     final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
-    if (name.trim().toLowerCase() == 'ikiru' ||
+    if (lower == 'ikiru' ||
         host == 'ikiru.wtf' ||
         host.endsWith('.ikiru.wtf')) {
       yield 'https://07.ikiru.wtf';
+    }
+    if (lower.contains('imhentai') || host.contains('imhentai')) {
+      yield 'https://imhentai.xxx';
+      yield 'https://m.imhentai.xxx';
+    }
+    if (lower.contains('toongod') || host.contains('toongod')) {
+      yield 'https://www.toongod.org';
+      yield 'https://toongod.cc';
+    }
+    if (lower.contains('kiryu') || host.contains('kiryuu')) {
+      yield 'https://kiryuu01.com';
+      yield 'https://kiryuu.id';
+    }
+    if (lower.contains('komikcast') || host.contains('komikcast')) {
+      yield 'https://komikcast01.com';
+      yield 'https://komikcast.bz';
     }
   }
 

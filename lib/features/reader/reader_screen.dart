@@ -18,6 +18,7 @@ import '../../data/repository_state.dart';
 import '../../data/source_resolver.dart';
 import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
+import '../../data/vpn_state.dart';
 import '../../sources/manga_source.dart';
 import '../detail/comic_detail_screen.dart';
 import '../browse/web_view_screen.dart';
@@ -1135,6 +1136,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     VoidCallback onRetry, {
     String? webViewUrl,
   }) {
+    final vpn = ref.watch(vpnProvider);
+    final isVpnEnabled = vpn.isEnabled;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -1151,6 +1155,61 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
               ),
             ),
             const SizedBox(height: 16),
+            if (!isVpnEnabled) ...[
+              InkWell(
+                onTap: () async {
+                  await ref.read(vpnProvider.notifier).toggle();
+                  if (mounted) {
+                    AppToast.show(
+                      context,
+                      '🛡️ VPN Kizen Diaktifkan. Memuat ulang...',
+                    );
+                    onRetry();
+                  }
+                },
+                borderRadius: BorderRadius.circular(11),
+                child: Container(
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        LucideIcons.shieldCheck,
+                        size: 18,
+                        color: Color(0xFF10B981),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Nyalakan VPN & Muat Ulang',
+                        style: AppTypography.jakarta(
+                          size: 13,
+                          weight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             InkWell(
               onTap: onRetry,
               borderRadius: BorderRadius.circular(11),
@@ -1165,7 +1224,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                   ),
                 ),
                 child: Text(
-                  'Coba Lagi',
+                  !isVpnEnabled ? 'Coba Lagi Tanpa VPN' : 'Coba Lagi',
                   style: AppTypography.jakarta(
                     size: 13,
                     weight: FontWeight.w700,
@@ -1712,7 +1771,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
+              KizenVpnQuickButton(
+                compact: true,
+                onToggled: (enabled) {
+                  if (enabled && (_pagesError != null || _chaptersError != null)) {
+                    if (_pagesError != null) _loadRealPages();
+                    if (_chaptersError != null) _loadChapterList();
+                  }
+                },
+              ),
+              const SizedBox(width: 8),
               _chromeButton(
                 size: 38,
                 icon: _isCurrentPageBookmarked()
@@ -1721,7 +1790,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                 active: _isCurrentPageBookmarked(),
                 onTap: _toggleBookmark,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               _chromeButton(
                 size: 38,
                 icon: AppIcons.more,

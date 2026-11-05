@@ -292,6 +292,13 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  KizenVpnQuickButton(
+                    compact: true,
+                    onToggled: (enabled) {
+                      if (enabled) _reload();
+                    },
+                  ),
                   const SizedBox(width: 4),
                   InkWell(
                     onTap: _reload,
@@ -365,31 +372,40 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: InkWell(
-                      onTap: sessionActive ? null : _markSessionActive,
+                      onTap: _markSessionActive,
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
                         height: 44,
                         decoration: BoxDecoration(
                           color: sessionActive
-                              ? AppColors.switchTrackOff
+                              ? const Color(0xFF10B981)
                               : AppColors.accent,
                           borderRadius: BorderRadius.circular(12),
+                          boxShadow: sessionActive
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ]
+                              : null,
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
                               sessionActive
-                                  ? AppIcons.downloaded
-                                  : LucideIcons.shieldCheck,
+                                  ? LucideIcons.shieldCheck
+                                  : LucideIcons.shieldAlert,
                               size: 17,
                               color: Colors.white,
                             ),
                             const SizedBox(width: 8),
                             Text(
                               sessionActive
-                                  ? 'Session Sudah Aktif'
-                                  : 'Tandai Session Aktif',
+                                  ? 'Sesi Aktif — Simpan & Kembali'
+                                  : 'Tandai Sesi Aktif',
                               style: AppTypography.jakarta(
                                 size: 13.5,
                                 weight: FontWeight.w700,

@@ -36,6 +36,10 @@ class ImhentaiSource implements MangaSource {
       'Accept':
           'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'same-origin',
+      'Upgrade-Insecure-Requests': '1',
       'Referer': '$baseUrl/',
       'User-Agent': session['User-Agent'] ??
           'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 '
@@ -46,16 +50,24 @@ class ImhentaiSource implements MangaSource {
 
   Future<Document> _fetchDocument(String targetUrl) async {
     final uri = Uri.parse(targetUrl);
-    var response = await _client.get(uri, headers: _headers);
+    http.Response? response;
+    try {
+      response = await _client.get(uri, headers: _headers);
+    } catch (_) {
+      // Jika request network gagal (koneksi ditolak/diblokir), coba langsung via headless WebView
+    }
 
-    if (response.statusCode == 403 ||
+    final isBlocked = response == null ||
+        response.statusCode == 403 ||
         response.body.contains('Just a moment...') ||
-        response.body.contains('challenges.cloudflare.com')) {
-      // Coba periksa apakah CookieManager native Android sudah memiliki clearance
+        response.body.contains('challenges.cloudflare.com');
+
+    if (isBlocked) {
+      // 1. Coba periksa apakah CookieManager native Android sudah memiliki sesi/clearance
       try {
         final session = await const ExtensionRuntimeBridge().readWebViewSession(baseUrl);
         final cookie = session.cookie ?? '';
-        if (cookie.contains('cf_clearance')) {
+        if (cookie.isNotEmpty) {
           await SourceSessionStore.save(
             url: baseUrl,
             cookie: cookie,
@@ -64,6 +76,52 @@ class ImhentaiSource implements MangaSource {
           response = await _client.get(uri, headers: _headers);
         }
       } catch (_) {}
+    }
+
+    final stillBlocked = response == null ||
+        response.statusCode == 403 ||
+        response.body.contains('Just a moment...') ||
+        response.body.contains('challenges.cloudflare.com');
+
+    if (stillBlocked) {
+      // 2. Coba headless WebView render bawaan Kizen
+      try {
+        final renderedHtml = await const ExtensionRuntimeBridge()
+            .renderHtmlWithWebView(
+              targetUrl,
+              sessionHeaders: _headers,
+            )
+            .timeout(const Duration(seconds: 12));
+        if (renderedHtml.isNotEmpty &&
+            !renderedHtml.contains('Just a moment...') &&
+            !renderedHtml.contains('challenges.cloudflare.com') &&
+            (renderedHtml.contains('thumb') ||
+                renderedHtml.contains('left_cover') ||
+                renderedHtml.contains('gthumb') ||
+                renderedHtml.contains('load_id'))) {
+          try {
+            final updatedSession =
+                await const ExtensionRuntimeBridge().readWebViewSession(baseUrl);
+            if (updatedSession.cookie != null &&
+                updatedSession.cookie!.isNotEmpty) {
+              await SourceSessionStore.save(
+                url: baseUrl,
+                cookie: updatedSession.cookie!,
+                userAgent: updatedSession.userAgent,
+              );
+            }
+          } catch (_) {}
+          return html.parse(renderedHtml);
+        }
+      } catch (_) {}
+    }
+
+    if (response == null) {
+      throw MangaSourceWebViewException(
+        url: targetUrl,
+        message:
+            'Gagal menghubungi IMHentai. Aktifkan VPN Kizen atau buka lewat WebView.',
+      );
     }
 
     if (response.statusCode == 403 ||

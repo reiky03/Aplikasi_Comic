@@ -12,3 +12,4 @@ export 'app_toggles.dart';
 export 'collection_sheets.dart';
 export 'library_glyph.dart';
 export 'source_site_icon.dart';
+export 'vpn_quick_button.dart';

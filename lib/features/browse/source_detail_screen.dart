@@ -12,6 +12,7 @@ import '../../data/models.dart';
 import '../../data/repository_state.dart';
 import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
+import '../../data/vpn_state.dart';
 import '../../sources/manga_source.dart';
 import '../../sources/source_catalog.dart';
 import '../detail/comic_detail_screen.dart';
@@ -395,7 +396,14 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
+                  KizenVpnQuickButton(
+                    compact: true,
+                    onToggled: (enabled) {
+                      if (enabled) _refresh();
+                    },
+                  ),
+                  const SizedBox(width: 8),
                   // Buka situs asli lewat WebView — jalan pintas kalau
                   // parser gagal/situs berubah struktur, tanpa harus
                   // nunggu status source berubah jadi "gagal" dulu.
@@ -1112,6 +1120,24 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (!ref.watch(vpnProvider).isEnabled) ...[
+                  _primaryAction(
+                    label: 'Nyalakan VPN & Muat Ulang',
+                    icon: LucideIcons.shieldCheck,
+                    color: const Color(0xFF10B981),
+                    onTap: () async {
+                      await ref.read(vpnProvider.notifier).toggle();
+                      if (mounted) {
+                        AppToast.show(
+                          context,
+                          '🛡️ VPN Kizen Aktif. Memuat ulang...',
+                        );
+                        _retry();
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 9),
+                ],
                 _primaryAction(
                   label: isCloudflare
                       ? 'Verifikasi Cloudflare di WebView'
@@ -1216,6 +1242,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     required String label,
     required IconData icon,
     required VoidCallback onTap,
+    Color? color,
   }) {
     return InkWell(
       onTap: onTap,
@@ -1223,7 +1250,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       child: Container(
         height: 50,
         decoration: BoxDecoration(
-          color: AppColors.accent,
+          color: color ?? AppColors.accent,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(

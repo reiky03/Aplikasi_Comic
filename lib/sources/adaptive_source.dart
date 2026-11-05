@@ -1,5 +1,7 @@
 import '../data/source_url.dart';
 import 'asura_source.dart';
+import 'doujindesu_source.dart';
+import 'imhentai_source.dart';
 import 'komiku_source.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
@@ -67,28 +69,72 @@ class AdaptiveSource implements MangaSource {
   }
 
   static MangaSource? _knownNativeSource(String name, String baseUrl) {
-    return switch (name.trim().toLowerCase()) {
-      'asura scans' || 'asura' => AsuraSource(),
-      'shinigami' => ShinigamiSource(),
-      'komiku' => KomikuSource(),
-      'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
-      'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
-      _ => null,
-    };
+    final lower = name.trim().toLowerCase();
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
+
+    if (lower.contains('asura') || host.contains('asuracomic') || host.contains('asurascans')) {
+      return AsuraSource();
+    }
+    if (lower.contains('shinigami') || host.contains('shinigami') || host.contains('shngm')) {
+      return ShinigamiSource();
+    }
+    if (lower.contains('komiku') || host.contains('komiku')) {
+      return KomikuSource();
+    }
+    if (lower.contains('doujindesu') || host.contains('doujindesu') || host.contains('doujin.desu')) {
+      return DoujindesuSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('imhentai') || host.contains('imhentai')) {
+      return ImhentaiSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('soulscans') || host.contains('soulscans')) {
+      return SvelteKitComicSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('ikiru') || host.contains('ikiru')) {
+      return NatsuIdSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('kiryu') || lower.contains('kiryuu') || host.contains('kiryuu')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('komikcast') || host.contains('komikcast')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('toongod') || host.contains('toongod')) {
+      return MadaraSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('mgkomik') || host.contains('mgkomik')) {
+      return MadaraSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('softkomik') || host.contains('softkomik')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('komikindo') || host.contains('komikindo')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    return null;
   }
 
-  static List<MangaSource> _genericStrategies(String name, String baseUrl) => [
-    if (_isMangaFire(baseUrl)) MangaFireSource(name: name, baseUrl: baseUrl),
-    SvelteKitComicSource(name: name, baseUrl: baseUrl),
-    MangaThemesiaSource(name: name, baseUrl: baseUrl),
-    NatsuIdSource(name: name, baseUrl: baseUrl),
-    MadaraSource(name: name, baseUrl: baseUrl),
-    UniversalHtmlSource(
-      name: name,
-      baseUrl: baseUrl,
-      enableBrowserSessionFallback: true,
-    ),
-  ];
+  static List<MangaSource> _genericStrategies(String name, String baseUrl) {
+    final lower = name.trim().toLowerCase();
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
+
+    return [
+      if (_isMangaFire(baseUrl)) MangaFireSource(name: name, baseUrl: baseUrl),
+      if (lower.contains('doujindesu') || host.contains('doujindesu') || host.contains('doujin.desu'))
+        DoujindesuSource(name: name, baseUrl: baseUrl),
+      if (lower.contains('imhentai') || host.contains('imhentai'))
+        ImhentaiSource(name: name, baseUrl: baseUrl),
+      SvelteKitComicSource(name: name, baseUrl: baseUrl),
+      MangaThemesiaSource(name: name, baseUrl: baseUrl),
+      NatsuIdSource(name: name, baseUrl: baseUrl),
+      MadaraSource(name: name, baseUrl: baseUrl),
+      UniversalHtmlSource(
+        name: name,
+        baseUrl: baseUrl,
+        enableBrowserSessionFallback: true,
+      ),
+    ];
+  }
 
   static bool _isMangaFire(String url) {
     final host = Uri.tryParse(url)?.host.toLowerCase();

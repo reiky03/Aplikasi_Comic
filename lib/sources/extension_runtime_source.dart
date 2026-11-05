@@ -5,8 +5,12 @@ import 'adaptive_source.dart';
 import 'alternative_source_methods.dart';
 import 'doujindesu_source.dart';
 import 'imhentai_source.dart';
+import 'komiku_source.dart';
+import 'madara_source.dart';
 import 'manga_source.dart';
 import 'mangafire_source.dart';
+import 'mangathemesia_source.dart';
+import 'natsuid_source.dart';
 import 'sveltekit_comic_source.dart';
 
 class ExtensionRuntimeSource implements MangaSource {
@@ -78,26 +82,54 @@ class ExtensionRuntimeSource implements MangaSource {
     String? lang,
     Iterable<String> fallbackBaseUrls = const [],
   }) {
-    final host = Uri.tryParse(baseUrl)?.host.toLowerCase();
+    final lower = name.trim().toLowerCase();
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
+
     if (host == 'doujin.desu.xxx' ||
         host == 'doujindesu.tv' ||
         host == 'doujindesu.bid' ||
-        host?.endsWith('.desu.xxx') == true ||
-        name.trim().toLowerCase().contains('doujindesu')) {
+        host.endsWith('.desu.xxx') ||
+        lower.contains('doujindesu')) {
       return DoujindesuSource(name: name, baseUrl: baseUrl);
     }
     if (host == 'imhentai.xxx' ||
         host == 'imhentai.com' ||
         host == 'imhentai.to' ||
-        host?.endsWith('.imhentai.xxx') == true ||
-        name.trim().toLowerCase().contains('imhentai')) {
+        host.endsWith('.imhentai.xxx') ||
+        lower.contains('imhentai')) {
       return ImhentaiSource(name: name, baseUrl: baseUrl);
     }
-    if (host == 'soulscans.asia' || host?.endsWith('.soulscans.asia') == true) {
+    if (host == 'soulscans.asia' ||
+        host.endsWith('.soulscans.asia') ||
+        lower.contains('soulscans')) {
       return SvelteKitComicSource(name: name, baseUrl: baseUrl);
     }
-    if (host == 'mangafire.to' || host?.endsWith('.mangafire.to') == true) {
+    if (host == 'mangafire.to' || host.endsWith('.mangafire.to')) {
       return MangaFireSource(name: name, baseUrl: baseUrl, lang: lang);
+    }
+    if (lower.contains('kiryu') || lower.contains('kiryuu') || host.contains('kiryuu')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('komikcast') || host.contains('komikcast')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('toongod') || host.contains('toongod')) {
+      return MadaraSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('mgkomik') || host.contains('mgkomik')) {
+      return MadaraSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('softkomik') || host.contains('softkomik')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('komikindo') || host.contains('komikindo')) {
+      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('ikiru') || host.contains('ikiru')) {
+      return NatsuIdSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('komiku') || host.contains('komiku')) {
+      return KomikuSource();
     }
     return AdaptiveSource(
       name: name,

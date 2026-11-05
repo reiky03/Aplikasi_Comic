@@ -46,8 +46,8 @@ class UniversalHtmlSource implements MangaSource {
   final SvelteKitComicSource _svelteKitFallback;
 
   bool get _isToongod {
-    final host = Uri.tryParse(baseUrl)?.host.toLowerCase();
-    return host == 'toongod.org' || host?.endsWith('.toongod.org') == true;
+    final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
+    return host.contains('toongod') || name.toLowerCase().contains('toongod');
   }
 
   // Mode aman dulu: WebView render otomatis pernah bikin ANR di device asli
@@ -146,7 +146,7 @@ class UniversalHtmlSource implements MangaSource {
     final uri = Uri.tryParse(raw);
     if (uri == null) return raw;
     if (_isToongod &&
-        (uri.host == 'toongod.org' || uri.host.endsWith('.toongod.org')) &&
+        (uri.host.contains('toongod')) &&
         uri.path.startsWith('/wp-content/uploads/')) {
       return Uri(
         scheme: 'https',
