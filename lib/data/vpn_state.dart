@@ -70,11 +70,13 @@ class VpnState {
 class VpnNotifier extends Notifier<VpnState> {
   static bool currentVpnEnabled = true;
   static String currentProviderId = 'cloudflare';
+  bool _channelHandlerInitialized = false;
 
   @override
   VpnState build() {
     // Muat konfigurasi tersimpan dari SharedPreferences
     _loadPreferences();
+    _setupMethodCallHandler();
     return const VpnState(
       isEnabled: true, // Default aktif agar pengguna langsung bebas dari blokir
       provider: VpnProvider.cloudflare,
@@ -83,13 +85,70 @@ class VpnNotifier extends Notifier<VpnState> {
     );
   }
 
+  void _setupMethodCallHandler() {
+    if (_channelHandlerInitialized || kIsWeb) return;
+    try {
+      _channel.setMethodCallHandler((call) async {
+        if (call.method == 'onVpnStatusChanged') {
+          final args = call.arguments;
+          final enabled = (args is Map && args['enabled'] == true);
+          if (!ref.mounted) return;
+          if (state.isEnabled != enabled) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool(_kPrefVpnEnabled, enabled);
+            currentVpnEnabled = enabled;
+            if (!ref.mounted) return;
+            state = state.copyWith(isEnabled: enabled);
+          }
+        }
+      });
+      _channelHandlerInitialized = true;
+    } catch (_) {
+      // Platform channel belum tersedia di unit test runner murni
+    }
+  }
+
+  Future<void> refreshStatus() async {
+    if (kIsWeb) return;
+    try {
+      final status = await _channel.invokeMapMethod<String, dynamic>('getVpnStatus');
+      if (status != null && status['isRunning'] is bool) {
+        final isRunning = status['isRunning'] as bool;
+        if (!ref.mounted) return;
+        if (state.isEnabled != isRunning) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(_kPrefVpnEnabled, isRunning);
+          currentVpnEnabled = isRunning;
+          if (!ref.mounted) return;
+          state = state.copyWith(isEnabled: isRunning);
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final enabled = prefs.getBool(_kPrefVpnEnabled) ?? true;
+      var enabled = prefs.getBool(_kPrefVpnEnabled) ?? true;
       final providerId = prefs.getString(_kPrefVpnProvider) ?? 'cloudflare';
       final provider = VpnProvider.fromId(providerId);
 
+      // Cek apakah native VPN service sedang berjalan aktif
+      if (!kIsWeb) {
+        try {
+          final status = await _channel.invokeMapMethod<String, dynamic>('getVpnStatus');
+          if (status != null && status['isRunning'] is bool) {
+            final isRunning = status['isRunning'] as bool;
+            if (isRunning) {
+              enabled = true;
+            } else if (prefs.getBool(_kPrefVpnEnabled) == false) {
+              enabled = false;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!ref.mounted) return;
       currentVpnEnabled = enabled;
       currentProviderId = provider.id;
 
@@ -100,7 +159,7 @@ class VpnNotifier extends Notifier<VpnState> {
 
       // Sinkronkan ke native Android runtime
       _syncNative(enabled, provider.id);
-      if (enabled) {
+      if (enabled && ref.mounted) {
         testConnection();
       }
     } catch (_) {}
@@ -114,10 +173,12 @@ class VpnNotifier extends Notifier<VpnState> {
       final success = await _syncNative(nextState, state.provider.id);
       if (nextState && !success) {
         // User membatalkan / menolak dialog izin VPN sistemik Android
-        state = state.copyWith(
-          isEnabled: false,
-          isConnecting: false,
-        );
+        if (ref.mounted) {
+          state = state.copyWith(
+            isEnabled: false,
+            isConnecting: false,
+          );
+        }
         return;
       }
 
@@ -131,17 +192,20 @@ class VpnNotifier extends Notifier<VpnState> {
         ping = await _measurePing(state.provider);
       }
 
+      if (!ref.mounted) return;
       state = state.copyWith(
         isEnabled: nextState,
         isConnecting: false,
         pingMs: ping,
       );
 
-      if (nextState) {
+      if (nextState && ref.mounted) {
         testConnection();
       }
     } catch (_) {
-      state = state.copyWith(isConnecting: false);
+      if (ref.mounted) {
+        state = state.copyWith(isConnecting: false);
+      }
     }
   }
 
@@ -155,18 +219,25 @@ class VpnNotifier extends Notifier<VpnState> {
       currentProviderId = provider.id;
 
       final ping = await _measurePing(provider);
+      if (!ref.mounted) return;
       state = state.copyWith(
         provider: provider,
         isConnecting: false,
         pingMs: ping,
       );
-      testConnection();
+      if (ref.mounted) {
+        testConnection();
+      }
     } catch (_) {
-      state = state.copyWith(isConnecting: false);
+      if (ref.mounted) {
+        state = state.copyWith(isConnecting: false);
+      }
     }
   }
 
   Future<void> testConnection() async {
+    if (!ref.mounted) return;
+    final currentEndpoint = state.provider.endpoint;
     final hosts = {
       'Hong Kong HK': 'doh.dns.sb',
       'Doujindesu': 'doujindesu.tv',
@@ -178,9 +249,10 @@ class VpnNotifier extends Notifier<VpnState> {
 
     final results = <String, bool>{};
     for (final entry in hosts.entries) {
+      if (!ref.mounted) return;
       try {
         final uri = Uri.parse(
-          '${state.provider.endpoint}?name=${entry.value}&type=A',
+          '$currentEndpoint?name=${entry.value}&type=A',
         );
         final res = await http.get(
           uri,
@@ -192,6 +264,7 @@ class VpnNotifier extends Notifier<VpnState> {
       }
     }
 
+    if (!ref.mounted) return;
     state = state.copyWith(
       lastTestedAt: DateTime.now(),
       testedHosts: results,

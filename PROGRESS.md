@@ -27,6 +27,48 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-05 — Kizen v1.2.11: Persistent Foreground Service Kizen VPN, Notifikasi Interaktif Status Tray dengan Tombol Aksi "Matikan VPN", & Sinkronisasi Dua Arah saat Aplikasi Ditutup/Dibuka
+
+Permintaan user:
+"beb gini aja deh beb, tampilkan notifikasi unutk kizennya vpn, jadi kalau app kizennya ditutup selagi belum dimatikan oleh user ya jangan matikan, nanti mereka bisa matikan leat notif nya itu beb"
+
+Root cause & analisis mendalam:
+1. **VPN Otomatis Mati Saat Kizen Ditutup / Di-swipe dari Recent Apps**:
+   - Terdapat 3 hook berbeda yang sebelumnya mematikan VPN ketika aplikasi Kizen ditutup:
+     a. `lib/main.dart`: `AppLifecycleListener.onDetach` memanggil `setVpnEnabled(false)`.
+     b. `MainActivity.kt`: `onDestroy()` memeriksa `isFinishing` dan mengirim `ACTION_STOP` ke `KizenVpnService`.
+     c. `KizenVpnService.kt`: `onTaskRemoved()` memanggil `stopVpn()`.
+   - Ketiganya memaksa `VpnService` terputus begitu task Kizen di-kill atau di-swipe dari daftar aplikasi terbaru.
+2. **Notifikasi VPN Tersembunyi / Kurang Menonjol & Izin Android 13+ (POST_NOTIFICATIONS)**:
+   - Channel notifikasi sebelumnya diset ke `NotificationManager.IMPORTANCE_LOW` tanpa badge, sehingga sering disembunyikan/diciutkan oleh OS ke bagian bawah tray.
+   - Pada Android 13+ (Tiramisu/Android 14 pada vivo iQOO), notifikasi memerlukan izin runtime `android.permission.POST_NOTIFICATIONS`. Tanpa deklarasi dan permintaan izin ini, notifikasi foreground service tidak akan ditampilkan ke status tray.
+3. **Tombol "Matikan VPN" dari Notifikasi Belum Terhubung ke State Flutter**:
+   - Jika pengguna mematikan VPN langsung dari notifikasi ketika aplikasi sedang berada di background atau ditutup, Flutter `vpnProvider` dan SharedPreferences tidak mengetahui perubahan tersebut, sehingga saat aplikasi dibuka kembali, switch VPN di aplikasi masih berstatus aktif padahal tunnel native sudah mati.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Mempertahankan VPN Tetap Aktif saat Aplikasi Ditutup (`KizenVpnService.kt`, `MainActivity.kt`, & `main.dart`)**:
+   - Menghapus hook `stopVpn()` dari `onTaskRemoved()` di `KizenVpnService.kt`.
+   - Menghapus hook `onDestroy()` pemutus VPN di `MainActivity.kt`.
+   - Menghapus `onDetach` pemutus VPN di `lib/main.dart`.
+   - VPN kini berjalan murni sebagai foreground service independen: tetap aktif melindungi koneksi DNS/DoH meski Kizen ditutup atau di-swipe dari Recents.
+2. **Notifikasi Interaktif Status Tray dengan Aksi Langsung ("Matikan VPN") & Izin Android 13+ (`AndroidManifest.xml`, `MainActivity.kt`, & `KizenVpnService.kt`)**:
+   - Menambahkan izin `<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>` di `AndroidManifest.xml` dan request izin otomatis di `MainActivity.onCreate()` untuk Android 13+.
+   - Membuat channel baru `kizen_vpn_persistent_channel` dengan `IMPORTANCE_DEFAULT` dan `setShowBadge(true)`.
+   - Notifikasi menampilkan status: "Kizen VPN Aktif · Bebas Blokir & Terenkripsi [Server]", dengan aksi interaktif "Matikan VPN" (`PendingIntent.getService(..., ACTION_STOP)`).
+3. **Sinkronisasi Dua Arah (Native <-> Flutter) (`ExtensionRuntimeBridge.kt`, `vpn_state.dart`, & `main.dart`)**:
+   - Di `KizenVpnService.stopVpn()`: langsung memperbarui preferensi `flutter.kizen_vpn_enabled = false` di SharedPreferences native Android, lalu memanggil `ExtensionRuntimeBridge.onVpnStopped()`.
+   - `ExtensionRuntimeBridge.onVpnStopped()` mengirim event `onVpnStatusChanged` ke Flutter lewat MethodChannel di UI thread utama.
+   - Di `VpnNotifier`: menambahkan listener method call `onVpnStatusChanged` dan method `refreshStatus()` yang otomatis dipanggil saat `onResume` di `lib/main.dart` (menggunakan `AppLifecycleListener`).
+   - Saat Kizen dibuka kembali, `_loadPreferences()` dan `refreshStatus()` membaca status native `getVpnStatus`, memastikan toggle switch di UI selalu 100% sinkron dengan status VPN riil.
+
+Verifikasi:
+- `flutter analyze`: 100% bersih, 0 issues.
+- `flutter test -j 1`: Seluruh 185 test lolos (185/185 passed, 3 skipped).
+- `flutter build apk --release`: Sukses menghasilkan `app-release.apk` (69.6MB).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Sanity check compile web sukses.
+
+---
+
 ### 2026-11-05 — Kizen v1.2.10: Perizinan Native Uninstall Ekstensi Android (REQUEST_DELETE_PACKAGES), Penyederhanaan Sheet Kelola Ekstensi, & Optimasi Performa Scroll Reader 120 FPS
 
 Permintaan user:

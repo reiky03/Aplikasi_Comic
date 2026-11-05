@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
+import android.os.Bundle
 import androidx.core.content.ContextCompat
 import com.reikypratama.aplikasi_komik.extensions.ExtensionRuntimeBridge
 import com.reikypratama.aplikasi_komik.vpn.KizenVpnService
@@ -15,6 +16,15 @@ class MainActivity : FlutterActivity() {
 
     private var pendingVpnResult: MethodChannel.Result? = null
     private var pendingProvider: String = "cloudflare"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -60,16 +70,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onDestroy() {
-        if (isFinishing) {
-            val intent = Intent(this, KizenVpnService::class.java).apply {
-                action = KizenVpnService.ACTION_STOP
-            }
-            startService(intent)
-        }
-        super.onDestroy()
-    }
-
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_VPN_PERMISSION) {
@@ -86,5 +86,6 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         const val REQUEST_VPN_PERMISSION = 7701
+        const val REQUEST_NOTIFICATION_PERMISSION = 7702
     }
 }

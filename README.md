@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.10/kizen-v1.2.10.apk">
-    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.10)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.11/kizen-v1.2.11.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.11)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
   <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
     <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru&style=for-the-badge" alt="Rilis Terbaru" />
@@ -34,6 +34,7 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 - 🛡️ **Kizen VPN Terintegrasi & Quick Toggle In-Screen**: Gak perlu lagi download aplikasi VPN luar dari Play Store atau bolak-balik ganti app cuma buat baca komik! Kizen sudah punya VPN native ter-build langsung di dalam aplikasi (memanfaatkan Android `VpnService` + DoH Wire-Format).
   - **Quick Toggle In-Screen**: Tombol VPN tersedia langsung di toolbar Reader, Header Sumber, Detail Komik, dan Browser Internal. Jika komik terblokir saat sedang dibaca, cukup 1-tap untuk mengaktifkan VPN dan memuat ulang otomatis tanpa harus keluar ke menu Pengaturan.
   - Pilihan server cepat: 🇭🇰 Hong Kong (DNS.SB Anycast), 🇸🇬 Singapura (Cloudflare 1.1.1.1), 🛡️ AdGuard Shield, dan 🌐 Google Public DNS.
+  - **Notifikasi Persisten & Tombol Matikan Cepat**: Saat Kizen ditutup atau diminimalkan, proteksi VPN tetap aktif di latar belakang (background foreground service). Status tray menampilkan notifikasi persisten lengkap dengan tombol aksi *"Matikan VPN"* sehingga kamu bisa mematikan koneksi secara instan kapan saja. Status di dalam aplikasi selalu tersinkronisasi otomatis saat dibuka kembali.
 - 🔄 **Deteksi Domain Web Otomatis & Rebase Cerdas**: Sering nemu web komik tiba-tiba ganti domain (seperti Ikiru yang berpindah dari `07.ikiru.wtf` ke situs baca `09.ikiru.wtf` melalui portal `ikiru.id`)? Kizen secara otomatis mendeteksi perubahan domain saat sumber dibuka maupun saat dijelajahi via browser internal, menyelaraskan alamat aktif, dan menyimpan domain lama ke dalam alias sehingga seluruh bookmark dan komik tersimpan di Library tetap bisa dibaca lancar.
 - 📦 **Pembaruan Ekstensi Anti-Bentrok (Conflict-Free Update)**: Mengatasi tuntas masalah "Bentrok Tanda Tangan" / `INSTALL_FAILED_UPDATE_INCOMPATIBLE` antara ekstensi lama Tachiyomi dan Keiyoushi. APK baru diunduh terlebih dahulu di cache, ekstensi lama dicopot dengan aman, lalu installer baru dibuka secara otomatis tanpa jeda dan tanpa race condition.
 - 🎯 **Banner Pembaruan Ekstensi Langsung di Halaman Sumber**: Gak perlu lagi repot bolak-balik mencari ekstensi satu per satu di tab Repository. Saat membuka halaman detail sumber (seperti Doujindesu, Kiryuu, 3Hentai, dll), Kizen langsung menampilkan banner pembaruan jika versi baru tersedia di Keiyoushi, lengkap dengan tombol perbarui 1-tap.

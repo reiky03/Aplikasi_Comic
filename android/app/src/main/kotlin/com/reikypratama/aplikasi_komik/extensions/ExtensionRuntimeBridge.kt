@@ -48,6 +48,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     fun register(messenger: BinaryMessenger) {
         channel = MethodChannel(messenger, CHANNEL)
         channel.setMethodCallHandler(this)
+        instance = this
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -119,7 +120,7 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         val running = com.reikypratama.aplikasi_komik.vpn.KizenVpnService.isRunning
         result.success(
             mapOf(
-                "enabled" to (running || vpnEnabled),
+                "enabled" to running,
                 "isRunning" to running,
                 "provider" to vpnProvider,
             )
@@ -2061,6 +2062,25 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
     companion object {
         private const val CHANNEL = "kizen/extension_runtime"
         private const val TAG = "KizenExtensionRuntime"
+        @Volatile
+        var instance: ExtensionRuntimeBridge? = null
+            private set
+
+        fun onVpnStopped() {
+            instance?.let { bridge ->
+                bridge.vpnEnabled = false
+                try {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        try {
+                            bridge.channel.invokeMethod(
+                                "onVpnStatusChanged",
+                                mapOf("enabled" to false, "isRunning" to false)
+                            )
+                        } catch (_: Throwable) {}
+                    }
+                } catch (_: Throwable) {}
+            }
+        }
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         private const val API_VERSION = 1
         // Cloudflare biasanya redirect sekali setelah cookie clearance aktif.

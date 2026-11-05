@@ -40,7 +40,7 @@ class KizenVpnService : VpnService(), Runnable {
         const val TAG = "KizenVpnService"
         const val ACTION_START = "com.reikypratama.aplikasi_komik.vpn.START"
         const val ACTION_STOP = "com.reikypratama.aplikasi_komik.vpn.STOP"
-        const val CHANNEL_ID = "kizen_vpn_channel"
+        const val CHANNEL_ID = "kizen_vpn_persistent_channel"
         const val NOTIFICATION_ID = 9021
 
         const val TUN_IP = "10.222.0.1"
@@ -123,6 +123,13 @@ class KizenVpnService : VpnService(), Runnable {
             stopVpn()
             return START_NOT_STICKY
         }
+
+        try {
+            getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("flutter.kizen_vpn_enabled", true)
+                .apply()
+        } catch (_: Throwable) {}
 
         startForeground(NOTIFICATION_ID, buildNotification(provider))
         startVpnTunnel()
@@ -345,6 +352,15 @@ class KizenVpnService : VpnService(), Runnable {
 
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+
+        try {
+            getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("flutter.kizen_vpn_enabled", false)
+                .apply()
+        } catch (_: Throwable) {}
+
+        com.reikypratama.aplikasi_komik.extensions.ExtensionRuntimeBridge.onVpnStopped()
         Log.i(TAG, "KizenVpnService berhasil dimatikan")
     }
 
@@ -355,8 +371,8 @@ class KizenVpnService : VpnService(), Runnable {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "Kizen app ditutup dari Recent Apps, otomatis matikan VPN")
-        stopVpn()
+        Log.i(TAG, "Kizen app ditutup dari Recent Apps, VPN tetap aktif via foreground service")
+        // JANGAN panggil stopVpn() di sini agar VPN tetap jalan di background
     }
 
     private fun createNotificationChannel() {
@@ -364,10 +380,10 @@ class KizenVpnService : VpnService(), Runnable {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Kizen Anti-Blokir VPN",
-                NotificationManager.IMPORTANCE_LOW,
+                NotificationManager.IMPORTANCE_DEFAULT,
             ).apply {
                 description = "Status koneksi VPN terenkripsi DoH Kizen"
-                setShowBadge(false)
+                setShowBadge(true)
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
@@ -376,7 +392,7 @@ class KizenVpnService : VpnService(), Runnable {
 
     private fun buildNotification(provider: String): Notification {
         val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -413,7 +429,9 @@ class KizenVpnService : VpnService(), Runnable {
                 stopPendingIntent,
             )
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 }

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/app_theme.dart';
 import 'data/source_session_store.dart';
+import 'data/vpn_state.dart';
 import 'features/auth/auth_repository.dart';
 import 'features/onboarding/splash_screen.dart';
 import 'firebase_options.dart';
@@ -28,27 +29,24 @@ void main() async {
   runApp(const ProviderScope(child: KizenApp()));
 }
 
-class KizenApp extends StatefulWidget {
+class KizenApp extends ConsumerStatefulWidget {
   const KizenApp({super.key});
 
   @override
-  State<KizenApp> createState() => _KizenAppState();
+  ConsumerState<KizenApp> createState() => _KizenAppState();
 }
 
-class _KizenAppState extends State<KizenApp> {
+class _KizenAppState extends ConsumerState<KizenApp> {
   late final AppLifecycleListener _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
     _lifecycleListener = AppLifecycleListener(
-      onDetach: () {
-        // Saat aplikasi ditutup (detached), pastikan VPN dimatikan agar tidak
-        // terus menguras baterai di latar belakang
-        const MethodChannel('kizen/extension_runtime').invokeMethod<void>(
-          'setVpnEnabled',
-          {'enabled': false, 'provider': 'cloudflare'},
-        );
+      onResume: () {
+        // Saat aplikasi kembali dibuka atau beralih ke foreground,
+        // sinkronkan status VPN dengan service native (misal dimatikan dari notifikasi)
+        ref.read(vpnProvider.notifier).refreshStatus();
       },
     );
   }
