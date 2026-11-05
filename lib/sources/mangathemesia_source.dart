@@ -42,16 +42,31 @@ class MangaThemesiaSource implements MangaSource {
       throw MangaSourceException('Gagal menghubungi $name: $e');
     }
     if (response.statusCode != 200) {
+      if (response.statusCode == 403 ||
+          response.body.contains('Just a moment...') ||
+          response.body.contains('challenges.cloudflare.com')) {
+        throw MangaSourceWebViewException(
+          url: url.toString(),
+          message:
+              '$name dilindungi Cloudflare (HTTP 403). Buka WebView untuk verifikasi.',
+        );
+      }
       throw MangaSourceException(
         '$name mengembalikan status ${response.statusCode}.',
       );
     }
     final lowerBody = response.body.toLowerCase();
     if (lowerBody.contains('/cdn-cgi/challenge-platform/') ||
-        lowerBody.contains('just a moment') ||
-        lowerBody.contains('error establishing a redis connection')) {
+        lowerBody.contains('just a moment')) {
+      throw MangaSourceWebViewException(
+        url: url.toString(),
+        message:
+            '$name sedang meminta verifikasi browser. Buka lewat WebView dulu.',
+      );
+    }
+    if (lowerBody.contains('error establishing a redis connection')) {
       throw MangaSourceException(
-        '$name sedang meminta verifikasi browser. Buka lewat WebView dulu.',
+        '$name sedang mengalami gangguan server internal (Redis). Coba lagi nanti.',
       );
     }
     return html_parser.parse(response.body);

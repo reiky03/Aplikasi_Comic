@@ -180,7 +180,6 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
 
   Future<void> _markSessionActive() async {
     final source = _source;
-    if (source == null) return;
     try {
       final session = await const ExtensionRuntimeBridge().readWebViewSession(
         _currentUrl,
@@ -198,12 +197,11 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
     }
     if (!mounted) return;
     setState(() => _sessionCaptured = true);
-    if (widget.fallbackSource != null) {
-      AppToast.show(context, 'Cookie session aktif untuk ${source.name}');
-      return;
+    final sourceName = source?.name ?? Uri.tryParse(_currentUrl)?.host ?? 'Web';
+    if (source != null && widget.fallbackSource == null) {
+      ref.read(sourcesProvider.notifier).setSession(source.id, true);
     }
-    ref.read(sourcesProvider.notifier).setSession(source.id, true);
-    AppToast.show(context, 'Cookie session tersimpan untuk ${source.name}');
+    AppToast.show(context, 'Cookie session tersimpan untuk $sourceName');
   }
 
   String _webUrl(String raw) {
@@ -296,7 +294,13 @@ class _WebViewScreenState extends ConsumerState<WebViewScreen> {
                   KizenVpnQuickButton(
                     compact: true,
                     onToggled: (enabled) {
-                      if (enabled) _reload();
+                      if (enabled) {
+                        AppToast.show(
+                          context,
+                          '🛡️ VPN telah diaktifkan · Memuat ulang halaman...',
+                        );
+                        _reload();
+                      }
                     },
                   ),
                   const SizedBox(width: 4),

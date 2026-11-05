@@ -34,7 +34,7 @@ abstract final class SourceCatalog {
     // user: 11.shinigami.asia), sedangkan parser API kanonis memakai
     // g.shinigami.asia. Cocokkan domain induknya supaya keduanya satu sumber.
     'Shinigami': ['shinigami.asia', 'shngm.io', 'shngm.id'],
-    'Ikiru': ['ikiru.wtf'],
+    'Ikiru': ['ikiru.id', 'ikiru.wtf', '07.ikiru.wtf'],
   };
 
   /// Cari parser yang host base URL-nya cocok dengan [url] yang diketik user.
@@ -231,7 +231,10 @@ abstract final class SourceCatalog {
       return KomikuSource();
     }
     if (lower.contains('doujindesu') || host.contains('doujindesu') || host.contains('doujin.desu')) {
-      return DoujindesuSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = (host.contains('doujindesu.tv') || host.contains('doujindesu.bid'))
+          ? 'https://doujin.desu.xxx'
+          : baseUrl;
+      return DoujindesuSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('imhentai') || host.contains('imhentai')) {
       return ImhentaiSource(name: name, baseUrl: baseUrl);
@@ -240,22 +243,33 @@ abstract final class SourceCatalog {
       return SvelteKitComicSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('ikiru') || host.contains('ikiru')) {
-      return NatsuIdSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('ikiru.wtf') ? 'https://ikiru.id' : baseUrl;
+      return NatsuIdSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('kiryu') || lower.contains('kiryuu') || host.contains('kiryuu')) {
-      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = (host.contains('kiryuu01') || host == 'kiryuu.id')
+          ? 'https://v7.kiryuu.to'
+          : baseUrl;
+      return MangaThemesiaSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('komikcast') || host.contains('komikcast')) {
-      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = (host.contains('komikcast01') || host.contains('komikcast.bz') || host.contains('komikcast05'))
+          ? 'https://komikcast.net'
+          : baseUrl;
+      return MangaThemesiaSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('toongod') || host.contains('toongod')) {
       return MadaraSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('mgkomik') || host.contains('mgkomik')) {
-      return MadaraSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host == 'mgkomik.id' ? 'https://www.mgkomik.id' : baseUrl;
+      return MadaraSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('softkomik') || host.contains('softkomik')) {
-      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = (host.contains('softkomik.com') || host.contains('softkomik.co'))
+          ? 'https://softkomik.app'
+          : baseUrl;
+      return MangaThemesiaSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('komikindo') || host.contains('komikindo')) {
       return MangaThemesiaSource(name: name, baseUrl: baseUrl);
@@ -273,8 +287,8 @@ abstract final class SourceCatalog {
     final lower = name.trim().toLowerCase();
     final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
     if (lower == 'ikiru' ||
-        host == 'ikiru.wtf' ||
-        host.endsWith('.ikiru.wtf')) {
+        host.contains('ikiru')) {
+      yield 'https://ikiru.id';
       yield 'https://07.ikiru.wtf';
     }
     if (lower.contains('imhentai') || host.contains('imhentai')) {
@@ -286,12 +300,26 @@ abstract final class SourceCatalog {
       yield 'https://toongod.cc';
     }
     if (lower.contains('kiryu') || host.contains('kiryuu')) {
-      yield 'https://kiryuu01.com';
+      yield 'https://v7.kiryuu.to';
+      yield 'https://kiryuu.io';
       yield 'https://kiryuu.id';
     }
     if (lower.contains('komikcast') || host.contains('komikcast')) {
-      yield 'https://komikcast01.com';
-      yield 'https://komikcast.bz';
+      yield 'https://komikcast.net';
+      yield 'https://bacakomik.my';
+      yield 'https://v2.komikcast.fit';
+    }
+    if (lower.contains('softkomik') || host.contains('softkomik')) {
+      yield 'https://softkomik.app';
+      yield 'https://softkomik.co';
+    }
+    if (lower.contains('mgkomik') || host.contains('mgkomik')) {
+      yield 'https://www.mgkomik.id';
+      yield 'https://mgkomik.id';
+    }
+    if (lower.contains('doujindesu') || host.contains('doujindesu') || host.contains('doujin.desu')) {
+      yield 'https://doujin.desu.xxx';
+      yield 'https://doujindesu.tv';
     }
   }
 

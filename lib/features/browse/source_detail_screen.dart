@@ -289,7 +289,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
 
   /// Refresh daftar komik. Sumber dengan parser native: fetch ulang
   /// sungguhan. Sumber lain: simulasi prototipe ~1.1s.
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool fromVpn = false}) async {
     if (_refreshing) return;
     final source = _source;
     if (_matchedSource != null && source != null) {
@@ -297,19 +297,29 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
       await _loadDiscover(source);
       if (!mounted) return;
       setState(() => _refreshing = false);
-      AppToast.show(context, 'Daftar komik diperbarui');
+      AppToast.show(
+        context,
+        fromVpn
+            ? '🛡️ VPN telah diaktifkan · Daftar komik berhasil diperbarui'
+            : 'Daftar komik diperbarui',
+      );
       return;
     }
     setState(() => _refreshing = true);
     await Future<void>.delayed(const Duration(milliseconds: 1100));
     if (!mounted) return;
     setState(() => _refreshing = false);
-    AppToast.show(context, 'Daftar komik diperbarui');
+    AppToast.show(
+      context,
+      fromVpn
+          ? '🛡️ VPN telah diaktifkan · Daftar komik berhasil diperbarui'
+          : 'Daftar komik diperbarui',
+    );
   }
 
   /// Ulangi request parser aktif. WebView tetap jadi fallback bila seluruh
   /// strategi parser masih gagal.
-  Future<void> _retry() async {
+  Future<void> _retry({bool fromVpn = false}) async {
     if (_retrying) return;
     final source = _source;
     if (source == null) return;
@@ -319,12 +329,21 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     }
     if (!mounted) return;
     setState(() => _retrying = false);
-    AppToast.show(
-      context,
-      _discoverError == null
-          ? 'Sumber berhasil dimuat ulang'
-          : 'Masih belum bisa dibaca otomatis — coba WebView',
-    );
+    if (fromVpn) {
+      AppToast.show(
+        context,
+        _discoverError == null
+            ? '🛡️ VPN telah diaktifkan · Komik berhasil diperbarui'
+            : '🛡️ VPN telah diaktifkan · Web masih diblokir (coba WebView)',
+      );
+    } else {
+      AppToast.show(
+        context,
+        _discoverError == null
+            ? 'Sumber berhasil dimuat ulang'
+            : 'Masih belum bisa dibaca otomatis — coba WebView',
+      );
+    }
   }
 
   void _openWebView(ComicSource source, {String? initialUrl}) {
@@ -400,7 +419,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                   KizenVpnQuickButton(
                     compact: true,
                     onToggled: (enabled) {
-                      if (enabled) _refresh();
+                      if (enabled) _refresh(fromVpn: true);
                     },
                   ),
                   const SizedBox(width: 8),
@@ -1130,9 +1149,9 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                       if (mounted) {
                         AppToast.show(
                           context,
-                          '🛡️ VPN Kizen Aktif. Memuat ulang...',
+                          '🛡️ VPN telah diaktifkan · Memuat ulang komik...',
                         );
-                        _retry();
+                        _retry(fromVpn: true);
                       }
                     },
                   ),

@@ -51,11 +51,12 @@ class KizenVpnQuickButton extends ConsumerWidget {
                   final willEnable = !isEnabled;
                   await ref.read(vpnProvider.notifier).toggle();
                   if (context.mounted) {
+                    final providerName = vpn.provider.label.split(' ').first;
                     AppToast.show(
                       context,
                       willEnable
-                          ? '🛡️ VPN Kizen Aktif (${vpn.provider.label.split(' ').first})'
-                          : 'VPN Kizen Dinonaktifkan',
+                          ? '🛡️ VPN telah diaktifkan ($providerName)'
+                          : 'VPN Kizen dinonaktifkan',
                     );
                   }
                   onToggled?.call(willEnable);
@@ -71,24 +72,25 @@ class KizenVpnQuickButton extends ConsumerWidget {
             ),
             decoration: BoxDecoration(
               color: isEnabled
-                  ? activeColor.withValues(alpha: 0.16)
-                  : Colors.white.withValues(alpha: 0.08),
+                  ? const Color(0xEE0B2418)
+                  : const Color(0xEB12141D),
               borderRadius: BorderRadius.circular(compact ? 12 : 16),
               border: Border.all(
                 color: isEnabled
-                    ? activeColor.withValues(alpha: 0.55)
-                    : Colors.white.withValues(alpha: 0.22),
+                    ? activeColor.withValues(alpha: 0.65)
+                    : Colors.white.withValues(alpha: 0.18),
                 width: 1.2,
               ),
-              boxShadow: isEnabled
-                  ? [
-                      BoxShadow(
-                        color: activeColor.withValues(alpha: 0.25),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: isEnabled
+                      ? activeColor.withValues(alpha: 0.3)
+                      : const Color(0x66000000),
+                  blurRadius: isEnabled ? 8 : 6,
+                  spreadRadius: isEnabled ? 1 : 0,
+                  offset: isEnabled ? Offset.zero : const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

@@ -4344,3 +4344,46 @@ Verifikasi:
    - Verifikasi biner `libapp.so`: string `Kizen v1.2.6` dan `v1.2.6 (18)` terverifikasi ada, `Kizen v1.2.4` nihil.
    - APK rilis `kizen-v1.2.6.apk` di-upload ulang ke GitHub Release `v1.2.6` (SHA-256: `ef607aba6b9083200b620cfda885be3b3fd695abc9d76e8b2747cb4de22b49e8`).
    - `flutter analyze` 100% bersih, dan seluruh 171/171 unit test lolos.
+
+
+---
+
+### 2026-11-05 — Rilis v1.2.7 (Build 19): High-Contrast Reader Toolbar, Toast Interaktif VPN Web Komik, Active Mirrors Fallback & Advanced Parsing
+
+**Keluhan User**:
+1. "beb ke versi 1.2.7 aja, itu ikonnya pas buka baca komiknya karena warnanya kurag gelap jadi suka samar2 dan agak susah dilihat, dan yang komik2 tadi webnya maih belum bisa diuka, imhentai jgua blm dll nya juga belm"
+2. "lalu beb pas di web komik knya pas diaktifkan vpnnya yang taostnya jng komik berhasil diperbarui, tapi kasih tambahan vpn telah diaktifkan kurnag lebih gitu biar leboh interaktif dan pengguna tau vpnnya udah aktif"
+
+**Root Cause**:
+1. **Reader Chrome Contrast**: Pada `ReaderScreen` (`reader_screen.dart`), tombol navigasi prev/next, tombol slider settings, tombol toolbar (back, bookmark, more menu), dan tombol `KizenVpnQuickButton` menggunakan latar belakang transparan tipis (`Colors.white.withValues(alpha: 0.08)` / `0.1`). Ketika membaca manga dengan halaman putih/terang, tombol-tombol tersebut memudar dan sulit dilihat ("samar2 dan agak susah dilihat").
+2. **Toast Feedback VPN Kurang Interaktif**: Ketika VPN diaktifkan langsung dari toolbar sumber komik, callback `_refresh()` hanya memunculkan toast biasa `'Daftar komik diperbarui'`, menimpa notifikasi status VPN sehingga pengguna tidak yakin apakah pembaruan tersebut berhasil berkat VPN yang sudah menyala.
+3. **Domain Komik Kadaluarsa & Cloudflare 403**:
+   - Sumber komik seperti Kiryuu berpindah ke domain aktif `https://v7.kiryuu.to/` (domain lama `kiryuu01.com` mengarah ke iklan scam).
+   - Komikcast berpindah ke `https://komikcast.net` / `https://bacakomik.my/`.
+   - Softkomik berpindah ke `https://softkomik.app/`.
+   - MGKomik berpindah ke `https://www.mgkomik.id/`.
+   - Doujindesu berpindah ke `https://doujin.desu.xxx` dan sebelumnya belum menyertakan cookie `SourceSessionStore` pada request API internalnya.
+   - Pada `web_view_screen.dart`, fungsi `_markSessionActive` membatalkan penyimpanan session jika `_source == null` (misal dibuka dari repository atau error banner), sehingga cookie Cloudflare Turnstile tidak tersimpan ke `SourceSessionStore`.
+
+**Solusi & Tindakan**:
+1. **High-Contrast Reader Toolbar & Dark Tactile Styling** ([reader_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/reader/reader_screen.dart)):
+   - Seluruh tombol toolbar reader (`_chromeButton`, `_chapterNavButton`, tombol sliders settings, indikator nomor halaman) dirombak menggunakan kontras tinggi dengan container gelap taktil (`const Color(0xEB12141D)`), border tegas (`Colors.white.withValues(alpha: 0.16)`), dan drop shadow pekat (`BoxShadow(color: Color(0x77000000), blurRadius: 6, offset: Offset(0, 2))`).
+   - Gradien scrim atas dan bawah dipertebal (`Color(0xF506070B)` -> `Color(0x4006070B)` -> `Colors.transparent`) sehingga seluruh kontrol tetap 100% jelas terlihat di atas komik halaman putih maupun gelap.
+   - `KizenVpnQuickButton` dirombak agar state nonaktifnya menggunakan container gelap taktil ber-shadow, bukan putih transparan.
+2. **Toast Interaktif Status VPN & Auto-Reload** ([vpn_quick_button.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/core/widgets/vpn_quick_button.dart), [source_detail_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/browse/source_detail_screen.dart), [comic_detail_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/detail/comic_detail_screen.dart), [reader_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/reader/reader_screen.dart)):
+   - Notifikasi toggle tombol cepat VPN diperbarui menjadi `'🛡️ VPN telah diaktifkan ($provider)'` saat dinyalakan.
+   - Halaman sumber komik (`SourceDetailScreen`) menampilkan toast interaktif `'🛡️ VPN telah diaktifkan · Daftar komik berhasil diperbarui'` saat komik dimuat ulang lewat VPN.
+   - Banner error dan tombol cepat di `ComicDetailScreen` dan `ReaderScreen` menampilkan status yang seragam: `'🛡️ VPN telah diaktifkan · Memuat ulang komik...'` dan `'🛡️ VPN telah diaktifkan · Komik berhasil diperbarui'` / `'🛡️ VPN telah diaktifkan · Halaman berhasil dimuat'`.
+3. **Pembaruan Canonical Mirrors Fallback & Advanced Parsing** ([source_catalog.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/source_catalog.dart), [doujindesu_source.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/doujindesu_source.dart), [mangathemesia_source.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/mangathemesia_source.dart), [madara_source.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/madara_source.dart)):
+   - `_knownMirrorFallbacks` dan `_knownPreferredSource` mengarahkan URL domain lama/mati ke domain kanonis aktif terbaru: Kiryuu (`https://v7.kiryuu.to`), Komikcast (`https://komikcast.net`, `https://bacakomik.my`), Softkomik (`https://softkomik.app`), MGKomik (`https://www.mgkomik.id`), Ikiru (`https://ikiru.id`), Doujindesu (`https://doujin.desu.xxx`), ToonGod (`https://www.toongod.org`), dan IMHentai (`https://imhentai.xxx`, `https://m.imhentai.xxx`).
+   - `DoujindesuSource` diintegrasikan dengan `SourceSessionStore.headersFor(baseUrl)` dan auto-fallback jika Cloudflare Turnstile terdeteksi (melempar `MangaSourceWebViewException` alih-alih exception generik).
+   - `MangaThemesiaSource` dan `MadaraSource` melempar `MangaSourceWebViewException` saat menerima HTTP 403 / Cloudflare challenge sehingga UI otomatis menyediakan aksi pemulihan WebView.
+4. **Perbaikan Simpan Sesi WebView** ([web_view_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/browse/web_view_screen.dart)):
+   - `_markSessionActive()` tetap menyimpan cookie ke `SourceSessionStore` untuk URL yang sedang dibuka meskipun `_source == null`, sehingga clearance Turnstile selalu dapat dimanfaatkan oleh parser HTTP.
+5. **Bump Versi ke 1.2.7 (Build 19)**:
+   - `pubspec.yaml`, `about_screen.dart`, dan `README.md` diperbarui ke `v1.2.7+19`.
+
+### Verifikasi:
+- `flutter analyze`: Nol issue (0 errors, 0 warnings).
+- `flutter test -j 1`: 171/171 unit test lulus 100% (3 skipped).
+- `flutter build web`: Berhasil compile (58.1s).

@@ -289,7 +289,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   /// itu sebabnya "Lanjut Baca" kadang lompat ke nomor yang meleset.
   /// Fallback ke posisi cuma untuk data lama yang belum punya URL
   /// tersimpan (dari sebelum fix ini).
-  Future<void> _loadChapterList() async {
+  Future<void> _loadChapterList({bool fromVpn = false}) async {
     final source = _matchedSource;
     final mangaUrl = widget.comic.sourceMangaUrl;
     if (source == null || mangaUrl == null) return;
@@ -327,7 +327,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
               ),
         );
       }
-      _loadRealPages();
+      _loadRealPages(fromVpn: fromVpn);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -335,6 +335,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         _chaptersLoading = false;
         _chaptersWebViewUrl = _resolveWebViewUrl(mangaUrl, source.baseUrl);
       });
+      if (fromVpn) {
+        AppToast.show(
+          context,
+          '🛡️ VPN telah diaktifkan · Web masih diblokir (coba WebView)',
+        );
+      }
     }
   }
 
@@ -344,7 +350,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   /// boleh menimpa `_realPages` chapter yang sedang dibuka sekarang —
   /// itu sebabnya counter/slider halaman kadang kelihatan salah/tidak
   /// sesuai chapter yang aktif.
-  Future<void> _loadRealPages() async {
+  Future<void> _loadRealPages({bool fromVpn = false}) async {
     final source = _matchedSource;
     final index = _sourceChapterIndex;
     final chapters = _chapters;
@@ -369,6 +375,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         _pagesLoading = false;
       });
       _precacheNearbyPages();
+      if (fromVpn) {
+        AppToast.show(
+          context,
+          '🛡️ VPN telah diaktifkan · Halaman berhasil dimuat',
+        );
+      }
     } catch (e) {
       if (!mounted || requestId != _pagesRequestId) return;
       setState(() {
@@ -379,6 +391,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
           source.baseUrl,
         );
       });
+      if (fromVpn) {
+        AppToast.show(
+          context,
+          '🛡️ VPN telah diaktifkan · Halaman masih diblokir (coba WebView)',
+        );
+      }
     }
   }
 
@@ -1733,7 +1751,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xD1000000), Colors.transparent],
+              colors: [
+                Color(0xF506070B),
+                Color(0xBF06070B),
+                Color(0x4006070B),
+                Colors.transparent,
+              ],
+              stops: [0.0, 0.5, 0.8, 1.0],
             ),
           ),
           child: Row(
@@ -1775,9 +1799,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
               KizenVpnQuickButton(
                 compact: true,
                 onToggled: (enabled) {
-                  if (enabled && (_pagesError != null || _chaptersError != null)) {
-                    if (_pagesError != null) _loadRealPages();
-                    if (_chaptersError != null) _loadChapterList();
+                  if (enabled) {
+                    if (_pagesError != null || _chaptersError != null) {
+                      if (_pagesError != null) _loadRealPages(fromVpn: true);
+                      if (_chaptersError != null) _loadChapterList(fromVpn: true);
+                    } else {
+                      _loadRealPages(fromVpn: true);
+                    }
                   }
                 },
               ),
@@ -1816,7 +1844,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [Color(0xE0000000), Colors.transparent],
+              colors: [
+                Color(0xF806070B),
+                Color(0xCC06070B),
+                Color(0x4006070B),
+                Colors.transparent,
+              ],
+              stops: [0.0, 0.5, 0.85, 1.0],
             ),
           ),
           child: Column(
@@ -1824,15 +1858,33 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
             children: [
               Row(
                 children: [
-                  SizedBox(
-                    width: 44,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xEB12141D),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        width: 1,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x66000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
                     child: Text(
                       _pageCountKnown ? '${_page + 1} / $_totalPages' : '–',
                       style:
                           AppTypography.jakarta(
-                            size: 12,
-                            weight: FontWeight.w400,
-                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 11.5,
+                            weight: FontWeight.w600,
+                            color: Colors.white,
                           ).copyWith(
                             fontFeatures: const [FontFeature.tabularFigures()],
                           ),
@@ -1879,8 +1931,19 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                       width: 46,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: const Color(0xEB12141D),
                         borderRadius: BorderRadius.circular(11),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          width: 1.1,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x77000000),
+                            blurRadius: 6,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: const Icon(
                         LucideIcons.slidersVertical,
@@ -1932,8 +1995,19 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       child: Container(
         height: 42,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: const Color(0xEB12141D),
           borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.16),
+            width: 1.1,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x77000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1958,9 +2032,22 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         height: size,
         decoration: BoxDecoration(
           color: active
-              ? AppColors.accent.withValues(alpha: 0.28)
-              : Colors.white.withValues(alpha: 0.1),
+              ? AppColors.accent.withValues(alpha: 0.35)
+              : const Color(0xEB12141D),
           borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: active
+                ? AppColors.accent.withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.16),
+            width: 1.1,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x77000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Icon(
           icon,

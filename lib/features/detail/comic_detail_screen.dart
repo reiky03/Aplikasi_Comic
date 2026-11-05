@@ -81,7 +81,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     if (widget.comic.sourceMangaUrl != null) _loadReal();
   }
 
-  Future<void> _loadReal() async {
+  Future<void> _loadReal({bool fromVpn = false}) async {
     final source = _matchedSource;
     final mangaUrl = widget.comic.sourceMangaUrl;
     if (source == null || mangaUrl == null) return;
@@ -101,6 +101,12 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         _realChapters = results[1] as List<SourceChapter>;
         _loading = false;
       });
+      if (fromVpn) {
+        AppToast.show(
+          context,
+          '🛡️ VPN telah diaktifkan · Komik berhasil diperbarui',
+        );
+      }
       if (activeMangaUrl != mangaUrl) {
         unawaited(
           ref
@@ -119,6 +125,12 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         _error = '$e';
         _loading = false;
       });
+      if (fromVpn) {
+        AppToast.show(
+          context,
+          '🛡️ VPN telah diaktifkan · Web masih diblokir (coba WebView)',
+        );
+      }
     }
   }
 
@@ -127,9 +139,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     if (!mounted) return;
     AppToast.show(
       context,
-      '🛡️ VPN Kizen Aktif. Memuat ulang chapter...',
+      '🛡️ VPN telah diaktifkan · Memuat ulang komik...',
     );
-    _loadReal();
+    _loadReal(fromVpn: true);
   }
 
   /// Versi terkini dari library bila ada (progress bisa berubah).
@@ -573,7 +585,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                         KizenVpnQuickButton(
                           compact: true,
                           onToggled: (enabled) {
-                            if (enabled && _error != null) _loadReal();
+                            if (enabled) _loadReal(fromVpn: true);
                           },
                         ),
                         if (widget.comic.sourceMangaUrl != null) ...[

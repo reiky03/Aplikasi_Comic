@@ -64,6 +64,15 @@ class MadaraSource implements MangaSource {
 
   Document _document(http.Response response) {
     if (response.statusCode != 200) {
+      if (response.statusCode == 403 ||
+          response.body.contains('Just a moment...') ||
+          response.body.contains('challenges.cloudflare.com')) {
+        throw MangaSourceWebViewException(
+          url: response.request?.url.toString() ?? baseUrl,
+          message:
+              '$name dilindungi Cloudflare (HTTP 403). Buka WebView untuk verifikasi.',
+        );
+      }
       throw MangaSourceException(
         '$name mengembalikan status ${response.statusCode}.',
       );

@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../data/extension_runtime.dart';
 import '../data/kizen_http_client.dart';
+import '../data/source_session_store.dart';
 import 'manga_source.dart';
 
 /// Sumber bawaan untuk Doujindesu (https://doujin.desu.xxx).
@@ -28,13 +30,17 @@ class DoujindesuSource implements MangaSource {
   static const _salt =
       'doujindesu-scrapers-cannot-read-this-super-secret-salt-2026-v2';
 
-  Map<String, String> get _headers => {
-    'Accept': 'application/json, text/plain, */*',
-    'Referer': '$baseUrl/',
-    'User-Agent':
-        'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-  };
+  Map<String, String> get _headers {
+    final session = SourceSessionStore.headersFor(baseUrl);
+    return {
+      'Accept': 'application/json, text/plain, */*',
+      'Referer': '$baseUrl/',
+      'User-Agent': session['User-Agent'] ??
+          'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      if (session.containsKey('Cookie')) 'Cookie': session['Cookie']!,
+    };
+  }
 
   static int _toSigned32(int x) {
     var y = x & 0xFFFFFFFF;
@@ -107,7 +113,50 @@ class DoujindesuSource implements MangaSource {
 
   Future<dynamic> _fetchApi(String path) async {
     final uri = Uri.parse('$baseUrl$path');
-    final response = await _client.get(uri, headers: _headers);
+    http.Response? response;
+    try {
+      response = await _client.get(uri, headers: _headers);
+    } catch (_) {}
+
+    final isBlocked = response == null ||
+        response.statusCode == 403 ||
+        response.body.contains('Just a moment...') ||
+        response.body.contains('challenges.cloudflare.com');
+
+    if (isBlocked) {
+      try {
+        final session =
+            await const ExtensionRuntimeBridge().readWebViewSession(baseUrl);
+        final cookie = session.cookie ?? '';
+        if (cookie.isNotEmpty) {
+          await SourceSessionStore.save(
+            url: baseUrl,
+            cookie: cookie,
+            userAgent: session.userAgent,
+          );
+          response = await _client.get(uri, headers: _headers);
+        }
+      } catch (_) {}
+    }
+
+    if (response == null) {
+      throw MangaSourceWebViewException(
+        url: '$baseUrl$path',
+        message:
+            'Gagal menghubungi $name. Aktifkan VPN Kizen atau buka lewat WebView.',
+      );
+    }
+
+    if (response.statusCode == 403 ||
+        response.body.contains('Just a moment...') ||
+        response.body.contains('challenges.cloudflare.com')) {
+      throw MangaSourceWebViewException(
+        url: '$baseUrl$path',
+        message:
+            'Cloudflare Turnstile terdeteksi (HTTP 403). Selesaikan verifikasi sekali di WebView untuk membuka akses.',
+      );
+    }
+
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode} saat memanggil $path');
     }
