@@ -206,7 +206,7 @@ class NatsuIdSource implements MangaSource {
       if (anchor.querySelector('img') == null) continue;
       final href = anchor.attributes['href'];
       if (href == null || href.isEmpty) continue;
-      final segments = Uri.parse(baseUrl)
+      final segments = Uri.parse(_currentBaseUrl)
           .resolve(href)
           .pathSegments
           .where((segment) => segment.isNotEmpty)
@@ -222,7 +222,7 @@ class NatsuIdSource implements MangaSource {
       throw MangaSourceException('Daftar pencarian $name kosong.');
     }
 
-    final detailsUrl = Uri.parse('$baseUrl/wp-json/wp/v2/manga').replace(
+    final detailsUrl = Uri.parse('$_currentBaseUrl/wp-json/wp/v2/manga').replace(
       queryParameters: {
         'slug[]': slugs,
         'per_page': '${slugs.length + 1}',
@@ -313,26 +313,431 @@ class NatsuIdSource implements MangaSource {
     );
   }
 
+  Future<SourceMangaPage> _htmlList({
+    required int page,
+    bool latest = false,
+  }) async {
+    final path = latest
+        ? (page <= 1 ? '/' : '/manga/?page=$page&order=update')
+        : (page <= 1 ? '/manga/' : '/manga/?page=$page');
+    final url = Uri.parse('$_currentBaseUrl$path');
+    final response = await _get(url);
+    if (response.statusCode != 200) {
+      throw MangaSourceException('$name mengembalikan status ${response.statusCode}.');
+    }
+    final fragment = html_parser.parse(response.body);
+    final mangas = <SourceManga>[];
+    final seen = <String>{};
+
+    for (final anchor in fragment.querySelectorAll('div.bsx > a, div.listupd a[href*="/manga/"]')) {
+      final href = anchor.attributes['href'];
+      if (href == null ||
+          href.isEmpty ||
+          href.contains('/chapter/') ||
+          href.contains('/chapter-') ||
+          href.contains('/ch-')) {
+        continue;
+      }
+      final segments = Uri.tryParse(href)?.pathSegments.where((s) => s.isNotEmpty).toList() ?? [];
+      final mIdx = segments.indexOf('manga');
+      if (mIdx >= 0 && segments.length > mIdx + 2) continue;
+
+      final fullUrl = Uri.parse(_currentBaseUrl).resolve(href).toString();
+      if (!seen.add(fullUrl)) continue;
+
+      final title = anchor.attributes['title']?.trim() ??
+          anchor.querySelector('.tt, h4, .title')?.text.trim() ??
+          anchor.text.trim();
+      if (title.isEmpty ||
+          title.toLowerCase().startsWith('ch.') ||
+          title.toLowerCase().startsWith('ch ') ||
+          title.toLowerCase().contains('chapter')) {
+        continue;
+      }
+
+      final img = anchor.querySelector('img');
+      final cover = img?.attributes['data-src'] ??
+          img?.attributes['data-lazy-src'] ??
+          img?.attributes['src'];
+      if (img == null && cover == null) continue;
+
+      mangas.add(
+        SourceManga(
+          url: fullUrl,
+          title: title,
+          thumbnailUrl: cover,
+          headers: _headers,
+        ),
+      );
+    }
+    if (mangas.isEmpty) {
+      throw MangaSourceException('Katalog HTML $name kosong.');
+    }
+    return SourceMangaPage(mangas: mangas, hasNextPage: mangas.length >= 10);
+  }
+
+  Future<SourceMangaPage> _nuxtHomeList({required bool latest}) async {
+    final response = await _get(Uri.parse('$_currentBaseUrl/'));
+    if (response.statusCode != 200) {
+      throw MangaSourceException('$name mengembalikan status ${response.statusCode}.');
+    }
+    final doc = html_parser.parse(response.body);
+    final mangas = <SourceManga>[];
+    final seen = <String>{};
+
+    if (!latest) {
+      // 1. Hero / Carousel
+      for (final slide in doc.querySelectorAll(
+        '.slide-in, .hero-carousel [class*="slide"], .hero-cta',
+      )) {
+        final title = slide.querySelector('h1')?.text.trim();
+        final a = slide.querySelector('a[href^="/manga/"]:not([href*="/chapter"])');
+        final img = slide.querySelector('img');
+        final href = a?.attributes['href'];
+        final cover = img?.attributes['src'] ?? img?.attributes['data-src'];
+        if (title != null && title.isNotEmpty && href != null) {
+          final fullUrl = Uri.parse(_currentBaseUrl).resolve(href).toString();
+          if (seen.add(fullUrl)) {
+            final fullCover = cover == null || cover.isEmpty
+                ? null
+                : Uri.parse(_currentBaseUrl).resolve(cover).toString();
+            mangas.add(SourceManga(
+              url: fullUrl,
+              title: title,
+              thumbnailUrl: fullCover,
+              headers: _headers,
+            ));
+          }
+        }
+      }
+
+      // 2. Rekomendasi & Popular Cards
+      for (final card in doc.querySelectorAll('.card, div[class*="card"]')) {
+        final aCover = card.querySelector('a.cover');
+        if (aCover == null) continue;
+        final href = aCover.attributes['href'];
+        if (href == null || href.isEmpty || href.contains('/chapter')) continue;
+        var title = aCover.attributes['aria-label']?.trim() ??
+            aCover.querySelector('.ctitle')?.text.trim() ??
+            '';
+        if (title.toLowerCase().startsWith('lihat detail ')) {
+          title = title.substring(13).trim();
+        }
+        if (title.isEmpty) continue;
+        final img = aCover.querySelector('img');
+        final cover = img?.attributes['src'] ?? img?.attributes['data-src'];
+        final fullUrl = Uri.parse(_currentBaseUrl).resolve(href).toString();
+        if (seen.add(fullUrl)) {
+          final fullCover = cover == null || cover.isEmpty
+              ? null
+              : Uri.parse(_currentBaseUrl).resolve(cover).toString();
+          mangas.add(SourceManga(
+            url: fullUrl,
+            title: title,
+            thumbnailUrl: fullCover,
+            headers: _headers,
+          ));
+        }
+      }
+    } else {
+      // Latest: Cards with .chaps or .chap
+      for (final card in doc.querySelectorAll('.card, div[class*="card"]')) {
+        final aCover = card.querySelector('a.cover');
+        if (aCover == null) continue;
+        final href = aCover.attributes['href'];
+        if (href == null || href.isEmpty || href.contains('/chapter')) continue;
+        var title = aCover.attributes['aria-label']?.trim() ??
+            aCover.querySelector('.ctitle')?.text.trim() ??
+            '';
+        if (title.toLowerCase().startsWith('lihat detail ')) {
+          title = title.substring(13).trim();
+        }
+        if (title.isEmpty) continue;
+        final hasChaps = card.querySelector('.chaps, .chap') != null;
+        if (!hasChaps) continue;
+        final img = aCover.querySelector('img');
+        final cover = img?.attributes['src'] ?? img?.attributes['data-src'];
+        final fullUrl = Uri.parse(_currentBaseUrl).resolve(href).toString();
+        if (seen.add(fullUrl)) {
+          final fullCover = cover == null || cover.isEmpty
+              ? null
+              : Uri.parse(_currentBaseUrl).resolve(cover).toString();
+          mangas.add(SourceManga(
+            url: fullUrl,
+            title: title,
+            thumbnailUrl: fullCover,
+            headers: _headers,
+          ));
+        }
+      }
+    }
+
+    if (mangas.isEmpty) {
+      throw MangaSourceException('Daftar Nuxt $name kosong.');
+    }
+    return SourceMangaPage(mangas: mangas, hasNextPage: false);
+  }
+
+  Future<SourceMangaDetails> _nuxtDetails(String mangaUrl) async {
+    final response = await _get(Uri.parse(mangaUrl));
+    if (response.statusCode != 200) {
+      throw MangaSourceException('$name mengembalikan status ${response.statusCode}.');
+    }
+    final doc = html_parser.parse(response.body);
+    final script = doc.querySelector('script#__NUXT_DATA__');
+    if (script == null) {
+      throw MangaSourceException('__NUXT_DATA__ tidak ditemukan di $name.');
+    }
+    final raw = jsonDecode(script.text.trim()) as List<dynamic>;
+    String? description;
+    String? author;
+    String? artist;
+    final genres = <String>[];
+    var status = SourceMangaStatus.unknown;
+
+    for (final item in raw) {
+      if (item is Map) {
+        if (item.containsKey('description') &&
+            item.containsKey('title') &&
+            item.containsKey('chapters')) {
+          final descVal = item['description'];
+          if (descVal is int && descVal < raw.length && raw[descVal] is String) {
+            description = html_parser
+                .parse(raw[descVal] as String)
+                .body
+                ?.text
+                .trim();
+          }
+          final statusVal = item['status'];
+          final statusStr = statusVal is int &&
+                  statusVal < raw.length &&
+                  raw[statusVal] is String
+              ? (raw[statusVal] as String).toLowerCase()
+              : (statusVal is String ? statusVal.toLowerCase() : '');
+          if (statusStr.contains('ongoing')) {
+            status = SourceMangaStatus.ongoing;
+          } else if (statusStr.contains('completed') ||
+              statusStr.contains('tamat')) {
+            status = SourceMangaStatus.completed;
+          }
+        }
+      }
+    }
+
+    for (final tag in doc.querySelectorAll(
+      'a[href*="/genre/"], .genres a, .genre a',
+    )) {
+      final g = tag.text.trim();
+      if (g.isNotEmpty && !genres.contains(g)) genres.add(g);
+    }
+
+    return SourceMangaDetails(
+      description: description ??
+          doc.querySelector('.description, .desc, p')?.text.trim(),
+      author: author,
+      artist: artist,
+      genres: genres,
+      status: status,
+    );
+  }
+
+  Future<List<SourceChapter>> _nuxtChapters(String mangaUrl) async {
+    final response = await _get(Uri.parse(mangaUrl));
+    if (response.statusCode != 200) {
+      throw MangaSourceException('$name mengembalikan status ${response.statusCode}.');
+    }
+    final doc = html_parser.parse(response.body);
+    final script = doc.querySelector('script#__NUXT_DATA__');
+    if (script == null) {
+      throw MangaSourceException('__NUXT_DATA__ tidak ditemukan di $name.');
+    }
+    final raw = jsonDecode(script.text.trim()) as List<dynamic>;
+    final chapters = <SourceChapter>[];
+
+    for (final item in raw) {
+      if (item is Map &&
+          item.containsKey('chapters') &&
+          item['chapters'] is int) {
+        final listIdx = item['chapters'] as int;
+        if (listIdx < raw.length && raw[listIdx] is List) {
+          for (final chapIdx in raw[listIdx] as List) {
+            if (chapIdx is int && chapIdx < raw.length && raw[chapIdx] is Map) {
+              final chapMap = raw[chapIdx] as Map;
+              final numVal = chapMap['number'];
+              final resolvedNum = numVal is int && numVal < raw.length
+                  ? raw[numVal]
+                  : numVal;
+              final titleVal = chapMap['title'];
+              final resolvedTitle = titleVal is int &&
+                      titleVal < raw.length &&
+                      raw[titleVal] is String
+                  ? raw[titleVal] as String
+                  : (titleVal is String ? titleVal : 'Chapter $resolvedNum');
+              final dateVal = chapMap['createdAt'];
+              final dateStr = dateVal is int &&
+                      dateVal < raw.length &&
+                      raw[dateVal] is String
+                  ? raw[dateVal] as String
+                  : (dateVal is String ? dateVal : null);
+
+              final cleanMangaUrl = mangaUrl.endsWith('/')
+                  ? mangaUrl.substring(0, mangaUrl.length - 1)
+                  : mangaUrl;
+              final chapUrl = '$cleanMangaUrl/chapter-$resolvedNum';
+
+              chapters.add(
+                SourceChapter(
+                  url: chapUrl,
+                  name: resolvedTitle,
+                  dateUpload: dateStr != null
+                      ? DateTime.tryParse(dateStr)
+                      : null,
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (chapters.isEmpty) {
+      for (final a in doc.querySelectorAll(
+        'a[href*="/chapter"], a.chap, div.chaps a',
+      )) {
+        final href = a.attributes['href'];
+        if (href == null || href.isEmpty) continue;
+        final name = a.querySelector('.cn')?.text.trim() ?? a.text.trim();
+        chapters.add(
+          SourceChapter(
+            url: Uri.parse(_currentBaseUrl).resolve(href).toString(),
+            name: name,
+          ),
+        );
+      }
+    }
+
+    if (chapters.isEmpty) {
+      throw MangaSourceException('Daftar chapter Nuxt $name kosong.');
+    }
+    return chapters;
+  }
+
+  Future<List<SourcePage>> _nuxtPages(String chapterUrl) async {
+    final response = await _get(Uri.parse(chapterUrl));
+    if (response.statusCode != 200) {
+      throw MangaSourceException('$name mengembalikan status ${response.statusCode}.');
+    }
+    final doc = html_parser.parse(response.body);
+    final pages = <SourcePage>[];
+    final seen = <String>{};
+
+    final script = doc.querySelector('script#__NUXT_DATA__');
+    if (script != null) {
+      try {
+        final raw = jsonDecode(script.text.trim()) as List<dynamic>;
+        for (final item in raw) {
+          if (item is String) {
+            final lower = item.toLowerCase();
+            if ((lower.endsWith('.webp') ||
+                    lower.endsWith('.jpg') ||
+                    lower.endsWith('.jpeg') ||
+                    lower.endsWith('.png')) &&
+                (lower.contains('cdn.ikiru') ||
+                    lower.contains('/t/') ||
+                    lower.contains('/c/') ||
+                    lower.contains('/featured/'))) {
+              if (lower.contains('cover') ||
+                  lower.contains('logo') ||
+                  lower.contains('avatar') ||
+                  lower.contains('icon')) {
+                continue;
+              }
+              final fullUrl =
+                  Uri.parse(_currentBaseUrl).resolve(item).toString();
+              if (seen.add(fullUrl)) {
+                pages.add(SourcePage(index: pages.length, imageUrl: fullUrl));
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    for (final img in doc.querySelectorAll(
+      'main img, .chapter-content img, .reader-area img, div[class*="reader"] img, img',
+    )) {
+      final src = img.attributes['src'] ?? img.attributes['data-src'];
+      if (src == null || src.isEmpty) continue;
+      final lower = src.toLowerCase();
+      if (lower.contains('cover') ||
+          lower.contains('logo') ||
+          lower.contains('avatar') ||
+          lower.contains('icon')) {
+        continue;
+      }
+      if (lower.contains('cdn.ikiru') ||
+          lower.contains('/t/') ||
+          lower.contains('/c/')) {
+        final fullUrl = Uri.parse(_currentBaseUrl).resolve(src).toString();
+        if (seen.add(fullUrl)) {
+          pages.add(SourcePage(index: pages.length, imageUrl: fullUrl));
+        }
+      }
+    }
+
+    if (pages.isEmpty) {
+      throw MangaSourceException('Halaman baca Nuxt $name kosong.');
+    }
+    return pages;
+  }
+
   @override
   Future<SourceMangaPage> fetchPopular(int page) async {
     try {
-      return await _advancedList(page: page, orderBy: 'popular');
+      return await _nuxtHomeList(latest: false);
     } catch (_) {
-      return _legacyList(page: page);
+      try {
+        return await _advancedList(page: page, orderBy: 'popular');
+      } catch (_) {
+        try {
+          return await _legacyList(page: page);
+        } catch (_) {
+          return _htmlList(page: page, latest: false);
+        }
+      }
     }
   }
 
   @override
   Future<SourceMangaPage> fetchLatest(int page) async {
     try {
-      return await _advancedList(page: page, orderBy: 'updated');
+      return await _nuxtHomeList(latest: true);
     } catch (_) {
-      return _legacyList(page: page, latest: true);
+      try {
+        return await _advancedList(page: page, orderBy: 'update');
+      } catch (_) {
+        try {
+          return await _legacyList(page: page, latest: true);
+        } catch (_) {
+          return _htmlList(page: page, latest: true);
+        }
+      }
     }
   }
 
   @override
   Future<SourceMangaPage> fetchSearch(String query, int page) async {
+    try {
+      final home = await _nuxtHomeList(latest: false);
+      final q = query.toLowerCase().trim();
+      final filtered = home.mangas
+          .where((m) => m.title.toLowerCase().contains(q))
+          .toList();
+      if (filtered.isNotEmpty) {
+        return SourceMangaPage(mangas: filtered, hasNextPage: false);
+      }
+    } catch (_) {}
+
     try {
       return await _advancedList(page: page, orderBy: 'popular', query: query);
     } catch (_) {
@@ -340,8 +745,17 @@ class NatsuIdSource implements MangaSource {
     }
   }
 
-  int _mangaId(String mangaUrl) =>
-      ((jsonDecode(mangaUrl) as Map<String, dynamic>)['id'] as num).toInt();
+  int _mangaId(String mangaUrl) {
+    try {
+      final decoded = jsonDecode(mangaUrl);
+      if (decoded is Map && decoded.containsKey('id')) {
+        return (decoded['id'] as num).toInt();
+      }
+    } catch (_) {}
+    final m = RegExp(r'/(\d+)/?$').firstMatch(mangaUrl);
+    if (m != null) return int.tryParse(m.group(1)!) ?? -1;
+    return -1;
+  }
 
   List<String> _termsOf(Map<String, dynamic> embedded, String taxonomy) {
     final termGroups = (embedded['wp:term'] as List<dynamic>? ?? [])
@@ -357,6 +771,10 @@ class NatsuIdSource implements MangaSource {
 
   @override
   Future<SourceMangaDetails> fetchMangaDetails(String mangaUrl) async {
+    try {
+      return await _nuxtDetails(mangaUrl);
+    } catch (_) {}
+
     final id = _mangaId(mangaUrl);
     final url = Uri.parse(
       '$baseUrl/wp-json/wp/v2/manga/$id',
@@ -395,6 +813,10 @@ class NatsuIdSource implements MangaSource {
 
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
+    try {
+      return await _nuxtChapters(mangaUrl);
+    } catch (_) {}
+
     final id = _mangaId(mangaUrl);
     final url = Uri.parse('$baseUrl/wp-admin/admin-ajax.php').replace(
       queryParameters: {
@@ -430,6 +852,10 @@ class NatsuIdSource implements MangaSource {
 
   @override
   Future<List<SourcePage>> fetchPageList(String chapterUrl) async {
+    try {
+      return await _nuxtPages(chapterUrl);
+    } catch (_) {}
+
     final response = await _get(Uri.parse(chapterUrl));
     if (response.statusCode != 200) {
       throw MangaSourceException(

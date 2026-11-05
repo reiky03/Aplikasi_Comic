@@ -25,16 +25,20 @@ void main() {
     },
   );
 
-  test('Ikiru mengenali domain bernomor dan kanonis terbaru 07', () {
+  test('Ikiru mengenali domain bernomor dan kanonis terbaru 09', () {
     final mirror = SourceCatalog.matchByUrl('https://06.ikiru.wtf');
     final builtIn = SourceCatalog.sources.firstWhere(
       (source) => source.name == 'Ikiru',
     );
 
     expect(mirror?.name, 'Ikiru');
-    expect(builtIn.baseUrl, 'https://07.ikiru.wtf');
+    expect(builtIn.baseUrl, 'https://09.ikiru.wtf');
     expect(
       SourceCatalog.buildGeneric('madara', 'Madara', 'https://madara.example'),
+      isNotNull,
+    );
+    expect(
+      SourceCatalog.buildGeneric('softkomik', 'Softkomik', 'https://softkomik.app'),
       isNotNull,
     );
   });

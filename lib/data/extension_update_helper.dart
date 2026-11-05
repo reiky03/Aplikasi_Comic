@@ -112,11 +112,19 @@ abstract final class ExtensionUpdateHelper {
           ),
           AppSheetMenuRow(
             icon: AppIcons.delete,
-            label: 'Hapus instal extension',
+            label: 'Copot & Hapus Extension',
             destructive: true,
-            onTap: () {
+            onTap: () async {
               Navigator.pop(sheetContext);
-              uninstall(context, packageName: packageName);
+              final confirmed = await showConfirmSheet(
+                context,
+                title: 'Copot Ekstensi?',
+                message:
+                    'Copot "$name" dari perangkat agar bisa diinstal ulang dengan bersih.',
+                confirmLabel: 'Oke, Hapus',
+              );
+              if (!confirmed || !context.mounted) return;
+              uninstall(context, ref: ref, packageName: packageName);
             },
           ),
         ],
@@ -237,17 +245,53 @@ abstract final class ExtensionUpdateHelper {
     }
   }
 
-  /// Buka dialog uninstaller bawaan OS untuk package.
+  /// Buka dialog uninstaller bawaan OS untuk package dan pantau hingga selesai.
   static Future<void> uninstall(
     BuildContext context, {
+    WidgetRef? ref,
     required String packageName,
   }) async {
     try {
+      AppToast.show(context, 'Membuka dialog pencopotan...');
       await const ExtensionRuntimeBridge().uninstallExtensionPackage(
         packageName,
       );
       if (!context.mounted) return;
-      AppToast.show(context, 'Dialog hapus instal dibuka');
+
+      final deadline = DateTime.now().add(const Duration(seconds: 45));
+      var uninstalled = false;
+      while (DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (!context.mounted) return;
+
+        final currentList = await const ExtensionRuntimeBridge()
+            .listInstalledExtensions();
+        final stillInstalled = currentList.any(
+          (pkg) => pkg.packageName == packageName,
+        );
+
+        if (!stillInstalled) {
+          uninstalled = true;
+          break;
+        }
+      }
+
+      if (!context.mounted) return;
+      if (ref != null) {
+        ref.invalidate(installedExtensionPackagesProvider);
+        ref
+            .read(sourcesProvider.notifier)
+            .syncWithRepositories(ref.read(repositoriesProvider));
+      }
+
+      if (uninstalled) {
+        AppToast.show(
+          context,
+          'Ekstensi berhasil dicopot. Siap diinstal ulang.',
+        );
+      } else {
+        AppToast.show(context, 'Pencopotan dibatalkan atau belum selesai.');
+      }
     } catch (e) {
       if (!context.mounted) return;
       AppToast.show(context, 'Gagal membuka hapus instal: $e');

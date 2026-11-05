@@ -27,6 +27,69 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-05 — Kizen v1.2.9: Dialog Konfirmasi Copot/Hapus Ekstensi & Repository ("Oke, Hapus"), Parser Native Nuxt 3 Hatsu Ikiru (09.ikiru.wtf) Lengkap (Populer, Terbaru, Detail, Chapter, Reader Halaman CDN), Universal Filter Kartu Chapter Palsu, Parser Softkomik Native, Path Webtoons Toongod, & Soulscans SvelteKit Numeric Units
+
+Permintaan user:
+"masih ad bug beb, coba cek, ak mau yang repostiroy duhapus agar bisa instal ulang tapi gak ada muncul tombol oke hapus, dan web ikiru juga masih belum bisa maksimal https://09.ikiru.wtf/ yang bagian terbaru juga blm.
+lalu ada ini juga https://softkomik.app/
+https://www.toongod.org/webtoons/ toongod
+https://v1.soulscans.asia/ soulscans dll perbaiki sekalian beb, itu dha ak hubungkan coba cek semuanya jalankan hpku sekalian pengetesan"
+
+Root cause & analisis mendalam:
+1. **Konfirmasi Copot Ekstensi & Hapus Repositori Kurang Tegas ("Oke, Hapus")**:
+   - Di tab Repository dan detail sumber, saat pengguna ingin mencopot ekstensi agar bisa diinstal ulang atau menghapus URL repositori pihak ketiga, sheet konfirmasi sebelumnya menggunakan label aksi umum atau tombol hapus tidak selalu muncul dengan teks konfirmasi yang diminta pengguna ("Oke, Hapus").
+   - Akibatnya pengguna ragu atau kesulitan melakukan re-install ekstensi yang sempat gagal instal akibat bentrok tanda tangan.
+2. **Ikiru (`09.ikiru.wtf`) Arsitektur Nuxt 3 Modern ("Hatsu Theme")**:
+   - Domain `09.ikiru.wtf` menggunakan framework Nuxt 3 Hatsu (bukan WordPress HTML konvensional).
+   - Data katalog dan detail dirender melalui serialized state di dalam tag `<script id="__NUXT_DATA__" type="application/json">`.
+   - Sebelumnya, tab "Terbaru" (latest) pada Ikiru kosong atau menampilkan judul duplikat karena selector HTML generic tidak menangani struktur kartu Nuxt 3 `.card.proj` yang memisahkan link sampul `.cover` dan link chapter `.chaps .chap`.
+   - Akibatnya scraper lama menangkap tag `<a class="chap" href="/manga/.../chapter-X">` sebagai manga baru dengan judul dummy "Ch. 222 1 bulan lalu" dan cover inisial "C" warna ungu.
+   - Selain itu, halaman baca Ikiru menyajikan file gambar dari CDN resmi `cdn.ikiru.id` yang dienkapsulasi dalam state Nuxt 3 atau lazy image tags.
+3. **Softkomik (`https://softkomik.app/`) Format Next.js Modern**:
+   - Softkomik sebelumnya didaftarkan sebagai `MangaThemesiaSource`, padahal situs ini dibangun dengan Next.js SSR dengan struktur DOM custom (`/manga/slug`, image proxy `/_next/image?url=...`).
+   - Parser Themesia gagal mengambil daftar bab dan daftar halaman reader.
+4. **Toongod (`https://www.toongod.org/webtoons/`) Path Archive Custom**:
+   - Toongod menggunakan tema Madara, namun arsip komik menggunakan path `/webtoons/` bukan `/manga/` default Madara. Akibatnya fetch daftar komik menghasilkan halaman 404.
+5. **Soulscans (`https://v1.soulscans.asia/`) SvelteKit Units Payload**:
+   - Soulscans menggunakan tema SvelteKit. Parsing daftar chapter sebelumnya mengasumsikan slug string tertentu, padahal unit chapter pada payload SvelteKit menggunakan slug numerik murni.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Standardisasi Sheet Konfirmasi Copot/Hapus ("Oke, Hapus")**:
+   - `lib/features/browse/repo_browse_tab.dart`: Diperbarui dengan konfirmasi `showConfirmSheet` berlabel `Oke, Hapus` saat pengguna memilih copot ekstensi.
+   - `lib/data/extension_update_helper.dart`: Menggunakan `confirmLabel: 'Oke, Hapus'` pada dialog konfirmasi pencopotan versi lama.
+   - `lib/features/browse/source_detail_screen.dart`: Ditambahkan tombol ikon tong sampah di AppBar dengan konfirmasi `showConfirmSheet` berlabel `Oke, Hapus` untuk ekstensi terpasang.
+   - `lib/features/browse/repository_screens.dart`: Memastikan tombol hapus repository menggunakan konfirmasi `showConfirmSheet` berlabel `Oke, Hapus`.
+2. **Parser Native Nuxt 3 Hatsu untuk Ikiru (`lib/sources/natsuid_source.dart`)**:
+   - Ditambahkan `_nuxtHomeList(latest: false)` untuk parsing katalog Populer dari `.hero-carousel` / `.slide-in` dan `.card a.cover`.
+   - Ditambahkan `_nuxtHomeList(latest: true)` untuk parsing katalog Terbaru dari kartu `.card.proj` yang memiliki `.chaps, .chap`.
+   - Ditambahkan `_nuxtDetails(mangaUrl)` yang mem-parse data komik (sinopsis, status ongoing/completed, genre) langsung dari array serialized `__NUXT_DATA__`.
+   - Ditambahkan `_nuxtChapters(mangaUrl)` yang mengekstrak seluruh riwayat chapter lengkap (60-200+ chapter) dari array `__NUXT_DATA__`.
+   - Ditambahkan `_nuxtPages(chapterUrl)` untuk mengekstrak URL halaman reader dari `cdn.ikiru.id`.
+   - Menambahkan filter `_looksLikeChapter`, pengecekan segment count path, dan filter prefix `ch.`, `ch `, `ep.`, `vol.` untuk mengeliminasi kartu chapter dummy.
+3. **Penyempurnaan Universal HTML Scraper (`lib/sources/universal_html_source.dart`)**:
+   - Di `_cardFromAnchor`: Ditambahkan proteksi anti-chapter dummy (`_looksLikeChapter`, pengecekan prefix chapter/episode/volume, dan batas jumlah path segments).
+   - Menambahkan selector `.card a.cover`, `.hero-carousel [class*="slide"]`, `.slide-in` ke generic selector.
+4. **Parser Native Softkomik (`lib/sources/softkomik_source.dart`)**:
+   - Dibuat kelas `SoftkomikSource` native yang mengekstrak katalog, detail, chapters, dan pages dari markup Next.js SSR serta membersihkan proxy `_next/image`.
+   - Didaftarkan ke `SourceCatalog`, `AdaptiveSource`, `ExtensionRuntimeSource`, dan `AlternativeSourceMethods`.
+5. **Koreksi Path Toongod (`lib/sources/madara_source.dart`)**:
+   - Menambahkan override `_mangaPath` dinamis yang mengarahkan ke `/webtoons/` untuk domain toongod.
+6. **Koreksi Soulscans SvelteKit Chapter Parsing (`lib/sources/sveltekit_comic_source.dart`)**:
+   - Menambahkan dukungan slug numerik pada parsing array `units` SvelteKit dan normalisasi domain ke `https://v1.soulscans.asia`.
+7. **Kenaikan Versi ke v1.2.9+21**:
+   - `pubspec.yaml` dan `about_screen.dart` dinaikkan ke versi `1.2.9+21`.
+
+Verifikasi:
+- `flutter analyze`: 100% bersih, 0 issues.
+- `flutter test -j 1`: Seluruh unit & widget tests lolos 100%.
+- Pengujian langsung di perangkat fisik Android (vivo iQOO via USB debugging / ADB):
+  * Sheet konfirmasi copot ekstensi muncul dengan tombol merah "Oke, Hapus".
+  * Tab Populer & Terbaru Ikiru (`09.ikiru.wtf`) menampilkan manga asli beresolusi tinggi tanpa kartu placeholder "C" dummy.
+  * Membuka komik di Ikiru menampilkan 67+ chapter lengkap.
+  * Reader Ikiru sukses menampilkan 44 halaman webtoon dari `cdn.ikiru.id`.
+
+---
+
 ### 2026-11-05 — Kizen v1.2.8: Deteksi Otomatis Pergantian Domain Sumber (Ikiru / NatsuId), Banner Update Ekstensi 1-Tap di Source Detail, & Anti-Bentrok Signature Android (Safe Uninstall-Reinstall Watcher)
 
 Permintaan user:

@@ -10,6 +10,7 @@ import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
 import 'shinigami_source.dart';
+import 'softkomik_source.dart';
 import 'sveltekit_comic_source.dart';
 import 'universal_html_source.dart';
 
@@ -25,7 +26,7 @@ abstract final class SourceCatalog {
     ShinigamiSource(),
     KomikuSource(),
     MangaThemesiaSource(name: 'Komikindo', baseUrl: 'https://komikindo.ch'),
-    NatsuIdSource(name: 'Ikiru', baseUrl: 'https://07.ikiru.wtf'),
+    NatsuIdSource(name: 'Ikiru', baseUrl: 'https://09.ikiru.wtf'),
   ];
 
   static const Map<String, List<String>> _hostAliases = {
@@ -35,6 +36,9 @@ abstract final class SourceCatalog {
     // g.shinigami.asia. Cocokkan domain induknya supaya keduanya satu sumber.
     'Shinigami': ['shinigami.asia', 'shngm.io', 'shngm.id'],
     'Ikiru': ['09.ikiru.wtf', 'ikiru.id', '07.ikiru.wtf', 'ikiru.wtf'],
+    'ToonGod': ['www.toongod.org', 'toongod.org', 'toongod.cc'],
+    'SoulScans': ['v1.soulscans.asia', 'soulscans.asia', 'img.soulscans.asia'],
+    'Softkomik': ['softkomik.app', 'softkomik.co', 'softkomik.org'],
   };
 
   /// Cari parser yang host base URL-nya cocok dengan [url] yang diketik user.
@@ -136,6 +140,7 @@ abstract final class SourceCatalog {
         fallbackBaseUrls: fallbackBaseUrls,
       ),
       'madara' => MadaraSource(name: name, baseUrl: baseUrl),
+      'softkomik' => SoftkomikSource(name: name, baseUrl: baseUrl),
       'universal-html' => UniversalHtmlSource(
         name: name,
         baseUrl: baseUrl,
@@ -164,6 +169,7 @@ abstract final class SourceCatalog {
   static bool _isSoulScans(String url) {
     final host = Uri.tryParse(url)?.host.toLowerCase();
     return host == 'soulscans.asia' ||
+        host == 'v1.soulscans.asia' ||
         host?.endsWith('.soulscans.asia') == true;
   }
 
@@ -244,7 +250,10 @@ abstract final class SourceCatalog {
       return ImhentaiSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('soulscans') || host.contains('soulscans')) {
-      return SvelteKitComicSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('soulscans.asia')
+          ? 'https://v1.soulscans.asia'
+          : baseUrl;
+      return SvelteKitComicSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('ikiru') || host.contains('ikiru')) {
       final effectiveUrl = host.contains('ikiru.wtf') ? 'https://09.ikiru.wtf' : baseUrl;
@@ -270,17 +279,22 @@ abstract final class SourceCatalog {
       return MangaThemesiaSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('toongod') || host.contains('toongod')) {
-      return MadaraSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('toongod')
+          ? 'https://www.toongod.org/webtoons'
+          : baseUrl;
+      return MadaraSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('mgkomik') || host.contains('mgkomik')) {
       final effectiveUrl = host == 'mgkomik.id' ? 'https://www.mgkomik.id' : baseUrl;
       return MadaraSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('softkomik') || host.contains('softkomik')) {
-      final effectiveUrl = (host.contains('softkomik.com') || host.contains('softkomik.co'))
+      final effectiveUrl = (host.contains('softkomik.com') ||
+              host.contains('softkomik.co') ||
+              host.contains('softkomik.org'))
           ? 'https://softkomik.app'
           : baseUrl;
-      return MangaThemesiaSource(name: name, baseUrl: effectiveUrl);
+      return SoftkomikSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('komikindo') || host.contains('komikindo')) {
       return MangaThemesiaSource(name: name, baseUrl: baseUrl);

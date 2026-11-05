@@ -631,6 +631,9 @@ class UniversalHtmlSource implements MangaSource {
   List<SourceManga> _parseMangaCards(Document document) {
     final selectors = [
       '.listupd .bs .bsx',
+      '.card a.cover',
+      '.hero-carousel [class*="slide"]',
+      '.slide-in',
       '.utao .uta .imgu',
       '.page-item-detail',
       '.c-tabs-item__content',
@@ -1036,7 +1039,14 @@ class UniversalHtmlSource implements MangaSource {
     if (title == null || title.length < 2) return null;
     final normalizedTitle = title.toLowerCase();
     final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
-    if (normalizedTitle.contains('chapter') ||
+    if (_looksLikeChapter(title, href) ||
+        normalizedTitle.startsWith('ch.') ||
+        normalizedTitle.startsWith('ch ') ||
+        normalizedTitle.startsWith('ep.') ||
+        normalizedTitle.startsWith('ep ') ||
+        normalizedTitle.startsWith('vol.') ||
+        normalizedTitle.startsWith('vol ') ||
+        normalizedTitle.contains('chapter') ||
         normalizedTitle == 'home' ||
         normalizedTitle == 'next' ||
         normalizedTitle == 'previous' ||
@@ -1046,6 +1056,23 @@ class UniversalHtmlSource implements MangaSource {
         normalizedTitle.endsWith('.wtf') ||
         normalizedTitle.endsWith('.xxx') ||
         normalizedTitle.endsWith('.com')) {
+      return null;
+    }
+
+    final pathSegments =
+        Uri.tryParse(href)?.pathSegments.where((s) => s.isNotEmpty).toList() ??
+            [];
+    final prefixIdx = pathSegments.indexWhere(
+      (s) => const [
+        'manga',
+        'comic',
+        'komik',
+        'series',
+        'webtoon',
+        'title',
+      ].contains(s.toLowerCase()),
+    );
+    if (prefixIdx >= 0 && pathSegments.length > prefixIdx + 2) {
       return null;
     }
     final thumbnailUrl = img == null ? null : _imgAttr(img);

@@ -111,6 +111,7 @@ class RepositoryListScreen extends ConsumerWidget {
                                 message:
                                     '"${repo.name}" akan dihapus dari daftar '
                                     'repository kamu.',
+                                confirmLabel: 'Oke, Hapus',
                               );
                               if (!confirmed || !context.mounted) return;
                               ref
@@ -371,6 +372,30 @@ class _AddRepositoryScreenState extends ConsumerState<AddRepositoryScreen> {
                       weight: FontWeight.w800,
                     ),
                   ),
+                  if (_isEdit) ...[
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(AppIcons.delete, color: AppColors.danger),
+                      tooltip: 'Hapus Repository',
+                      onPressed: () async {
+                        final confirmed = await showConfirmSheet(
+                          context,
+                          title: 'Hapus repository?',
+                          message:
+                              '"${widget.editing!.name}" akan dihapus dari daftar repository kamu.',
+                          confirmLabel: 'Oke, Hapus',
+                        );
+                        if (!confirmed || !context.mounted) return;
+                        ref
+                            .read(repositoriesProvider.notifier)
+                            .remove(widget.editing!.id);
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                          AppToast.show(context, 'Repository dihapus');
+                        }
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),

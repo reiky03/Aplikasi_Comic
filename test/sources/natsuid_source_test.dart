@@ -120,7 +120,7 @@ void main() {
           requestedOrder.add(order ?? '');
           requestedQueries.add(_multipartField(request.body, 'query') ?? '');
           expect(_multipartField(request.body, 'nonce'), 'nonce-aman');
-          final slugs = order == 'updated'
+          final slugs = (order == 'update' || order == 'updated')
               ? ['latest-one', 'shared']
               : ['popular-one', 'shared'];
           return http.Response('''
@@ -164,7 +164,7 @@ void main() {
         'shared',
       ]);
       expect(popular.hasNextPage, isTrue);
-      expect(requestedOrder, ['popular', 'updated', 'popular']);
+      expect(requestedOrder, ['popular', 'update', 'popular']);
       expect(requestedQueries, ['', '', 'solo']);
       expect(search.mangas, isNotEmpty);
       expect(nonceCalls, 1);
@@ -203,6 +203,120 @@ void main() {
     );
     expect(pages, hasLength(2));
     expect(pages[0].imageUrl, 'https://cdn.example/pages/001.jpg');
+  });
+
+  group('Nuxt 3 Hatsu mode (09.ikiru.wtf)', () {
+    const nuxtHomeHtml = '''
+<!DOCTYPE html><html><body>
+<div class="hero-carousel">
+  <div class="slide-in">
+    <h1 class="line-clamp-2">The Greatest Estate Developer</h1>
+    <a href="/manga/the-greatest-estate-developer">Lihat Detail</a>
+    <img src="https://cdn.ikiru.id/cover1.jpg" alt="Hero cover">
+  </div>
+</div>
+<div class="card proj">
+  <a href="/manga/ketika-karyawan-jenius-melewati-batas" class="cover" aria-label="Ketika Karyawan Jenius Melewati Batas">
+    <img src="/api/image/thumb?src=https%3A%2F%2Fcdn.ikiru.id%2Fcover2.png" alt="Ketika Karyawan Jenius Melewati Batas">
+    <div class="scrim"><div class="ctitle">Ketika Karyawan Jenius Melewati Batas</div></div>
+  </a>
+  <div class="chaps">
+    <a href="/manga/ketika-karyawan-jenius-melewati-batas/chapter-67" class="chap fresh">
+      <span class="cn">Ch. 67</span><span class="ct">1 jam lalu</span>
+    </a>
+  </div>
+</div>
+</body></html>
+''';
+
+    const nuxtDetailHtml = '''
+<!DOCTYPE html><html><body>
+<script id="__NUXT_DATA__" type="application/json">
+[["ShallowReactive",1],{"data":2},{"manga":3},{"title":4,"description":5,"status":6,"chapters":7},"Ketika Karyawan Jenius Melewati Batas","<p>Karyawan marketing jenius!</p>","Ongoing",[8],{"number":9,"title":10,"createdAt":11,"id":12},67,"Chapter 67","2026-11-01T00:00:00.000Z","c-67"]
+</script>
+<a href="/genre/action">Action</a>
+<a href="/genre/drama">Drama</a>
+</body></html>
+''';
+
+    const nuxtChapterHtml = '''
+<!DOCTYPE html><html><body>
+<script id="__NUXT_DATA__" type="application/json">
+["https://cdn.ikiru.id/t/karyawan/67/01.webp","https://cdn.ikiru.id/t/karyawan/67/02.webp"]
+</script>
+<main><img src="https://cdn.ikiru.id/t/karyawan/67/01.webp"><img src="https://cdn.ikiru.id/t/karyawan/67/02.webp"></main>
+</body></html>
+''';
+
+    late NatsuIdSource nuxtSource;
+
+    setUp(() {
+      final nuxtClient = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/' || path == '') {
+          return http.Response(nuxtHomeHtml, 200);
+        }
+        if (path.contains('/manga/ketika-karyawan-jenius-melewati-batas/chapter-67')) {
+          return http.Response(nuxtChapterHtml, 200);
+        }
+        if (path.contains('/manga/ketika-karyawan-jenius-melewati-batas')) {
+          return http.Response(nuxtDetailHtml, 200);
+        }
+        return http.Response('not found', 404);
+      });
+      nuxtSource = NatsuIdSource(
+        name: 'Ikiru',
+        baseUrl: 'https://09.ikiru.wtf',
+        client: nuxtClient,
+      );
+    });
+
+    test('fetchPopular mengurai hero carousel dan kartu cover tanpa chapter dummy', () async {
+      final page = await nuxtSource.fetchPopular(1);
+      expect(page.mangas, hasLength(2));
+      expect(page.mangas[0].title, 'The Greatest Estate Developer');
+      expect(page.mangas[0].url, 'https://09.ikiru.wtf/manga/the-greatest-estate-developer');
+      expect(page.mangas[0].thumbnailUrl, 'https://cdn.ikiru.id/cover1.jpg');
+      expect(page.mangas[1].title, 'Ketika Karyawan Jenius Melewati Batas');
+      expect(page.mangas[1].thumbnailUrl, 'https://09.ikiru.wtf/api/image/thumb?src=https%3A%2F%2Fcdn.ikiru.id%2Fcover2.png');
+    });
+
+    test('fetchLatest mengurai kartu dengan section chaps', () async {
+      final page = await nuxtSource.fetchLatest(1);
+      expect(page.mangas, hasLength(1));
+      expect(page.mangas[0].title, 'Ketika Karyawan Jenius Melewati Batas');
+    });
+
+    test('fetchMangaDetails mengurai __NUXT_DATA__', () async {
+      final details = await nuxtSource.fetchMangaDetails(
+        'https://09.ikiru.wtf/manga/ketika-karyawan-jenius-melewati-batas',
+      );
+      expect(details.description, 'Karyawan marketing jenius!');
+      expect(details.status, SourceMangaStatus.ongoing);
+      expect(details.genres, ['Action', 'Drama']);
+    });
+
+    test('fetchChapterList mengurai chapters dari __NUXT_DATA__', () async {
+      final chaps = await nuxtSource.fetchChapterList(
+        'https://09.ikiru.wtf/manga/ketika-karyawan-jenius-melewati-batas',
+      );
+      expect(chaps, hasLength(1));
+      expect(chaps[0].name, 'Chapter 67');
+      expect(
+        chaps[0].url,
+        'https://09.ikiru.wtf/manga/ketika-karyawan-jenius-melewati-batas/chapter-67',
+      );
+      expect(chaps[0].dateUpload, DateTime.utc(2026, 11, 1));
+    });
+
+    test('fetchPageList mengurai pages dari __NUXT_DATA__', () async {
+      final pages = await nuxtSource.fetchPageList(
+        'https://09.ikiru.wtf/manga/ketika-karyawan-jenius-melewati-batas/chapter-67',
+      );
+      expect(pages, hasLength(2));
+      expect(pages[0].imageUrl, 'https://cdn.ikiru.id/t/karyawan/67/01.webp');
+      expect(pages[1].imageUrl, 'https://cdn.ikiru.id/t/karyawan/67/02.webp');
+    });
   });
 }
 

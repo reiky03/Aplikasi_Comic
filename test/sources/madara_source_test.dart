@@ -104,6 +104,23 @@ void main() {
       expect(pages.first.headers['Referer'], chapters.single.url);
     },
   );
+
+  test('MadaraSource dengan domain toongod memakai path /webtoons/', () async {
+    final paths = <String>[];
+    final source = MadaraSource(
+      name: 'ToonGod',
+      baseUrl: 'https://www.toongod.org/webtoons',
+      client: MockClient((request) async {
+        paths.add(request.url.path);
+        return http.Response(_cardHtml('Solo Leveling', 'solo'), 200);
+      }),
+    );
+
+    await source.fetchPopular(1);
+    await source.fetchPopular(2);
+
+    expect(paths, ['/webtoons/', '/webtoons/page/2/']);
+  });
 }
 
 String _cardHtml(String title, String slug) =>

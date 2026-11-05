@@ -11,6 +11,7 @@ import 'manga_source.dart';
 import 'mangafire_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
+import 'softkomik_source.dart';
 import 'sveltekit_comic_source.dart';
 
 class ExtensionRuntimeSource implements MangaSource {
@@ -102,7 +103,10 @@ class ExtensionRuntimeSource implements MangaSource {
     if (host == 'soulscans.asia' ||
         host.endsWith('.soulscans.asia') ||
         lower.contains('soulscans')) {
-      return SvelteKitComicSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('soulscans.asia')
+          ? 'https://v1.soulscans.asia'
+          : baseUrl;
+      return SvelteKitComicSource(name: name, baseUrl: effectiveUrl);
     }
     if (host == 'mangafire.to' || host.endsWith('.mangafire.to')) {
       return MangaFireSource(name: name, baseUrl: baseUrl, lang: lang);
@@ -114,19 +118,28 @@ class ExtensionRuntimeSource implements MangaSource {
       return MangaThemesiaSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('toongod') || host.contains('toongod')) {
-      return MadaraSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('toongod')
+          ? 'https://www.toongod.org/webtoons'
+          : baseUrl;
+      return MadaraSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('mgkomik') || host.contains('mgkomik')) {
       return MadaraSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('softkomik') || host.contains('softkomik')) {
-      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = (host.contains('softkomik.com') ||
+              host.contains('softkomik.co') ||
+              host.contains('softkomik.org'))
+          ? 'https://softkomik.app'
+          : baseUrl;
+      return SoftkomikSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('komikindo') || host.contains('komikindo')) {
       return MangaThemesiaSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('ikiru') || host.contains('ikiru')) {
-      return NatsuIdSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('ikiru.wtf') ? 'https://09.ikiru.wtf' : baseUrl;
+      return NatsuIdSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('komiku') || host.contains('komiku')) {
       return KomikuSource();

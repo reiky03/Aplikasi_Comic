@@ -490,6 +490,28 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
+                  if (isInstalled && repoMatch?.source.pkg != null) ...[
+                    AppHeaderIconButton(
+                      icon: LucideIcons.trash2,
+                      onTap: () async {
+                        final pkg = repoMatch!.source.pkg!;
+                        final confirmed = await showConfirmSheet(
+                          context,
+                          title: 'Copot Ekstensi?',
+                          message:
+                              'Copot ekstensi "${source.name}" dari perangkat agar bisa diinstal ulang dengan bersih.',
+                          confirmLabel: 'Oke, Hapus',
+                        );
+                        if (!confirmed || !context.mounted) return;
+                        ExtensionUpdateHelper.uninstall(
+                          context,
+                          ref: ref,
+                          packageName: pkg,
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   // Buka situs asli lewat WebView — jalan pintas kalau
                   // parser gagal/situs berubah struktur, tanpa harus
                   // nunggu status source berubah jadi "gagal" dulu.

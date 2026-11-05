@@ -5,6 +5,7 @@ import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
 import 'shinigami_source.dart';
+import 'softkomik_source.dart';
 import 'sveltekit_comic_source.dart';
 import 'universal_html_source.dart';
 
@@ -43,6 +44,7 @@ class AlternativeSourceMethods implements MangaSource {
       'shinigami' => ShinigamiSource(),
       'komiku' => KomikuSource(),
       'komikindo' => MangaThemesiaSource(name: name, baseUrl: baseUrl),
+      'softkomik' => SoftkomikSource(name: name, baseUrl: baseUrl),
       'ikiru' => NatsuIdSource(name: name, baseUrl: baseUrl),
       _ => null,
     };

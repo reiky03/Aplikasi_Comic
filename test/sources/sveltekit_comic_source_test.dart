@@ -175,4 +175,29 @@ void main() {
     expect(pages.first.imageUrl, startsWith('https://sscdn.dbm.my.id/'));
     expect(pages.first.headers['Referer'], contains('chapter-2'));
   });
+
+  test('membaca chapters dari field units SvelteKit', () async {
+    const unitsHtml = '''
+<html><body>
+<script type="application/json" data-sveltekit-fetched>
+{"id":"123","slug":"my-hero","units":[
+  {"id":"u90","number":"90.00","slug":"90","title":"Chapter 90 Finale"},
+  {"id":"u89","number":"89.00","slug":"89","title":"Chapter 89 Battle"}
+]}
+</script>
+</body></html>
+''';
+    final unitsSource = SvelteKitComicSource(
+      name: 'Soul Scans',
+      baseUrl: 'https://v1.soulscans.asia',
+      client: MockClient((request) async => http.Response(unitsHtml, 200)),
+    );
+
+    final chapters = await unitsSource.fetchChapterList('https://v1.soulscans.asia/comic/my-hero');
+    expect(chapters, hasLength(2));
+    expect(chapters.first.name, 'Chapter 90 Finale');
+    expect(chapters.first.url, 'https://v1.soulscans.asia/comic/my-hero/chapter/90');
+    expect(chapters.last.name, 'Chapter 89 Battle');
+    expect(chapters.last.url, 'https://v1.soulscans.asia/comic/my-hero/chapter/89');
+  });
 }

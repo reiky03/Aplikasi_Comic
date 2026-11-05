@@ -264,11 +264,48 @@ class SvelteKitComicSource implements MangaSource {
     final chapters = <SourceChapter>[];
     final seriesSlug = _seriesSlug(mangaUrl);
 
-    // Payload chapter punya label asli (mis. "Chapter 1"). Parse dulu agar
-    // tombol navigasi "First chapter" tidak mengambil alih nama chapter.
+    // 1. Ekstrak dari array 'units' (struktur standar Soulscans SvelteKit)
+    for (final map in _mapsFromDocument(document)) {
+      final units = map['units'];
+      if (units is List) {
+        for (final item in units) {
+          if (item is! Map) continue;
+          final unit = <String, Object?>{
+            for (final entry in item.entries) '${entry.key}': entry.value,
+          };
+          final slug = _stringValue(unit, const ['slug', 'chapter_slug']);
+          if (slug == null || slug.isEmpty) continue;
+          final rawUrl = seriesSlug == null
+              ? null
+              : '/comic/$seriesSlug/chapter/$slug';
+          if (rawUrl == null) continue;
+          final url = _absUrl(rawUrl);
+          if (!seen.add(url)) continue;
+          final title = _stringValue(unit, const ['title', 'name']);
+          final number = _stringValue(unit, const ['number', 'sort_number']);
+          final label = title != null && title.isNotEmpty
+              ? title
+              : number != null && number.isNotEmpty
+              ? 'Chapter $number'
+              : 'Chapter $slug';
+          chapters.add(
+            SourceChapter(
+              url: url,
+              name: label,
+              dateUpload: _dateValue(unit),
+            ),
+          );
+        }
+      }
+    }
+
+    // 2. Payload map individual chapter
     for (final map in _mapsFromDocument(document)) {
       final slug = _stringValue(map, const ['chapter_slug', 'slug']);
-      if (slug == null || !slug.toLowerCase().contains('chapter')) continue;
+      if (slug == null) continue;
+      final hasChapterMarker = slug.toLowerCase().contains('chapter') ||
+          _stringValue(map, const ['chapter_name', 'number', 'sort_number']) != null;
+      if (!hasChapterMarker) continue;
       final href = _stringValue(map, const [
         'url',
         'href',
@@ -298,12 +335,18 @@ class SvelteKitComicSource implements MangaSource {
       );
     }
 
+    // 3. Anchor tags HTML
     for (final anchor in document.querySelectorAll('a[href*="/chapter/"]')) {
       final href = anchor.attributes['href'];
       if (href == null) continue;
       final url = _absUrl(href);
       if (!seen.add(url)) continue;
       final label = anchor.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (chapters.isNotEmpty &&
+          (label.toLowerCase() == 'first chapter' ||
+              label.toLowerCase() == 'last chapter')) {
+        continue;
+      }
       chapters.add(
         SourceChapter(
           url: url,

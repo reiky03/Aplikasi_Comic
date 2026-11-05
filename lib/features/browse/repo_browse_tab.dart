@@ -796,10 +796,18 @@ class _ExtensionInstallButtonState
           ],
           AppSheetMenuRow(
             icon: AppIcons.delete,
-            label: 'Hapus instal extension',
+            label: 'Copot & Hapus Extension',
             destructive: true,
-            onTap: () {
+            onTap: () async {
               Navigator.pop(sheetContext);
+              final confirmed = await showConfirmSheet(
+                context,
+                title: 'Copot Ekstensi?',
+                message:
+                    'Copot "${widget.data.source.name}" dari perangkat agar bisa diinstal ulang dengan bersih.',
+                confirmLabel: 'Oke, Hapus',
+              );
+              if (!confirmed || !mounted) return;
               _uninstall(packageName);
             },
           ),
@@ -812,11 +820,44 @@ class _ExtensionInstallButtonState
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      AppToast.show(context, 'Membuka dialog pencopotan...');
       await const ExtensionRuntimeBridge().uninstallExtensionPackage(
         packageName,
       );
       if (!mounted) return;
-      AppToast.show(context, 'Dialog hapus instal dibuka');
+
+      final deadline = DateTime.now().add(const Duration(seconds: 45));
+      var uninstalled = false;
+      while (DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (!mounted) return;
+
+        final currentList = await const ExtensionRuntimeBridge()
+            .listInstalledExtensions();
+        final stillInstalled = currentList.any(
+          (pkg) => pkg.packageName == packageName,
+        );
+
+        if (!stillInstalled) {
+          uninstalled = true;
+          break;
+        }
+      }
+
+      if (!mounted) return;
+      ref.invalidate(installedExtensionPackagesProvider);
+      ref
+          .read(sourcesProvider.notifier)
+          .syncWithRepositories(ref.read(repositoriesProvider));
+
+      if (uninstalled) {
+        AppToast.show(
+          context,
+          'Ekstensi berhasil dicopot. Siap diinstal ulang.',
+        );
+      } else {
+        AppToast.show(context, 'Pencopotan dibatalkan atau belum selesai.');
+      }
     } catch (e) {
       if (!mounted) return;
       AppToast.show(context, 'Gagal membuka hapus instal: $e');

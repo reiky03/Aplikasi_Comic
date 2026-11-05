@@ -125,6 +125,15 @@ class MadaraSource implements MangaSource {
     throw MangaSourceException('Katalog Madara $name belum dikenali.');
   }
 
+  String get _mangaPath {
+    final lowerBase = baseUrl.toLowerCase();
+    if (lowerBase.contains('/webtoons') ||
+        Uri.tryParse(baseUrl)?.host.toLowerCase().contains('toongod') == true) {
+      return 'webtoons';
+    }
+    return 'manga';
+  }
+
   Uri _archiveUri({
     required int page,
     required _MadaraOrder order,
@@ -136,7 +145,7 @@ class MadaraSource implements MangaSource {
         '/$pagePath',
       ).replace(queryParameters: {'s': query, 'post_type': 'wp-manga'});
     }
-    return _resolve('/manga/$pagePath').replace(
+    return _resolve('/$_mangaPath/$pagePath').replace(
       queryParameters: {
         'm_orderby': order == _MadaraOrder.latest ? 'latest' : 'views',
       },

@@ -9,6 +9,7 @@ import 'madara_source.dart';
 import 'mangathemesia_source.dart';
 import 'natsuid_source.dart';
 import 'shinigami_source.dart';
+import 'softkomik_source.dart';
 import 'sveltekit_comic_source.dart';
 import 'universal_html_source.dart';
 
@@ -88,10 +89,14 @@ class AdaptiveSource implements MangaSource {
       return ImhentaiSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('soulscans') || host.contains('soulscans')) {
-      return SvelteKitComicSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('soulscans.asia')
+          ? 'https://v1.soulscans.asia'
+          : baseUrl;
+      return SvelteKitComicSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('ikiru') || host.contains('ikiru')) {
-      return NatsuIdSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('ikiru.wtf') ? 'https://09.ikiru.wtf' : baseUrl;
+      return NatsuIdSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('kiryu') || lower.contains('kiryuu') || host.contains('kiryuu')) {
       return MangaThemesiaSource(name: name, baseUrl: baseUrl);
@@ -100,13 +105,21 @@ class AdaptiveSource implements MangaSource {
       return MangaThemesiaSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('toongod') || host.contains('toongod')) {
-      return MadaraSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = host.contains('toongod')
+          ? 'https://www.toongod.org/webtoons'
+          : baseUrl;
+      return MadaraSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('mgkomik') || host.contains('mgkomik')) {
       return MadaraSource(name: name, baseUrl: baseUrl);
     }
     if (lower.contains('softkomik') || host.contains('softkomik')) {
-      return MangaThemesiaSource(name: name, baseUrl: baseUrl);
+      final effectiveUrl = (host.contains('softkomik.com') ||
+              host.contains('softkomik.co') ||
+              host.contains('softkomik.org'))
+          ? 'https://softkomik.app'
+          : baseUrl;
+      return SoftkomikSource(name: name, baseUrl: effectiveUrl);
     }
     if (lower.contains('komikindo') || host.contains('komikindo')) {
       return MangaThemesiaSource(name: name, baseUrl: baseUrl);
