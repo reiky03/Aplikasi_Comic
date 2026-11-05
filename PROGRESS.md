@@ -4278,10 +4278,39 @@ Verifikasi:
      - Jika ekstensi APK tidak terpasang atau bentrok signature dengan Mihon, runtime langsung beralih ke parser native yang sesuai tanpa error.
 4. **Bump Versi ke 1.2.6 (Build 18)**:
    - `pubspec.yaml` dan `about_screen.dart` dinaikkan ke versi `1.2.6+18`.
-   - File APK release `kizen-v1.2.6.apk` berhasil di-build (SHA-256: `4fdffb5bd532721f4bbb1522ed4554d73cd43045591d9ff16a0a01fa1393c6eb`).
+   - File APK release `kizen-v1.2.6.apk` berhasil di-build (SHA-256: `de21929999f4d37d000cc2e55219782e03c2077afdba3d8b7c2670caa5bfe192`).
 
 ### Verifikasi:
 - `flutter analyze`: Nol issue (0 errors, 0 warnings).
 - `flutter test -j 1`: 170/170 test lulus 100% (+1 test baru `vpn_quick_button_test.dart`, 3 skipped).
 - `flutter build web`: Berhasil compile.
-- `flutter build apk --release`: Berhasil ter-build (69.4MB, 65s).
+- `flutter build apk --release`: Berhasil ter-build (69.4MB).
+- Binary inspection `libapp.so`: `strings libapp.so | grep "1.2.6"` -> `v1.2.6 (18)` valid & `1.2.5` nihil.
+- Manifest verification `aapt dump badging`: `versionCode='18' versionName='1.2.6'`.
+
+---
+
+### 2026-11-05 — Hotfix Rilis v1.2.6: Perbaikan Loop Update Berulang (Baking Konstanta Versi ke Dart AOT libapp.so)
+
+**Keluhan User**:
+"beb ada bug, ak dah update2 tapi gak jadi2 verrsinya, ak dah donlod dah sintal tapi versinya masih pakai yang lama gimana tiu ini true berulang ulang"
+
+**Root Cause**:
+- Pada kompilasi APK pertama rilis v1.2.6, proses `flutter build apk --release` dijalankan saat artefak kompilasi Dart AOT intermediate masih menggunakan snapshot cache sebelumnya di mana `kAppVersion` bernilai `1.2.5`.
+- Akibatnya:
+  * `AndroidManifest.xml` mencatat `versionName='1.2.6'` dan `versionCode='18'`.
+  * Namun di dalam file binary Dart (`lib/arm64-v8a/libapp.so`), string konstanta internal `kAppVersion` masih tertanam `'1.2.5'`.
+  * Ketika user menginstal APK tersebut, method `HomeShell._checkUpdateSilently()` membaca `kAppVersion` (`'1.2.5'`) dan membandingkannya dengan rilis GitHub terbaru (`'1.2.6'`). Karena `1.2.6 > 1.2.5`, aplikasi menganggap dirinya masih versi lama dan terus-menerus memunculkan modal pembaruan dalam loop tak terhingga.
+
+**Solusi & Tindakan**:
+1. Pembersihan total cache build Dart dan Gradle: `rm -rf build/app .dart_tool/flutter_build build/flutter_assets` dan `./gradlew clean`.
+2. Kompilasi ulang bersih: `flutter build apk --release`.
+3. Verifikasi biner berlapis:
+   - String dump `libapp.so` pada arsitektur `arm64-v8a`:
+     `unzip -p build/app/outputs/flutter-apk/app-release.apk "lib/arm64-v8a/libapp.so" | strings | grep -E "1\.2\.[456]"`
+     Hasil: Menampilkan `v1.2.6 (18)`. String `1.2.5` sama sekali tidak ditemukan (exit code 1).
+   - Manifest badging via `aapt`:
+     `package: name='com.reikypratama.aplikasi_komik' versionCode='18' versionName='1.2.6'`.
+4. Overwrite rilis GitHub:
+   - Mengunggah file APK baru `kizen-v1.2.6.apk` ke tag `v1.2.6` dengan opsi `--clobber` (SHA-256: `de21929999f4d37d000cc2e55219782e03c2077afdba3d8b7c2670caa5bfe192`).
+   - Memperbarui catatan rilis di GitHub Releases dengan checksum yang cocok.
