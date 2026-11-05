@@ -401,9 +401,20 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
     });
   }
 
-  void _resetSession(ComicSource source) {
+  Future<void> _resetSession(ComicSource source) async {
+    final confirmed = await showConfirmSheet(
+      context,
+      title: 'Hapus Sesi Browser?',
+      message:
+          'Sesi login dan verifikasi Cloudflare untuk "${source.name}" akan dihapus. '
+          'Kamu harus membuka WebView lagi jika situs meminta verifikasi.',
+      confirmLabel: 'Hapus Sesi',
+    );
+    if (!confirmed || !mounted) return;
     ref.read(sourcesProvider.notifier).setSession(source.id, false);
-    AppToast.show(context, 'Session di-reset untuk ${source.name}');
+    if (mounted) {
+      AppToast.show(context, 'Session dihapus untuk ${source.name}');
+    }
   }
 
   @override
@@ -763,18 +774,40 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                   ),
                 ),
                 InkWell(
+                  onTap: () => _openWebView(source),
+                  borderRadius: BorderRadius.circular(9),
+                  child: Container(
+                    height: 32,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      'WebView',
+                      style: AppTypography.jakarta(
+                        size: 11.5,
+                        weight: FontWeight.w700,
+                        color: AppColors.accentText,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
                   onTap: () => _resetSession(source),
                   borderRadius: BorderRadius.circular(9),
                   child: Container(
                     height: 32,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(9),
                       border: Border.all(color: const Color(0x59FF7A93)),
                     ),
                     child: Text(
-                      'Reset',
+                      'Hapus Sesi',
                       style: AppTypography.jakarta(
                         size: 11.5,
                         weight: FontWeight.w700,
@@ -1480,7 +1513,7 @@ class _SourceDetailScreenState extends ConsumerState<SourceDetailScreen> {
                       height: 46,
                       alignment: Alignment.center,
                       child: Text(
-                        'Reset Session',
+                        'Hapus Sesi Browser',
                         style: AppTypography.jakarta(
                           size: 13.5,
                           weight: FontWeight.w700,

@@ -19,6 +19,7 @@ import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import dalvik.system.DexClassLoader
+import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
@@ -1743,12 +1744,21 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
             mode == "latest" -> "https://imhentai.xxx/?page=$page"
             else -> "https://imhentai.xxx/popular/?page=$page"
         }
-        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val client = applyVpnDns(
+            OkHttpClient.Builder()
+                .addInterceptor(CloudflareInterceptor())
+                .build()
+        )
         val reqBuilder = Request.Builder()
             .url(url)
             .header("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
             .header("Referer", "https://imhentai.xxx/")
-        sessionHeaders["Cookie"]?.let { reqBuilder.header("Cookie", it) }
+        val cookie = sessionHeaders["Cookie"] ?: runCatching {
+            CookieManager.getInstance().getCookie(url)
+        }.getOrNull()
+        if (!cookie.isNullOrBlank()) {
+            reqBuilder.header("Cookie", cookie)
+        }
         val body = client.newCall(reqBuilder.build()).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
             resp.body.string()
@@ -1789,12 +1799,21 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         } else {
             "https://imhentai.xxx${if (mangaUrl.startsWith("/")) "" else "/"}$mangaUrl"
         }
-        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val client = applyVpnDns(
+            OkHttpClient.Builder()
+                .addInterceptor(CloudflareInterceptor())
+                .build()
+        )
         val reqBuilder = Request.Builder()
             .url(fullUrl)
             .header("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
             .header("Referer", "https://imhentai.xxx/")
-        sessionHeaders["Cookie"]?.let { reqBuilder.header("Cookie", it) }
+        val cookie = sessionHeaders["Cookie"] ?: runCatching {
+            CookieManager.getInstance().getCookie(fullUrl)
+        }.getOrNull()
+        if (!cookie.isNullOrBlank()) {
+            reqBuilder.header("Cookie", cookie)
+        }
         val body = client.newCall(reqBuilder.build()).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
             resp.body.string()
@@ -1855,12 +1874,21 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         } else {
             "https://imhentai.xxx${if (chapterUrl.startsWith("/")) "" else "/"}$chapterUrl"
         }
-        val client = applyVpnDns(OkHttpClient.Builder().build())
+        val client = applyVpnDns(
+            OkHttpClient.Builder()
+                .addInterceptor(CloudflareInterceptor())
+                .build()
+        )
         val reqBuilder = Request.Builder()
             .url(fullUrl)
             .header("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
             .header("Referer", "https://imhentai.xxx/")
-        sessionHeaders["Cookie"]?.let { reqBuilder.header("Cookie", it) }
+        val cookie = sessionHeaders["Cookie"] ?: runCatching {
+            CookieManager.getInstance().getCookie(fullUrl)
+        }.getOrNull()
+        if (!cookie.isNullOrBlank()) {
+            reqBuilder.header("Cookie", cookie)
+        }
         val body = client.newCall(reqBuilder.build()).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
             resp.body.string()
@@ -1875,6 +1903,12 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         val imageHeaders = buildMap {
             put("Referer", "https://imhentai.xxx/")
             put("User-Agent", sessionHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+            val cookie = sessionHeaders["Cookie"] ?: runCatching {
+                CookieManager.getInstance().getCookie("https://imhentai.xxx/")
+            }.getOrNull()
+            if (!cookie.isNullOrBlank()) {
+                put("Cookie", cookie)
+            }
             putAll(sessionHeaders)
         }
 

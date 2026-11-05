@@ -1847,10 +1847,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
               const SizedBox(width: 8),
               _chromeButton(
                 size: 38,
-                icon: _isCurrentPageBookmarked()
+                icon: _isCurrentChapterBookmarked()
                     ? Icons.bookmark_rounded
                     : Icons.bookmark_border_rounded,
-                active: _isCurrentPageBookmarked(),
+                active: _isCurrentChapterBookmarked(),
                 onTap: _toggleBookmark,
               ),
               const SizedBox(width: 8),
@@ -2123,57 +2123,64 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     );
   }
 
-  bool _isCurrentPageBookmarked() {
+  bool _isCurrentChapterBookmarked() {
     final comic = widget.comic;
-    return ref
-        .watch(bookmarksProvider)
-        .any(
-          (entry) =>
-              entry.page == _page + 1 &&
-              BookmarksNotifier.matchesChapter(
-                entry,
-                comicId: comic.id,
-                chapterNum: _chapter,
-                chapterUrl: _currentChapterUrl,
-              ),
+    return ref.watch(bookmarksProvider).any(
+          (entry) => BookmarksNotifier.matchesChapter(
+            entry,
+            comicId: comic.id,
+            chapterNum: _chapter,
+            chapterUrl: _currentChapterUrl,
+          ),
         );
   }
 
-  /// Tandai/lepas halaman yang lagi dibuka sebagai bookmark ("momen
-  /// epic") — beda dari progres baca biasa, tidak ketimpa/hilang saat
-  /// lanjut baca, dan bisa banyak per komik lewat [_openBookmarks].
-  void _toggleBookmark() {
+  /// Tandai/lepas chapter yang lagi dibuka sebagai bookmark.
+  /// Status bookmark stabil per chapter (tidak hilang-timbul saat scroll
+  /// berganti halaman). Saat ditambahkan, nomor halaman aktif disimpan
+  /// agar user tetap bisa melompat ke titik baca spesifik lewat [_openBookmarks].
+  Future<void> _toggleBookmark() async {
     final comic = widget.comic;
-    final wasBookmarked = ref
-        .read(bookmarksProvider)
-        .any(
-          (entry) =>
-              entry.page == _page + 1 &&
-              BookmarksNotifier.matchesChapter(
-                entry,
-                comicId: comic.id,
-                chapterNum: _chapter,
-                chapterUrl: _currentChapterUrl,
-              ),
-        );
-    ref
-        .read(bookmarksProvider.notifier)
-        .toggle(
-          comicId: comic.id,
-          title: comic.title,
-          src: comic.src,
-          hue: comic.hue,
-          chNum: _chapter,
-          chapterLabel: _chapterLabel,
-          page: _page + 1,
-          pages: _totalPages,
-          chapterUrl: _currentChapterUrl,
+    final bookmarks = ref.read(bookmarksProvider);
+    final chapterBookmarks = bookmarks
+        .where(
+          (entry) => BookmarksNotifier.matchesChapter(
+            entry,
+            comicId: comic.id,
+            chapterNum: _chapter,
+            chapterUrl: _currentChapterUrl,
+          ),
         )
-        .catchError((Object e) => _reportSaveError('bookmark', e));
-    AppToast.show(
-      context,
-      wasBookmarked ? 'Bookmark dihapus' : 'Bookmark disimpan',
-    );
+        .toList();
+
+    final wasBookmarked = chapterBookmarks.isNotEmpty;
+    try {
+      if (wasBookmarked) {
+        for (final b in chapterBookmarks) {
+          await ref.read(bookmarksProvider.notifier).remove(b.id);
+        }
+      } else {
+        await ref.read(bookmarksProvider.notifier).toggle(
+              comicId: comic.id,
+              title: comic.title,
+              src: comic.src,
+              hue: comic.hue,
+              chNum: _chapter,
+              chapterLabel: _chapterLabel,
+              page: _page + 1,
+              pages: _totalPages,
+              chapterUrl: _currentChapterUrl,
+            );
+      }
+      if (mounted) {
+        AppToast.show(
+          context,
+          wasBookmarked ? 'Bookmark dihapus' : 'Bookmark disimpan',
+        );
+      }
+    } catch (e) {
+      _reportSaveError('bookmark', e);
+    }
   }
 
   void _openBookmarks() {

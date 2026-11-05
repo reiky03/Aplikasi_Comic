@@ -40,9 +40,24 @@ class HistoryScreen extends ConsumerWidget {
                   child: Text('History', style: AppTypography.screenTitle),
                 ),
                 _ClearButton(
-                  onTap: () {
-                    ref.read(historyProvider.notifier).clear();
-                    AppToast.show(context, 'Riwayat dibersihkan');
+                  onTap: () async {
+                    if (history.isEmpty) {
+                      AppToast.show(context, 'Riwayat sudah kosong');
+                      return;
+                    }
+                    final confirmed = await showConfirmSheet(
+                      context,
+                      title: 'Bersihkan Riwayat?',
+                      message:
+                          'Semua riwayat baca komik akan dihapus. Komik di '
+                          'Library dan progres chapter tidak ikut terhapus.',
+                      confirmLabel: 'Bersihkan',
+                    );
+                    if (!confirmed || !context.mounted) return;
+                    await ref.read(historyProvider.notifier).clear();
+                    if (context.mounted) {
+                      AppToast.show(context, 'Riwayat dibersihkan');
+                    }
                   },
                 ),
               ],

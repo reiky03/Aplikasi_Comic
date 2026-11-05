@@ -27,6 +27,63 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-06 — Kizen v1.2.12: Reader Bookmark Stabil Tanpa Hilang-Timbul, Konfirmasi Bersihkan History, Sort Library "Pembaruan Terakhir", Swipe Horizontal Antar Koleksi Library ala Tachiyomi/Mihon, Fallback Ekstensi & Buka Komik Fleksibel, serta Perbaikan IMHentai Sesi Cloudflare
+
+Permintaan user:
+1. "ketika lagi baca komik kan disitu ad navbar atas yang vpn sama bookmark ya kan, nah pas ak scroll bacaannya kadang bookmark yang udah ditandai suka hilang timbul, padhal dah disimpan bookmark tapi tiba2 hilang dia tanda ikonnya di[pencet, tapi pas aikonnya tiba2 berubah ak keluar dia tetap ditandai bookmark sih,btapi tetap aja ini bug beb"
+2. "di menu history, dikasih saat tekan bersihkan ada kayak peringatan dulu gituloh gak lsg main bersihkan aja"
+3. "bagian filter ditambah kan beb namanya pembaruan terakhir ini ada untuk menampilkan komik2 yang mana aja terakhir baru tertambah bab komiknya di menu libarrry"
+4. "di menu library itu kalau kita swap kanan swap kiri bisa pindah2 koleksi layaknya kayak di mihon atau tachityomi, jadi kalau ak mau oindah koleksi gak harus tekan dari koleksinya tapi bisa juga lewat dari swap2 itu beb"
+5. "metode tambahan paling cangggih untuk bsia fleskibel buka banyak website komik, tiru aja beb caranya orang mihon atau tachyomi, dan ingat beb jangan bmerusak yang sudah ada"
+6. "kenapa imhentai masih belumbbisa dibaca, padahal dah di tandai reset2 ituloh pas buka webview"
+
+Root cause & analisis mendalam:
+1. **Reader Bookmark Hilang-Timbul saat Scroll**:
+   - Di `lib/features/reader/reader_screen.dart`, ikon bookmark di top navbar sebelumnya memeriksa `_isCurrentPageBookmarked()` dengan mencocokkan `entry.page == _page + 1`. Saat membaca komik Webtoon atau scroll panjang, `_page` berganti terus tiap kali layar bergeser beberapa piksel. Ketika berada di halaman 2, bookmark yang tersimpan di halaman 1 langsung bernilai `false`, membuat ikon bookmark tiba-tiba berubah dari filled (aktif) menjadi outline (tidak aktif). Sebaliknya di `ComicDetailScreen`, status bookmark diperiksa per-chapter (`BookmarksNotifier.matchesChapter`), sehingga di luar reader chapter tersebut tetap berstatus bookmarked.
+2. **Tombol Bersihkan di History Langsung Hapus Tanpa Konfirmasi**:
+   - Di `lib/features/history/history_screen.dart`, tombol `_ClearButton` di header langsung memanggil `ref.read(historyProvider.notifier).clear()` tanpa peringatan, berisiko menghapus riwayat baca secara tidak sengaja.
+3. **Ketiadaan Opsi Sort "Pembaruan Terakhir" di Library**:
+   - `LibrarySort` enum hanya memiliki `{ recent, recentlyAdded, az, unread }`. Pengguna menginginkan komik yang baru saja mendapat update chapter terbaru dari feed Updates (`updatesProvider`) berada di urutan teratas.
+4. **Library Belum Mendukung Swipe Kiri/Kanan Antar Koleksi (ala Tachiyomi/Mihon)**:
+   - Tampilan komik di `library_screen.dart` sebelumnya berupa satu `GridView` statis di dalam `Expanded`. Pengguna hanya bisa mengganti koleksi dengan mengetuk chip satu per satu di bar atas.
+5. & 6. **IMHentai & Kompatibilitas Fleksibel ala Tachiyomi/Mihon**:
+   - Tombol "Reset" di banner WebView `source_detail_screen.dart` disalahpahami pengguna sebagai tombol "muat ulang/refresh", padahal fungsi aslinya adalah mencabut sesi (`session = false`).
+   - Di Kotlin `ExtensionRuntimeBridge.kt`, pemanggilan langsung `fetchImhentaiCatalogDirect`, `fetchImhentaiDetailsDirect`, dan `fetchImhentaiPagesDirect` menggunakan OkHttp tanpa `CloudflareInterceptor()`, dan cookie clearance dari Android `CookieManager` tidak otomatis diteruskan.
+   - Di Dart `imhentai_source.dart`, jika HTTP Client Dart diblokir Cloudflare Turnstile (HTTP 403 karena TLS ClientHello fingerprinting), belum ada fallback otomatis ke native bridge OkHttp/Conscrypt yang dapat melewati proteksi browser.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Bookmark Reader Stabil Berbasis Chapter (`reader_screen.dart`)**:
+   - Mengganti logika top bar dari `_isCurrentPageBookmarked()` menjadi `_isCurrentChapterBookmarked()`. Ikon bookmark kini tetap stabil menyala sepanjang pengguna membaca chapter tersebut tanpa hilang-timbul saat scroll.
+   - Saat tombol bookmark di-tap: jika chapter sudah memiliki bookmark, seluruh bookmark pada chapter tersebut dihapus (toggle off); jika belum, bookmark baru ditambahkan dengan menyimpan nomor halaman aktif (`_page + 1`) agar tetap bisa dilompati via modal "Lihat Bookmark".
+2. **Dialog Konfirmasi Bersihkan History (`history_screen.dart`)**:
+   - Menghubungkan `_ClearButton` dengan `showConfirmSheet(...)`.
+   - Menampilkan dialog peringatan: "Bersihkan Riwayat? Semua riwayat baca komik akan dihapus. Komik di Library dan progres chapter tidak ikut terhapus" dengan pilihan "Batal" dan "Bersihkan".
+   - Jika riwayat sudah kosong, muncul toast "Riwayat sudah kosong".
+3. **Sort Library "Pembaruan Terakhir" (`library_screen.dart`)**:
+   - Menambahkan opsi `LibrarySort.latestUpdate` ("Pembaruan terakhir") pada sheet urutkan.
+   - Mengintegrasikan `sortLibraryComics` dengan `updatesProvider` (`detectedAt`), mengurutkan komik yang paling baru memiliki rilis bab komik di urutan teratas dengan fallback ke `addedAt`.
+4. **Swipe Horizontal PageView Koleksi Library ala Tachiyomi/Mihon (`library_screen.dart`)**:
+   - Mengintegrasikan `PageView.builder` yang terhubung dengan `collections.length` dan `_pageController`.
+   - Menggeser layar ke kiri atau kanan otomatis berpindah antar koleksi dengan animasi transisi yang mulus.
+   - Chip koleksi di atas otomatis ikut aktif dan scroll ke posisi chip aktif (`_scrollToActiveChip`).
+   - Mengunci scroll physics (`NeverScrollableScrollPhysics`) ketika mode multi-select sedang aktif agar tidak sengaja berpindah halaman saat memilih komik.
+5. **Perbaikan UI Sesi WebView & Tombol Reset (`source_detail_screen.dart`)**:
+   - Mengubah tombol teks ambigu "Reset" menjadi "Hapus Sesi" dan menambahkan dialog konfirmasi `showConfirmSheet` agar pengguna tidak kehilangan sesi Cloudflare secara tidak sengaja.
+   - Menyediakan tombol cepat "WebView" berdampingan dengan "Hapus Sesi" agar pengguna dapat langsung membuka browser untuk memverifikasi atau mengecek ulang sesi sumber.
+6. **Integrasi CookieManager & CloudflareInterceptor Native OkHttp (`ExtensionRuntimeBridge.kt`, `imhentai_source.dart`, & `alternative_source_methods.dart`)**:
+   - Menambahkan `CloudflareInterceptor()` pada OkHttpClient di `fetchImhentaiCatalogDirect`, `fetchImhentaiDetailsDirect`, dan `fetchImhentaiPagesDirect`. Interceptor otomatis menggabungkan cookies dari `CookieManager.getInstance().getCookie(...)` (termasuk `cf_clearance`).
+   - Di `imhentai_source.dart`, menambahkan fallback otomatis ke `ExtensionRuntimeBridge().fetchPopularFromExtension`, `fetchLatestFromExtension`, `fetchSearchFromExtension`, `fetchMangaDetailsFromExtension`, dan `fetchPageListFromExtension` ketika Dart HTTP client mengalami blokir 403 atau kendala jaringan.
+   - Di `alternative_source_methods.dart`, menyertakan `DoujindesuSource` dan `ImhentaiSource` ke dalam fallback `_knownNativeSource`.
+
+Verifikasi:
+- `flutter analyze`: 0 issues found (bersih).
+- `flutter test -j 1`: 188/188 tests passed (3 skipped, semua test lama dan test baru terkait bookmark, history confirmation, sort latest update, dan swipe library lolos 100%).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Berhasil dikompilasi tanpa error (sanity check lolos).
+
+---
+
+## Log
+
 ### 2026-11-05 — Kizen v1.2.11: Persistent Foreground Service Kizen VPN, Notifikasi Interaktif Status Tray dengan Tombol Aksi "Matikan VPN", & Sinkronisasi Dua Arah saat Aplikasi Ditutup/Dibuka
 
 Permintaan user:

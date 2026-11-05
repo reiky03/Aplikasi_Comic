@@ -35,4 +35,44 @@ void main() {
     expect(find.text('Echoes of the Void'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 2500));
   });
+
+  testWidgets('tombol bersihkan riwayat meminta konfirmasi dialog sebelum menghapus', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(body: HistoryScreen()),
+        ),
+      ),
+    );
+
+    expect(find.text('Echoes of the Void'), findsOneWidget);
+
+    // Ketuk tombol Bersihkan di header
+    final clearBtn = find.text('Bersihkan');
+    expect(clearBtn, findsOneWidget);
+    await tester.tap(clearBtn);
+    await tester.pumpAndSettle();
+
+    // Dialog konfirmasi harus muncul
+    expect(find.text('Bersihkan Riwayat?'), findsOneWidget);
+    expect(
+      find.text(
+        'Semua riwayat baca komik akan dihapus. Komik di Library dan '
+        'progres chapter tidak ikut terhapus.',
+      ),
+      findsOneWidget,
+    );
+
+    // Tekan konfirmasi 'Bersihkan' di dialog
+    await tester.tap(find.widgetWithText(InkWell, 'Bersihkan').last);
+    await tester.pumpAndSettle();
+
+    // Riwayat sekarang kosong
+    expect(find.text('Belum ada riwayat baca'), findsOneWidget);
+    expect(find.text('Echoes of the Void'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 2500));
+  });
 }

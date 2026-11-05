@@ -186,23 +186,99 @@ class ImhentaiSource implements MangaSource {
   @override
   Future<SourceMangaPage> fetchPopular(int page) async {
     final url = '$baseUrl/popular/?page=$page';
-    final doc = await _fetchDocument(url);
-    return _parseCatalog(doc);
+    try {
+      final doc = await _fetchDocument(url);
+      return _parseCatalog(doc);
+    } catch (e) {
+      try {
+        final res = await const ExtensionRuntimeBridge().fetchPopularFromExtension(
+          'imhentai',
+          page: page,
+          baseUrl: baseUrl,
+          sessionHeaders: _headers,
+        );
+        if (res.mangas.isNotEmpty) {
+          return SourceMangaPage(
+            mangas: res.mangas
+                .map((m) => SourceManga(
+                      url: m.url,
+                      title: m.title,
+                      thumbnailUrl: m.thumbnailUrl,
+                      headers: m.headers,
+                    ))
+                .toList(),
+            hasNextPage: res.hasNextPage,
+          );
+        }
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   @override
   Future<SourceMangaPage> fetchLatest(int page) async {
     final url = '$baseUrl/?page=$page';
-    final doc = await _fetchDocument(url);
-    return _parseCatalog(doc);
+    try {
+      final doc = await _fetchDocument(url);
+      return _parseCatalog(doc);
+    } catch (e) {
+      try {
+        final res = await const ExtensionRuntimeBridge().fetchLatestFromExtension(
+          'imhentai',
+          page: page,
+          baseUrl: baseUrl,
+          sessionHeaders: _headers,
+        );
+        if (res.mangas.isNotEmpty) {
+          return SourceMangaPage(
+            mangas: res.mangas
+                .map((m) => SourceManga(
+                      url: m.url,
+                      title: m.title,
+                      thumbnailUrl: m.thumbnailUrl,
+                      headers: m.headers,
+                    ))
+                .toList(),
+            hasNextPage: res.hasNextPage,
+          );
+        }
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   @override
   Future<SourceMangaPage> fetchSearch(String query, int page) async {
     final cleanQuery = Uri.encodeComponent(query.trim());
     final url = '$baseUrl/search/?key=$cleanQuery&page=$page';
-    final doc = await _fetchDocument(url);
-    return _parseCatalog(doc);
+    try {
+      final doc = await _fetchDocument(url);
+      return _parseCatalog(doc);
+    } catch (e) {
+      try {
+        final res = await const ExtensionRuntimeBridge().fetchSearchFromExtension(
+          'imhentai',
+          query: query,
+          page: page,
+          baseUrl: baseUrl,
+          sessionHeaders: _headers,
+        );
+        if (res.mangas.isNotEmpty) {
+          return SourceMangaPage(
+            mangas: res.mangas
+                .map((m) => SourceManga(
+                      url: m.url,
+                      title: m.title,
+                      thumbnailUrl: m.thumbnailUrl,
+                      headers: m.headers,
+                    ))
+                .toList(),
+            hasNextPage: res.hasNextPage,
+          );
+        }
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   @override
@@ -210,48 +286,75 @@ class ImhentaiSource implements MangaSource {
     final fullUrl = mangaUrl.startsWith('http')
         ? mangaUrl
         : rebaseSourceUrl(mangaUrl, baseUrl);
-    final doc = await _fetchDocument(fullUrl);
+    try {
+      final doc = await _fetchDocument(fullUrl);
+      final coverEl =
+          doc.querySelector('.left_cover img') ?? doc.querySelector('.cover img');
+      final coverUrl =
+          coverEl?.attributes['data-src']?.trim() ??
+          coverEl?.attributes['src']?.trim();
 
-    final coverEl =
-        doc.querySelector('.left_cover img') ?? doc.querySelector('.cover img');
-    final coverUrl =
-        coverEl?.attributes['data-src']?.trim() ??
-        coverEl?.attributes['src']?.trim();
+      final tags = doc
+          .querySelectorAll('a.tag')
+          .map((e) => e.text.trim())
+          .where((t) => t.isNotEmpty)
+          .toSet()
+          .toList();
 
-    final tags = doc
-        .querySelectorAll('a.tag')
-        .map((e) => e.text.trim())
-        .where((t) => t.isNotEmpty)
-        .toSet()
-        .toList();
+      final artistEl = doc
+          .querySelectorAll('li')
+          .where((li) => li.querySelector('.tags_text')?.text.contains('Artists:') == true)
+          .expand((li) => li.querySelectorAll('a.tag'))
+          .firstOrNull;
+      final author = artistEl?.text.trim();
 
-    final artistEl = doc
-        .querySelectorAll('li')
-        .where((li) => li.querySelector('.tags_text')?.text.contains('Artists:') == true)
-        .expand((li) => li.querySelectorAll('a.tag'))
-        .firstOrNull;
-    final author = artistEl?.text.trim();
+      final totalPages =
+          doc.querySelector('input#load_pages')?.attributes['value']?.trim();
 
-    final totalPages =
-        doc.querySelector('input#load_pages')?.attributes['value']?.trim();
+      final descParts = <String>[];
+      if (totalPages != null && totalPages.isNotEmpty) {
+        descParts.add('Pages: $totalPages');
+      }
+      final subtitle = doc.querySelector('h1 + h2, .subtitle')?.text.trim();
+      if (subtitle != null && subtitle.isNotEmpty) {
+        descParts.add('Subtitle: $subtitle');
+      }
 
-    final descParts = <String>[];
-    if (totalPages != null && totalPages.isNotEmpty) {
-      descParts.add('Pages: $totalPages');
+      return SourceMangaDetails(
+        thumbnailUrl: coverUrl,
+        author: author,
+        artist: author,
+        description: descParts.join('\n'),
+        genres: tags,
+        status: SourceMangaStatus.completed,
+      );
+    } catch (e) {
+      try {
+        final details = await const ExtensionRuntimeBridge().fetchMangaDetailsFromExtension(
+          'imhentai',
+          mangaUrl: fullUrl,
+          title: '',
+          baseUrl: baseUrl,
+          sessionHeaders: _headers,
+        );
+        if (details.title.isNotEmpty) {
+          return SourceMangaDetails(
+            thumbnailUrl: details.thumbnailUrl,
+            author: details.author,
+            artist: details.artist,
+            description: details.description,
+            genres: details.genre
+                    ?.split(',')
+                    .map((s) => s.trim())
+                    .where((s) => s.isNotEmpty)
+                    .toList() ??
+                const [],
+            status: SourceMangaStatus.completed,
+          );
+        }
+      } catch (_) {}
+      rethrow;
     }
-    final subtitle = doc.querySelector('h1 + h2, .subtitle')?.text.trim();
-    if (subtitle != null && subtitle.isNotEmpty) {
-      descParts.add('Subtitle: $subtitle');
-    }
-
-    return SourceMangaDetails(
-      thumbnailUrl: coverUrl,
-      author: author,
-      artist: author,
-      description: descParts.join('\n'),
-      genres: tags,
-      status: SourceMangaStatus.completed,
-    );
   }
 
   @override
@@ -274,7 +377,34 @@ class ImhentaiSource implements MangaSource {
     final fullUrl = chapterUrl.startsWith('http')
         ? chapterUrl
         : rebaseSourceUrl(chapterUrl, baseUrl);
-    final doc = await _fetchDocument(fullUrl);
+
+    Document doc;
+    try {
+      doc = await _fetchDocument(fullUrl);
+    } catch (e) {
+      try {
+        final nativePages = await const ExtensionRuntimeBridge()
+            .fetchPageListFromExtension(
+              'imhentai',
+              chapterUrl: fullUrl,
+              chapterName: 'Full Gallery',
+              baseUrl: baseUrl,
+              sessionHeaders: _headers,
+            );
+        if (nativePages.isNotEmpty) {
+          return nativePages
+              .map(
+                (p) => SourcePage(
+                  index: p.index,
+                  imageUrl: p.imageUrl,
+                  headers: p.headers,
+                ),
+              )
+              .toList();
+        }
+      } catch (_) {}
+      rethrow;
+    }
 
     final server =
         doc.querySelector('input#load_server')?.attributes['value']?.trim() ??

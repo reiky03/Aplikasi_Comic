@@ -9,15 +9,20 @@ import '../../core/widgets/widgets.dart';
 import '../../data/demo_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
+import '../../data/updates_state.dart';
 import '../detail/comic_detail_screen.dart';
 import '../home/home_shell.dart';
 
-enum LibrarySort { recent, recentlyAdded, az, unread }
+enum LibrarySort { recent, recentlyAdded, latestUpdate, az, unread }
 
 /// Urutan Library dipisah dari widget supaya aturan tanggal bisa dites tanpa
 /// harus membuka sheet. Item lama tanpa `addedAt` tetap di belakang dan urutan
 /// relatifnya tidak berubah.
-List<Comic> sortLibraryComics(List<Comic> comics, LibrarySort sort) {
+List<Comic> sortLibraryComics(
+  List<Comic> comics,
+  LibrarySort sort, {
+  Map<String, DateTime>? updateTimes,
+}) {
   final items = [...comics];
   switch (sort) {
     case LibrarySort.recent:
@@ -29,6 +34,23 @@ List<Comic> sortLibraryComics(List<Comic> comics, LibrarySort sort) {
       items.sort((a, b) {
         final aDate = a.addedAt;
         final bDate = b.addedAt;
+        if (aDate == null && bDate == null) {
+          return originalIndex[a.id]!.compareTo(originalIndex[b.id]!);
+        }
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        final byDate = bDate.compareTo(aDate);
+        return byDate != 0
+            ? byDate
+            : originalIndex[a.id]!.compareTo(originalIndex[b.id]!);
+      });
+    case LibrarySort.latestUpdate:
+      final originalIndex = {
+        for (var i = 0; i < items.length; i++) items[i].id: i,
+      };
+      items.sort((a, b) {
+        final aDate = updateTimes?[a.id] ?? a.addedAt;
+        final bDate = updateTimes?[b.id] ?? b.addedAt;
         if (aDate == null && bDate == null) {
           return originalIndex[a.id]!.compareTo(originalIndex[b.id]!);
         }
@@ -61,13 +83,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _query = '';
   LibrarySort _sort = LibrarySort.recent;
   final _searchController = TextEditingController();
+  late final PageController _pageController;
+  final ScrollController _chipScrollController = ScrollController();
   bool _selectionMode = false;
   final Set<String> _selectedComicIds = {};
   String? _sourceFilter;
 
   @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
+    _pageController.dispose();
+    _chipScrollController.dispose();
     super.dispose();
   }
 
@@ -98,13 +130,50 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     });
   }
 
-  List<Comic> _visibleComics(List<Comic> library) {
+  void _selectTab(int index, String collectionId) {
+    if (_activeTab == collectionId) return;
+    setState(() => _activeTab = collectionId);
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    _scrollToActiveChip(index);
+  }
+
+  void _onPageChanged(int index, List<ComicCollection> collections) {
+    if (index >= 0 && index < collections.length) {
+      final newId = collections[index].id;
+      if (_activeTab != newId) {
+        setState(() => _activeTab = newId);
+        _scrollToActiveChip(index);
+      }
+    }
+  }
+
+  void _scrollToActiveChip(int index) {
+    if (!_chipScrollController.hasClients) return;
+    final targetOffset = (index * 92.0) - 36.0;
+    _chipScrollController.animateTo(
+      targetOffset.clamp(0.0, _chipScrollController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  List<Comic> _comicsForCollection(
+    List<Comic> library,
+    String? collectionId,
+    Map<String, DateTime> updateTimes,
+  ) {
     final q = _query.trim().toLowerCase();
     var items = library
         .where((c) => q.isEmpty || c.title.toLowerCase().contains(q))
         .toList();
-    if (_activeTab != null) {
-      items = items.where((c) => c.col == _activeTab).toList();
+    if (collectionId != null) {
+      items = items.where((c) => c.col == collectionId).toList();
     }
     if (_sourceFilter != null) {
       items = items
@@ -115,7 +184,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           )
           .toList();
     }
-    return sortLibraryComics(items, _sort);
+    return sortLibraryComics(items, _sort, updateTimes: updateTimes);
   }
 
   @override
@@ -123,6 +192,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final demoEmpty = ref.watch(demoLibEmptyProvider);
     final library = demoEmpty ? const <Comic>[] : ref.watch(libraryProvider);
     final collections = ref.watch(collectionsProvider);
+    final updates = ref.watch(updatesProvider);
+    final updateTimes = {for (final u in updates) u.comicId: u.detectedAt};
 
     if ((_activeTab == null ||
             _activeTab == 'all' ||
@@ -131,7 +202,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       _activeTab = collections.first.id;
     }
 
-    final visible = _visibleComics(library);
+    final activeIndex = collections.indexWhere((c) => c.id == _activeTab);
+    if (activeIndex >= 0 &&
+        _pageController.hasClients &&
+        !_pageController.position.isScrollingNotifier.value &&
+        _pageController.page?.round() != activeIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        if (!_pageController.position.isScrollingNotifier.value &&
+            _pageController.page?.round() != activeIndex) {
+          _pageController.jumpToPage(activeIndex);
+        }
+      });
+    }
+
+    final visible = _comicsForCollection(library, _activeTab, updateTimes);
     final libraryEmpty = library.isEmpty;
 
     return SafeArea(
@@ -277,6 +362,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 SizedBox(
                   height: 46,
                   child: ListView(
+                    controller: _chipScrollController,
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
                     children: [
@@ -288,7 +374,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               .where((c) => c.col == collections[i].id)
                               .length,
                           active: _activeTab == collections[i].id,
-                          onTap: () => setState(() => _activeTab = collections[i].id),
+                          onTap: () => _selectTab(i, collections[i].id),
                         ),
                       ],
                       const SizedBox(width: 8),
@@ -297,7 +383,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                 ),
               Expanded(
-                child: libraryEmpty ? _buildEmptyState() : _buildGrid(visible),
+                child: libraryEmpty
+                    ? _buildEmptyState()
+                    : (collections.isEmpty
+                        ? _buildGrid(visible)
+                        : PageView.builder(
+                            controller: _pageController,
+                            physics: _selectionMode
+                                ? const NeverScrollableScrollPhysics()
+                                : const PageScrollPhysics(),
+                            itemCount: collections.length,
+                            onPageChanged: (i) =>
+                                _onPageChanged(i, collections),
+                            itemBuilder: (context, i) {
+                              final colComics = _comicsForCollection(
+                                library,
+                                collections[i].id,
+                                updateTimes,
+                              );
+                              return _buildGrid(colComics);
+                            },
+                          )),
               ),
             ],
           ),
@@ -467,6 +573,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             onTap: () => _pickSort(sheetContext, LibrarySort.recent),
           ),
           AppSheetOptionRow(
+            label: 'Pembaruan terakhir',
+            selected: _sort == LibrarySort.latestUpdate,
+            onTap: () => _pickSort(sheetContext, LibrarySort.latestUpdate),
+          ),
+          AppSheetOptionRow(
             label: 'Terakhir ditambahkan',
             selected: _sort == LibrarySort.recentlyAdded,
             onTap: () => _pickSort(sheetContext, LibrarySort.recentlyAdded),
@@ -493,6 +604,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       context,
       'Diurutkan: ${switch (sort) {
         LibrarySort.recent => 'Terakhir dibaca',
+        LibrarySort.latestUpdate => 'Pembaruan terakhir',
         LibrarySort.recentlyAdded => 'Terakhir ditambahkan',
         LibrarySort.az => 'Judul A–Z',
         LibrarySort.unread => 'Belum dibaca',

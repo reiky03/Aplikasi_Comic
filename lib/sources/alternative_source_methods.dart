@@ -1,4 +1,6 @@
 import 'asura_source.dart';
+import 'doujindesu_source.dart';
+import 'imhentai_source.dart';
 import 'komiku_source.dart';
 import 'manga_source.dart';
 import 'madara_source.dart';
@@ -39,7 +41,17 @@ class AlternativeSourceMethods implements MangaSource {
            ];
 
   static MangaSource? _knownNativeSource(String name, String baseUrl) {
-    return switch (name.trim().toLowerCase()) {
+    final lower = name.trim().toLowerCase();
+    final lowerUrl = baseUrl.toLowerCase();
+    if (lower.contains('doujindesu') ||
+        lowerUrl.contains('doujindesu') ||
+        lowerUrl.contains('doujin.desu')) {
+      return DoujindesuSource(name: name, baseUrl: baseUrl);
+    }
+    if (lower.contains('imhentai') || lowerUrl.contains('imhentai')) {
+      return ImhentaiSource(name: name, baseUrl: baseUrl);
+    }
+    return switch (lower) {
       'asura scans' || 'asura' => AsuraSource(),
       'shinigami' => ShinigamiSource(),
       'komiku' => KomikuSource(),

@@ -109,4 +109,55 @@ void main() {
     expect(find.text('Hapus dari Library'), findsOneWidget);
     expect(find.text('Batal & Selesai'), findsOneWidget);
   });
+
+  test('pembaruan terakhir mengurutkan update chapter terbaru di depan', () {
+    final updateTimes = {
+      'lama': DateTime.utc(2026, 7, 10),
+      'baru': DateTime.utc(2026, 7, 28),
+      'sedang': DateTime.utc(2026, 7, 19),
+    };
+    final result = sortLibraryComics([
+      comic('lama'),
+      comic('tanpa-update', addedAt: DateTime.utc(2026, 7, 1)),
+      comic('sedang'),
+      comic('baru'),
+    ], LibrarySort.latestUpdate, updateTimes: updateTimes);
+
+    expect(result.map((c) => c.id), [
+      'baru',
+      'sedang',
+      'lama',
+      'tanpa-update',
+    ]);
+  });
+
+  testWidgets('swipe horizontal PageView di Library berpindah koleksi', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: LibraryScreen(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Di koleksi pertama 'Sedang Dibaca', ada komik 'Echoes of the Void'
+    expect(find.text('Echoes of the Void'), findsOneWidget);
+
+    // Swipe ke kiri untuk pindah ke koleksi berikutnya ('Favorit')
+    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
+
+    // Sekarang komik koleksi Favorit ('Crimson Vow') tampil
+    expect(find.text('Crimson Vow'), findsOneWidget);
+
+    // Swipe kembali ke kanan untuk balik ke 'Sedang Dibaca'
+    await tester.fling(find.byType(PageView), const Offset(400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('Echoes of the Void'), findsOneWidget);
+  });
 }
