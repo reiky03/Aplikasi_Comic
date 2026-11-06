@@ -41,7 +41,9 @@ class AsuraSource implements MangaSource {
 
   Future<http.Response> _get(Uri url) async {
     try {
-      return await _client.get(url, headers: _headers);
+      return await _client
+          .get(url, headers: _headers)
+          .timeout(const Duration(seconds: 15));
     } catch (e) {
       throw MangaSourceException('Gagal menghubungi $name: $e');
     }

@@ -52,7 +52,9 @@ class ImhentaiSource implements MangaSource {
     final uri = Uri.parse(targetUrl);
     http.Response? response;
     try {
-      response = await _client.get(uri, headers: _headers);
+      response = await _client
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 15));
     } catch (_) {
       // Jika request network gagal (koneksi ditolak/diblokir), coba langsung via headless WebView
     }
@@ -73,7 +75,9 @@ class ImhentaiSource implements MangaSource {
             cookie: cookie,
             userAgent: session.userAgent,
           );
-          response = await _client.get(uri, headers: _headers);
+          response = await _client
+              .get(uri, headers: _headers)
+              .timeout(const Duration(seconds: 15));
         }
       } catch (_) {}
     }
@@ -281,11 +285,21 @@ class ImhentaiSource implements MangaSource {
     }
   }
 
+  String _normalizeImhentaiUrl(String url) {
+    final match = RegExp(r'/view/(\d+)').firstMatch(url);
+    if (match != null) {
+      final id = match.group(1);
+      return url.replaceFirst(RegExp(r'/view/\d+[^?#]*'), '/gallery/$id/');
+    }
+    return url;
+  }
+
   @override
   Future<SourceMangaDetails> fetchMangaDetails(String mangaUrl) async {
-    final fullUrl = mangaUrl.startsWith('http')
-        ? mangaUrl
-        : rebaseSourceUrl(mangaUrl, baseUrl);
+    final normalized = _normalizeImhentaiUrl(mangaUrl);
+    final fullUrl = normalized.startsWith('http')
+        ? normalized
+        : rebaseSourceUrl(normalized, baseUrl);
     try {
       final doc = await _fetchDocument(fullUrl);
       final coverEl =
@@ -359,9 +373,10 @@ class ImhentaiSource implements MangaSource {
 
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
-    final fullUrl = mangaUrl.startsWith('http')
-        ? mangaUrl
-        : rebaseSourceUrl(mangaUrl, baseUrl);
+    final normalized = _normalizeImhentaiUrl(mangaUrl);
+    final fullUrl = normalized.startsWith('http')
+        ? normalized
+        : rebaseSourceUrl(normalized, baseUrl);
 
     return [
       SourceChapter(
@@ -374,9 +389,10 @@ class ImhentaiSource implements MangaSource {
 
   @override
   Future<List<SourcePage>> fetchPageList(String chapterUrl) async {
-    final fullUrl = chapterUrl.startsWith('http')
-        ? chapterUrl
-        : rebaseSourceUrl(chapterUrl, baseUrl);
+    final normalized = _normalizeImhentaiUrl(chapterUrl);
+    final fullUrl = normalized.startsWith('http')
+        ? normalized
+        : rebaseSourceUrl(normalized, baseUrl);
 
     Document doc;
     try {

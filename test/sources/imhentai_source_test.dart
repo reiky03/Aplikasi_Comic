@@ -171,6 +171,16 @@ void main() {
       expect(chapters.first.url, 'https://imhentai.xxx/gallery/123456/');
     });
 
+    test('fetchChapterList dan fetchPageList menormalisasi URL /view/ ke /gallery/', () async {
+      final chapters = await source.fetchChapterList('https://imhentai.xxx/view/123456/1/');
+      expect(chapters.length, 1);
+      expect(chapters.first.url, 'https://imhentai.xxx/gallery/123456/');
+
+      final pages = await source.fetchPageList('https://imhentai.xxx/view/123456/1/');
+      expect(pages.length, 3);
+      expect(pages[0].imageUrl, 'https://m3.imhentai.xxx/012/123456/1.jpg');
+    });
+
     test('fetchPageList mem-parse JSON embedded metadata (load_server, load_id, ext)', () async {
       final pages = await source.fetchPageList('https://imhentai.xxx/gallery/123456/');
       expect(pages.length, 3);

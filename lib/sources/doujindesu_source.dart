@@ -115,7 +115,9 @@ class DoujindesuSource implements MangaSource {
     final uri = Uri.parse('$baseUrl$path');
     http.Response? response;
     try {
-      response = await _client.get(uri, headers: _headers);
+      response = await _client
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 15));
     } catch (_) {}
 
     final isBlocked = response == null ||
@@ -134,7 +136,9 @@ class DoujindesuSource implements MangaSource {
             cookie: cookie,
             userAgent: session.userAgent,
           );
-          response = await _client.get(uri, headers: _headers);
+          response = await _client
+              .get(uri, headers: _headers)
+              .timeout(const Duration(seconds: 15));
         }
       } catch (_) {}
     }

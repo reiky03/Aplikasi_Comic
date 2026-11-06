@@ -11,7 +11,9 @@ import 'vpn_state.dart';
 /// HANYA dipakai oleh parser komik sehingga 100% aman dan tidak membajak
 /// Firebase Auth, Firestore gRPC, atau komponen inti Flutter lainnya.
 http.Client createKizenHttpClient() {
-  final rawClient = HttpClient();
+  final rawClient = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 15)
+    ..idleTimeout = const Duration(seconds: 15);
   rawClient.connectionFactory = (uri, serverHost, port) async {
     final targetHost = uri.host;
     final targetPort = port ?? (uri.scheme == 'https' ? 443 : 80);

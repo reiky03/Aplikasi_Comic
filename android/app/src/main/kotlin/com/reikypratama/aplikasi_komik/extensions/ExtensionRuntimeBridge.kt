@@ -1790,15 +1790,24 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         }
     }
 
+    private fun normalizeImhentaiUrl(url: String): String {
+        return if (url.contains("/view/")) {
+            url.replace(Regex("""/view/(\d+)(?:/[^?#]*)?""")) { "/gallery/${it.groupValues[1]}/" }
+        } else {
+            url
+        }
+    }
+
     private fun fetchImhentaiDetailsDirect(
         mangaUrl: String,
         sessionHeaders: Map<String, String>,
     ): Map<String, Any?> {
-        val fullUrl = if (mangaUrl.startsWith("http://") || mangaUrl.startsWith("https://")) {
+        val rawUrl = if (mangaUrl.startsWith("http://") || mangaUrl.startsWith("https://")) {
             mangaUrl
         } else {
             "https://imhentai.xxx${if (mangaUrl.startsWith("/")) "" else "/"}$mangaUrl"
         }
+        val fullUrl = normalizeImhentaiUrl(rawUrl)
         val client = applyVpnDns(
             OkHttpClient.Builder()
                 .addInterceptor(CloudflareInterceptor())
@@ -1849,11 +1858,12 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         mangaUrl: String,
         sessionHeaders: Map<String, String>,
     ): List<Map<String, Any?>> {
-        val fullUrl = if (mangaUrl.startsWith("http://") || mangaUrl.startsWith("https://")) {
+        val rawUrl = if (mangaUrl.startsWith("http://") || mangaUrl.startsWith("https://")) {
             mangaUrl
         } else {
             "https://imhentai.xxx${if (mangaUrl.startsWith("/")) "" else "/"}$mangaUrl"
         }
+        val fullUrl = normalizeImhentaiUrl(rawUrl)
         return listOf(
             mapOf(
                 "url" to fullUrl,
@@ -1869,11 +1879,12 @@ class ExtensionRuntimeBridge(private val context: Context) : MethodChannel.Metho
         chapterUrl: String,
         sessionHeaders: Map<String, String>,
     ): List<Map<String, Any?>> {
-        val fullUrl = if (chapterUrl.startsWith("http://") || chapterUrl.startsWith("https://")) {
+        val rawUrl = if (chapterUrl.startsWith("http://") || chapterUrl.startsWith("https://")) {
             chapterUrl
         } else {
             "https://imhentai.xxx${if (chapterUrl.startsWith("/")) "" else "/"}$chapterUrl"
         }
+        val fullUrl = normalizeImhentaiUrl(rawUrl)
         val client = applyVpnDns(
             OkHttpClient.Builder()
                 .addInterceptor(CloudflareInterceptor())

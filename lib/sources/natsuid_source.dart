@@ -52,7 +52,9 @@ class NatsuIdSource implements MangaSource {
 
   Future<http.Response> _get(Uri url) async {
     try {
-      final res = await _client.get(url, headers: _headers);
+      final res = await _client
+          .get(url, headers: _headers)
+          .timeout(const Duration(seconds: 15));
       if (res.statusCode == 403) {
         throw MangaSourceWebViewException(
           message:

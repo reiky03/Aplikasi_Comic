@@ -256,7 +256,9 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
       checked++;
       try {
         final activeMangaUrl = rebaseSourceUrl(mangaUrl, source.baseUrl);
-        final chapters = await source.fetchChapterList(activeMangaUrl);
+        final chapters = await source
+            .fetchChapterList(activeMangaUrl)
+            .timeout(const Duration(seconds: 15));
         if (chapters.isEmpty) continue;
         if (activeMangaUrl != mangaUrl) {
           await libraryNotifier.updateSourceMangaUrl(comic.id, activeMangaUrl);

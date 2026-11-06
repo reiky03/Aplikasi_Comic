@@ -306,20 +306,22 @@ class _UpdateRow extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         child: Row(
           children: [
-            Container(
-              width: 44,
-              height: 58,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                gradient: comicCover(entry.hue),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: comicCoverContent(
-                coverUrl: coverUrl,
-                initial: entry.initial,
-                fontSize: 20,
-                cacheWidth: (44 * MediaQuery.devicePixelRatioOf(context))
-                    .round(),
+            RepaintBoundary(
+              child: Container(
+                width: 44,
+                height: 58,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  gradient: comicCover(entry.hue),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: comicCoverContent(
+                  coverUrl: coverUrl,
+                  initial: entry.initial,
+                  fontSize: 20,
+                  cacheWidth: (44 * MediaQuery.devicePixelRatioOf(context))
+                      .round(),
+                ),
               ),
             ),
             const SizedBox(width: 13),

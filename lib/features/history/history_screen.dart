@@ -267,20 +267,22 @@ class _HistoryRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 10),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 64,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  gradient: comicCover(entry.hue),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: comicCoverContent(
-                  coverUrl: coverUrl,
-                  initial: entry.initial,
-                  fontSize: 22,
-                  cacheWidth: (48 * MediaQuery.devicePixelRatioOf(context))
-                      .round(),
+              RepaintBoundary(
+                child: Container(
+                  width: 48,
+                  height: 64,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    gradient: comicCover(entry.hue),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: comicCoverContent(
+                    coverUrl: coverUrl,
+                    initial: entry.initial,
+                    fontSize: 22,
+                    cacheWidth: (48 * MediaQuery.devicePixelRatioOf(context))
+                        .round(),
+                  ),
                 ),
               ),
               const SizedBox(width: 13),

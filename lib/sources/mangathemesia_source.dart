@@ -37,7 +37,9 @@ class MangaThemesiaSource implements MangaSource {
   Future<Document> _getHtml(Uri url) async {
     late final http.Response response;
     try {
-      response = await _client.get(url, headers: _headers);
+      response = await _client
+          .get(url, headers: _headers)
+          .timeout(const Duration(seconds: 15));
     } catch (e) {
       throw MangaSourceException('Gagal menghubungi $name: $e');
     }

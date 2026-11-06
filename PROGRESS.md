@@ -27,6 +27,44 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-06 — Kizen v1.2.15: Audit Menyeluruh Performa, Network Resiliency, RepaintBoundary, & Silent Bug Fix IMHentai
+
+Permintaan user:
+"copa cek beb ada ygn perlu ditingkatkan misal performa atau ada bug yang diam cekkan"
+
+Hasil Audit & Root Cause:
+1. **Silent Bug IMHentai Viewer URL vs Overview URL**:
+   - Jika URL galeri IMHentai masuk dalam format viewer `/view/12345/1/` (misalnya saat disalin dari tab bacaan browser atau feed ekstensi tertentu) bukan format overview `/gallery/12345/`, scraper gagal karena metadata parsing (`input#load_server`, `input#load_dir`, `input#load_id`, `input#load_pages`, `.gthumb`) hanya berada pada halaman `/gallery/12345/`.
+   - Hal yang sama terjadi di scraper direct Kotlin `ExtensionRuntimeBridge.kt`.
+2. **Missing RepaintBoundary pada Row Cover di List Scroll**:
+   - Di `UpdatesScreen` (`_UpdateRow`) dan `HistoryScreen` (`_HistoryRow`), thumbnail cover komik belum dibungkus `RepaintBoundary`. Padahal di `LibraryScreen`, `SourceDetailScreen`, dan `RepoBrowseTab` sudah dibungkus `RepaintBoundary`. Tanpa boundary ini, layer grafis cover (gradien, clip, dan gambar) ikut di-raster ulang setiap frame saat user scrolling cepat (fling scroll).
+3. **Eager ListView pada BrowseScreen Sumber Saya**:
+   - Di `BrowseScreen` (`_buildMySourcesTab`), daftar sumber komik sebelumnya memakai `ListView(children: [for (final s in visible) ...])` yang mengeksekusi semua widget secara eager. Jika user mengimpor banyak ekstensi sumber (misalnya puluhan sumber dari repo Tachiyomi/Mihon), widget dibuat sekaligus.
+4. **Resiliensi Jaringan & Timeout MangaSource**:
+   - Klien HTTP `createKizenHttpClient()` belum menyetel `connectionTimeout` dan `idleTimeout` pada `HttpClient` mentah.
+   - Beberapa parser sumber (`asura_source.dart`, `doujindesu_source.dart`, `imhentai_source.dart`, `komiku_source.dart`, `mangathemesia_source.dart`, `shinigami_source.dart`, `natsuid_source.dart`) dan loop `UpdatesNotifier.refresh()` belum memiliki `.timeout(Duration(seconds: 15))`, sehingga jika server komik pihak ketiga down atau menggantung koneksinya, refresh feed background bisa macet lama.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Normalisasi URL IMHentai (`lib/sources/imhentai_source.dart` & `ExtensionRuntimeBridge.kt`)**:
+   - Menambahkan fungsi helper `_normalizeImhentaiUrl` / `normalizeImhentaiUrl` yang otomatis mengubah path `/view/(\d+)(?:/.*)?` menjadi `/gallery/$1/`.
+   - Diterapkan pada `fetchMangaDetails`, `fetchChapterList`, dan `fetchPageList` baik di Dart maupun bridge Kotlin direct.
+   - Ditambahkan unit test di `test/sources/imhentai_source_test.dart` untuk memastikan URL `/view/` terverifikasi normal dan lolos parsing.
+2. **Optimasi Rasterisasi Layar Scroll (`lib/features/updates/updates_screen.dart` & `lib/features/history/history_screen.dart`)**:
+   - Membungkus container thumbnail cover di `_UpdateRow` dan `_HistoryRow` dengan `RepaintBoundary`, menghemat rendering GPU saat scrolling.
+3. **Lazy Loading Sumber Saya (`lib/features/browse/browse_screen.dart`)**:
+   - Mengubah `ListView` eager menjadi `ListView.builder` dengan `ValueKey(source.id)` dan item count terikat, sehingga rendering hemat memori dan halus meski ratusan sumber terpasang.
+4. **Hardening Timeout Jaringan (`lib/data/kizen_http_client_io.dart`, `lib/data/updates_state.dart`, & sources)**:
+   - Menyetel `rawClient.connectionTimeout = 15s` dan `idleTimeout = 15s`.
+   - Memasang `.timeout(const Duration(seconds: 15))` pada loop `UpdatesNotifier.refresh()` per komik dan request `_client.get` di semua parser sumber.
+5. **Bump Versi ke v1.2.15 (Build 27)**:
+   - Memperbarui `pubspec.yaml`, `README.md`, dan `PROGRESS.md`.
+
+Cara Verifikasi:
+- `flutter analyze` — 0 issues (bersih).
+- `flutter test -j 1` — 192/192 lolos (3 skipped safe-mode).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn` — kompilasi sukses dalam 54.7 detik.
+
+
 ### 2026-11-06 — Kizen v1.2.14: Penyelarasan Toast Ganti Server VPN dengan Desain Sistem AppToast Kizen
 
 Permintaan user:
@@ -151,6 +189,44 @@ Verifikasi:
 ---
 
 ## Log
+
+### 2026-11-06 — Kizen v1.2.15: Audit Menyeluruh Performa, Network Resiliency, RepaintBoundary, & Silent Bug Fix IMHentai
+
+Permintaan user:
+"copa cek beb ada ygn perlu ditingkatkan misal performa atau ada bug yang diam cekkan"
+
+Hasil Audit & Root Cause:
+1. **Silent Bug IMHentai Viewer URL vs Overview URL**:
+   - Jika URL galeri IMHentai masuk dalam format viewer `/view/12345/1/` (misalnya saat disalin dari tab bacaan browser atau feed ekstensi tertentu) bukan format overview `/gallery/12345/`, scraper gagal karena metadata parsing (`input#load_server`, `input#load_dir`, `input#load_id`, `input#load_pages`, `.gthumb`) hanya berada pada halaman `/gallery/12345/`.
+   - Hal yang sama terjadi di scraper direct Kotlin `ExtensionRuntimeBridge.kt`.
+2. **Missing RepaintBoundary pada Row Cover di List Scroll**:
+   - Di `UpdatesScreen` (`_UpdateRow`) dan `HistoryScreen` (`_HistoryRow`), thumbnail cover komik belum dibungkus `RepaintBoundary`. Padahal di `LibraryScreen`, `SourceDetailScreen`, dan `RepoBrowseTab` sudah dibungkus `RepaintBoundary`. Tanpa boundary ini, layer grafis cover (gradien, clip, dan gambar) ikut di-raster ulang setiap frame saat user scrolling cepat (fling scroll).
+3. **Eager ListView pada BrowseScreen Sumber Saya**:
+   - Di `BrowseScreen` (`_buildMySourcesTab`), daftar sumber komik sebelumnya memakai `ListView(children: [for (final s in visible) ...])` yang mengeksekusi semua widget secara eager. Jika user mengimpor banyak ekstensi sumber (misalnya puluhan sumber dari repo Tachiyomi/Mihon), widget dibuat sekaligus.
+4. **Resiliensi Jaringan & Timeout MangaSource**:
+   - Klien HTTP `createKizenHttpClient()` belum menyetel `connectionTimeout` dan `idleTimeout` pada `HttpClient` mentah.
+   - Beberapa parser sumber (`asura_source.dart`, `doujindesu_source.dart`, `imhentai_source.dart`, `komiku_source.dart`, `mangathemesia_source.dart`, `shinigami_source.dart`, `natsuid_source.dart`) dan loop `UpdatesNotifier.refresh()` belum memiliki `.timeout(Duration(seconds: 15))`, sehingga jika server komik pihak ketiga down atau menggantung koneksinya, refresh feed background bisa macet lama.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Normalisasi URL IMHentai (`lib/sources/imhentai_source.dart` & `ExtensionRuntimeBridge.kt`)**:
+   - Menambahkan fungsi helper `_normalizeImhentaiUrl` / `normalizeImhentaiUrl` yang otomatis mengubah path `/view/(\d+)(?:/.*)?` menjadi `/gallery/$1/`.
+   - Diterapkan pada `fetchMangaDetails`, `fetchChapterList`, dan `fetchPageList` baik di Dart maupun bridge Kotlin direct.
+   - Ditambahkan unit test di `test/sources/imhentai_source_test.dart` untuk memastikan URL `/view/` terverifikasi normal dan lolos parsing.
+2. **Optimasi Rasterisasi Layar Scroll (`lib/features/updates/updates_screen.dart` & `lib/features/history/history_screen.dart`)**:
+   - Membungkus container thumbnail cover di `_UpdateRow` dan `_HistoryRow` dengan `RepaintBoundary`, menghemat rendering GPU saat scrolling.
+3. **Lazy Loading Sumber Saya (`lib/features/browse/browse_screen.dart`)**:
+   - Mengubah `ListView` eager menjadi `ListView.builder` dengan `ValueKey(source.id)` dan item count terikat, sehingga rendering hemat memori dan halus meski ratusan sumber terpasang.
+4. **Hardening Timeout Jaringan (`lib/data/kizen_http_client_io.dart`, `lib/data/updates_state.dart`, & sources)**:
+   - Menyetel `rawClient.connectionTimeout = 15s` dan `idleTimeout = 15s`.
+   - Memasang `.timeout(const Duration(seconds: 15))` pada loop `UpdatesNotifier.refresh()` per komik dan request `_client.get` di semua parser sumber.
+5. **Bump Versi ke v1.2.15 (Build 27)**:
+   - Memperbarui `pubspec.yaml`, `README.md`, dan `PROGRESS.md`.
+
+Cara Verifikasi:
+- `flutter analyze` — 0 issues (bersih).
+- `flutter test -j 1` — 192/192 lolos (3 skipped safe-mode).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn` — kompilasi sukses dalam 54.7 detik.
+
 
 ### 2026-11-05 — Kizen v1.2.11: Persistent Foreground Service Kizen VPN, Notifikasi Interaktif Status Tray dengan Tombol Aksi "Matikan VPN", & Sinkronisasi Dua Arah saat Aplikasi Ditutup/Dibuka
 

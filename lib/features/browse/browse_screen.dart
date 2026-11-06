@@ -277,16 +277,20 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                     ),
                   ),
                 )
-              : ListView(
+              : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(18, 6, 18, 120),
-                  children: [
-                    for (final source in visible)
-                      SourceRow(
+                  itemCount: visible.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index < visible.length) {
+                      final source = visible[index];
+                      return SourceRow(
+                        key: ValueKey(source.id),
                         source: source,
                         onTap: () => _openSource(source),
                         onLongPress: () => _openSourceMenu(source),
-                      ),
-                    Padding(
+                      );
+                    }
+                    return Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         'Tekan + untuk menambah sumber baru',
@@ -297,8 +301,8 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                           color: AppColors.textFaintest,
                         ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
         ),
       ],
