@@ -42,6 +42,19 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 
 ---
 
+## 💡 Tips Menambahkan Sumber Komik
+
+Ada dua cara gampang buat nambahin komik di Kizen:
+
+1. **Lewat Repositori Ekstensi (Ala Mihon / Tachiyomi)**:
+   - Buka menu **Jelajahi** > tab **Repository**, lalu tambahkan URL repo ekstensi Keiyoushi dari GitHub. Kamu bisa langsung pasang ratusan ekstensi sumber komik siap pakai dari berbagai bahasa.
+2. **Tambah Link Web Sendiri (Sumber Saya)**:
+   - Buka menu **Jelajahi** > tab **Sumber Saya** > tekan tombol **Tambah**.
+   - Salin dan tempel link halaman depan/home situsnya (contoh: `https://namasitus.com`), lalu tekan **Test Sumber**.
+   - Kalau pas di-test ternyata gagal atau websitenya belum didukung, kabari aja link situsnya lewat **[GitHub Issues](https://github.com/reiky03/Aplikasi_Comic/issues)** biar bisa segera diperbaiki dan ditambahkan parser-nya!
+
+---
+
 ## 📲 Cara Download & Pasang (Android)
 
 1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.12/kizen-v1.2.12.apk)** di atas (Versi 1.2.12).
