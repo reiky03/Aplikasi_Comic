@@ -8,8 +8,8 @@ import '../../core/widgets/widgets.dart';
 import '../../data/app_update_checker.dart';
 import '../../data/extension_runtime.dart';
 
-const kAppVersion = '1.2.13';
-const kAppBuild = '25';
+const kAppVersion = '1.2.14';
+const kAppBuild = '26';
 const _repoOwner = 'reiky03';
 const _developerHandle = '@reiky03';
 

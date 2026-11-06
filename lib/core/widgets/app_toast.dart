@@ -11,12 +11,23 @@ abstract final class AppToast {
   static OverlayEntry? _entry;
   static Timer? _timer;
 
-  static void show(BuildContext context, String message) {
+  static void show(
+    BuildContext context,
+    String message, {
+    IconData icon = AppIcons.downloaded,
+    Color iconColor = AppColors.success,
+  }) {
     _timer?.cancel();
     _entry?.remove();
 
     final overlay = Overlay.of(context, rootOverlay: true);
-    final entry = OverlayEntry(builder: (_) => _ToastView(message: message));
+    final entry = OverlayEntry(
+      builder: (_) => _ToastView(
+        message: message,
+        icon: icon,
+        iconColor: iconColor,
+      ),
+    );
     _entry = entry;
     overlay.insert(entry);
 
@@ -28,9 +39,15 @@ abstract final class AppToast {
 }
 
 class _ToastView extends StatefulWidget {
-  const _ToastView({required this.message});
+  const _ToastView({
+    required this.message,
+    this.icon = AppIcons.downloaded,
+    this.iconColor = AppColors.success,
+  });
 
   final String message;
+  final IconData icon;
+  final Color iconColor;
 
   @override
   State<_ToastView> createState() => _ToastViewState();
@@ -88,12 +105,12 @@ class _ToastViewState extends State<_ToastView>
                     Container(
                       width: 22,
                       height: 22,
-                      decoration: const BoxDecoration(
-                        color: AppColors.success,
+                      decoration: BoxDecoration(
+                        color: widget.iconColor,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        AppIcons.downloaded,
+                      child: Icon(
+                        widget.icon,
                         size: 13,
                         color: AppColors.bg,
                       ),

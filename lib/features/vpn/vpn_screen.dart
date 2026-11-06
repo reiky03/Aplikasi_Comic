@@ -450,13 +450,7 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
     if (vpn.isConnecting) return;
 
     if (vpn.provider == target) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Server ${target.label} sedang aktif digunakan.'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.show(context, 'Server ${target.label} sedang aktif digunakan');
       return;
     }
 
@@ -526,39 +520,27 @@ class _VpnScreenState extends ConsumerState<VpnScreen>
 
       if (confirm != true || !context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Mengalihkan koneksi ke ${target.label}...'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.show(
+        context,
+        'Mengalihkan koneksi ke ${target.label}…',
+        icon: LucideIcons.refreshCw,
+        iconColor: AppColors.accent,
       );
 
       await notifier.setProvider(target);
 
       if (!context.mounted) return;
       final currentVpn = ref.read(vpnProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '✅ Terhubung ke ${target.label} (${currentVpn.pingMs} ms)',
-          ),
-          backgroundColor: const Color(0xFF047857),
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.show(
+        context,
+        'Terhubung ke ${target.label} (${currentVpn.pingMs} ms)',
       );
     } else {
       await notifier.setProvider(target);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Server ${target.label} dipilih. Aktifkan VPN untuk mulai terhubung.',
-          ),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.show(
+        context,
+        'Server ${target.label} dipilih · Aktifkan VPN untuk mulai terhubung',
       );
     }
   }

@@ -27,6 +27,35 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-06 — Kizen v1.2.14: Penyelarasan Toast Ganti Server VPN dengan Desain Sistem AppToast Kizen
+
+Permintaan user:
+"oh iya beb itu tampilan kayak toast saat ganti2 lokasi server vpn bisa dibuat lebih selaras gak kayak toast yang dipakai di app kizen kayak misalnya yang toast yang tadi ttg test sumber terlebih dahulu biar selaras, soalnya ini gak"
+
+Root cause & analisis mendalam:
+1. **Penggunaan SnackBar Bawaan Material di Layar VPN**:
+   - Di `lib/features/vpn/vpn_screen.dart`, penanganan pergantian server VPN sebelumnya masih menggunakan `ScaffoldMessenger.of(context).showSnackBar(SnackBar(...))` bawaan Flutter/Material.
+   - SnackBar Material berbentuk bar kotak di bagian bawah dengan animasi standar Material, yang kontras dan tidak selaras dengan `AppToast` Kizen (yang memakai container kapsul gelap `#26262f`, border obsidian halus, bayangan melayang di atas navbar, animasi slide & fade, serta ikon badge bulat).
+
+Solusi & Perubahan yang Diterapkan:
+1. **Peningkatan `AppToast` Fleksibel (`lib/core/widgets/app_toast.dart`)**:
+   - Menambahkan parameter opsional `icon` dan `iconColor` pada `AppToast.show()` dengan nilai default tetap `AppIcons.downloaded` dan `AppColors.success`.
+   - Hal ini membuat `AppToast` mendukung berbagai konteks (sukses, proses transfer server, maupun info) tanpa merusak pemanggilan yang sudah ada di seluruh aplikasi.
+2. **Migrasi Penuh Toast di Layar VPN (`lib/features/vpn/vpn_screen.dart`)**:
+   - Mengganti seluruh 4 panggilan `ScaffoldMessenger.showSnackBar` dengan `AppToast.show()`:
+     a. Server sudah aktif: *"Server [Label] sedang aktif digunakan"*.
+     b. Proses alihkan server: *"Mengalihkan koneksi ke [Label]…"*.
+     c. Berhasil terhubung: *"Terhubung ke [Label] ([Ping] ms)"*.
+     d. Pemilihan server saat VPN nonaktif: *"Server [Label] dipilih · Aktifkan VPN untuk mulai terhubung"*.
+3. **Bump Versi ke v1.2.14 (Build 26)**:
+   - Memperbarui `pubspec.yaml`, `about_screen.dart`, `android/local.properties`, dan `README.md`.
+
+Verifikasi:
+- `flutter analyze`: 0 issues found (100% bersih).
+- `flutter test`: Lolos tanpa kendala.
+
+---
+
 ### 2026-11-06 — Kizen v1.2.13: Tombol Simpan Sumber Selalu Responsif, Toast Peringatan Wajib Uji Sumber ("Test Sumber"), Petunjuk Visual URL, & Auto-Guess Nama Sumber
 
 Permintaan user:
