@@ -34,7 +34,7 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 - 🛡️ **Kizen VPN Bawaan**: Gak perlu download VPN luar, cukup 1-tap di layar bacaan buat langsung buka web komik yang keblokir, dan tetap aman jalan di background.
 - 📜 **Reader Nyaman (Webtoon & Halaman)**: Scroll vertikal super mulus buat manhwa atau mode lembar per-halaman buat manga, lengkap dengan bookmark panel favorit biar gak lupa.
 - 📚 **Library & Swap Koleksi**: Kelompokkan komik sesukamu, tinggal geser/swap layar kanan-kiri buat pindah antar koleksi, plus ada sort pembaruan bab terbaru.
-- 🧩 **Support Ekstensi (Ala Mihon/Tachiyomi)**: Bebas pasang repo ekstensi Keiyoushi buat akses ribuan komik, atau tinggal tempel link web komik favoritmu di Sumber Saya.
+- 🧩 **Support Ekstensi (Ala Mihon/Tachiyomi)**: Bebas pasang berbagai repo ekstensi GitHub buat akses ribuan komik, atau tinggal tempel link web komik favoritmu di Sumber Saya.
 - 🔓 **Anti-Cloudflare & Deteksi Domain**: Gak pusing lagi web komik tiba-tiba pindah domain atau nyangkut di Cloudflare, Kizen otomatis nanganin sesinya.
 - ☁️ **Login Google & Cloud Sync**: Data library dan riwayat baca tersimpan aman di cloud Firebase. Ganti HP? Tinggal login ulang dan semua komikmu balik lagi.
 - 🚀 **Update Otomatis In-App**: Ada versi baru? Bisa langsung cek dan download update aplikasinya dari menu Pengaturan tanpa repot bolak-balik browser.
@@ -47,7 +47,8 @@ Kizen hadir buat bikin pengalaman maraton komik jadi tenang dan sat-set. Kamu ti
 Ada dua cara gampang buat nambahin komik di Kizen:
 
 1. **Lewat Repositori Ekstensi (Ala Mihon / Tachiyomi)**:
-   - Buka menu **Jelajahi** > tab **Repository**, lalu tambahkan URL repo ekstensi Keiyoushi dari GitHub. Kamu bisa langsung pasang ratusan ekstensi sumber komik siap pakai dari berbagai bahasa.
+   - Buka menu **Jelajahi** > tab **Repository**, lalu tambahkan URL repo ekstensi pihak ketiga (format repo GitHub ala Mihon/Tachiyomi). Kamu bisa langsung pasang beragam ekstensi sumber komik siap pakai dari berbagai bahasa.
+   - Kalau ada ekstensi yang error atau gagal saat dipakai, kabari aja di **[GitHub Issues](https://github.com/reiky03/Aplikasi_Comic/issues)** biar kita cek dan perbaiki!
 2. **Tambah Link Web Sendiri (Sumber Saya)**:
    - Buka menu **Jelajahi** > tab **Sumber Saya** > tekan tombol **Tambah**.
    - Salin dan tempel link halaman depan/home situsnya (contoh: `https://namasitus.com`), lalu tekan **Test Sumber**.
