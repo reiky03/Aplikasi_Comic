@@ -27,6 +27,43 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-06 — Kizen v1.2.13: Tombol Simpan Sumber Selalu Responsif, Toast Peringatan Wajib Uji Sumber ("Test Sumber"), Petunjuk Visual URL, & Auto-Guess Nama Sumber
+
+Permintaan user:
+"beb itu kayaknya ada bug deh, ak tambah sumber tanpoa tekan test sumber gak ada reaksi apa2, seharusnya dikasih toast gitu gak sih kalau harus test sumber dulu sebelum simpan 1.2.13 yakan bearti"
+
+Root cause & analisis mendalam:
+1. **Tombol "Simpan Sumber" Nonaktif Diam-Diam Tanpa Feedback (`onTap: _canSave ? _saveSource : null`)**:
+   - Di `lib/features/browse/add_source_screen.dart`, properti `onTap` pada tombol simpan sebelumnya disetel ke `null` jika `_canSave` bernilai `false` (yaitu jika URL belum diisi atau nama sumber masih kosong).
+   - Pengguna yang mengetik/menempelkan link URL dan langsung menekan "Simpan Sumber" tanpa menekan tombol "Test Sumber" mendapati tombol sama sekali tidak bereaksi (diam tanpa feedback apa pun), menimbulkan kesan bug / tombol macet.
+2. **Ketiadaan Validasi State Pengujian (`_TestState.idle`)**:
+   - Belum ada pemeriksaan eksplisit apakah sumber baru sudah diuji atau belum. Pengguna seharusnya diarahkan dengan pesan Toast yang jelas untuk melakukan "Test Sumber" terlebih dahulu agar Kizen dapat mendeteksi parser yang cocok (native, extension-runtime, atau generic theme).
+
+Solusi & Perubahan yang Diterapkan:
+1. **Tombol Simpan Selalu Aktif & Handler Responsif (`_handleSavePressed`)**:
+   - Mengganti `_canSave ? _saveSource : null` dengan `_handleSavePressed` yang selalu menerima interaksi ketukan (tap).
+   - Menghilangkan opacity/disabled styling pada tombol simpan agar selalu tampil aktif dan percaya diri dengan warna `AppColors.accent`.
+2. **Toast Feedback Interaktif & Lengkap**:
+   - Jika URL kosong: memunculkan `AppToast.show(context, 'Masukkan URL website komik terlebih dahulu')`.
+   - Jika pengujian sedang berjalan (`_testState == _TestState.loading`): `AppToast.show(context, 'Sedang menguji sumber, mohon tunggu sebentar…')`.
+   - Jika belum menekan "Test Sumber" (`_testState == _TestState.idle && !_isEdit`): memunculkan `AppToast.show(context, 'Tekan "Test Sumber" terlebih dahulu sebelum menyimpan')`.
+   - Jika nama sumber kosong: otomatis mencoba menebak nama dari domain URL (`_guessNameFromUrl`) atau memunculkan peringatan jika tidak dapat ditebak.
+3. **Reset State Pengujian saat URL Diedit & Petunjuk Visual**:
+   - Saat pengguna mengubah teks URL setelah pernah melakukan pengujian, `_testState` otomatis kembali ke `idle` agar URL baru wajib diuji ulang.
+   - Menampilkan baris info interaktif di bawah kolom URL: *"Tekan 'Test Sumber' di bawah untuk menguji URL ini"* saat URL sudah diisi namun belum diuji.
+4. **Penebakan Otomatis Nama Sumber (`_guessNameFromUrl`)**:
+   - Saat menekan "Test Sumber" dengan kolom nama kosong, nama otomatis terisi dari nama domain atau built-in source yang cocok (mis. `kiryuu.org` -> `Kiryuu`).
+5. **Widget Test Baru (`test/features/browse/add_source_screen_test.dart`)**:
+   - Memvalidasi 3 skenario: simpan saat URL kosong, simpan saat URL belum diuji (memastikan toast muncul), dan tekan "Test Sumber" saat URL kosong.
+6. **Bump Versi ke v1.2.13 (Build 25)**:
+   - Memperbarui `pubspec.yaml`, `about_screen.dart`, `android/local.properties`, dan `README.md`.
+
+Verifikasi:
+- `flutter analyze`: 0 issues found (100% bersih).
+- `flutter test -j 1`: 191/191 tests passed (3 skipped safe-mode), 100% lulus.
+
+---
+
 ### 2026-11-06 — Kizen v1.2.12: Reader Bookmark Stabil Tanpa Hilang-Timbul, Konfirmasi Bersihkan History, Sort Library "Pembaruan Terakhir", Swipe Horizontal Antar Koleksi Library ala Tachiyomi/Mihon, Fallback Ekstensi & Buka Komik Fleksibel, serta Perbaikan IMHentai Sesi Cloudflare
 
 Permintaan user:

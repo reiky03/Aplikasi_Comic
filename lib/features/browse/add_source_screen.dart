@@ -28,6 +28,7 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
   final _descController = TextEditingController();
   String _lang = 'ID';
   _TestState _testState = _TestState.idle;
+  String _lastTestedUrl = '';
 
   /// Kind parser tema generik yang berhasil dideteksi cocok (kalau URL-nya
   /// bukan salah satu dari 4 sumber native) — lihat [_testSource] &
@@ -56,12 +57,39 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
       _testState = source.status == SourceStatus.normal
           ? _TestState.ok
           : _TestState.idle;
+      _lastTestedUrl = source.url;
     }
     _nameController.addListener(_onFormChanged);
     _urlController.addListener(_onFormChanged);
   }
 
-  void _onFormChanged() => setState(() {});
+  void _onFormChanged() {
+    final currentUrl = _urlController.text.trim();
+    if (_lastTestedUrl.isNotEmpty &&
+        currentUrl != _lastTestedUrl &&
+        _testState != _TestState.idle &&
+        !_isEdit) {
+      _testState = _TestState.idle;
+      _detectedParserKind = null;
+      _repoMatch = null;
+      _installedExtensionMatch = null;
+    }
+    setState(() {});
+  }
+
+  String _guessNameFromUrl(String url) {
+    final builtIn = SourceCatalog.matchByUrl(url);
+    if (builtIn != null) return builtIn.name;
+    try {
+      final uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
+      final host = uri.host.replaceFirst(RegExp(r'^www\.'), '');
+      final parts = host.split('.');
+      if (parts.isNotEmpty && parts.first.isNotEmpty) {
+        return parts.first[0].toUpperCase() + parts.first.substring(1);
+      }
+    } catch (_) {}
+    return '';
+  }
 
   @override
   void dispose() {
@@ -70,10 +98,6 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
     _descController.dispose();
     super.dispose();
   }
-
-  bool get _canSave =>
-      _nameController.text.trim().isNotEmpty &&
-      _urlController.text.trim().isNotEmpty;
 
   /// Uji reachability URL. Kalau URL cocok salah satu sumber yang punya
   /// parser native (lihat lib/sources/), benar-benar coba ambil daftar
@@ -86,13 +110,24 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
   Future<void> _testSource() async {
     if (_testState == _TestState.loading) return;
     final url = _urlController.text.trim();
-    if (url.isEmpty) return;
+    if (url.isEmpty) {
+      AppToast.show(context, 'Masukkan URL website komik terlebih dahulu');
+      return;
+    }
+    _lastTestedUrl = url;
     setState(() {
       _testState = _TestState.loading;
       _detectedParserKind = null;
       _repoMatch = null;
       _installedExtensionMatch = null;
     });
+
+    if (_nameController.text.trim().isEmpty) {
+      final guessed = _guessNameFromUrl(url);
+      if (guessed.isNotEmpty) {
+        _nameController.text = guessed;
+      }
+    }
 
     final normalizedUrl = url.startsWith('http') ? url : 'https://$url';
     final name = _nameController.text.trim().isEmpty
@@ -171,9 +206,44 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
     });
   }
 
+  Future<void> _handleSavePressed() async {
+    final url = _urlController.text.trim();
+    final name = _nameController.text.trim();
+
+    if (url.isEmpty) {
+      AppToast.show(context, 'Masukkan URL website komik terlebih dahulu');
+      return;
+    }
+
+    if (_testState == _TestState.loading) {
+      AppToast.show(context, 'Sedang menguji sumber, mohon tunggu sebentar…');
+      return;
+    }
+
+    if (_testState == _TestState.idle && !_isEdit) {
+      AppToast.show(
+        context,
+        'Tekan "Test Sumber" terlebih dahulu sebelum menyimpan',
+      );
+      return;
+    }
+
+    if (name.isEmpty) {
+      final guessed = _guessNameFromUrl(url);
+      if (guessed.isNotEmpty) {
+        _nameController.text = guessed;
+      } else {
+        AppToast.show(context, 'Masukkan nama sumber komik terlebih dahulu');
+        return;
+      }
+    }
+
+    await _saveSource();
+  }
+
   Future<void> _saveSource() async {
-    if (!_canSave) return;
     final rawUrl = _urlController.text.trim();
+    if (rawUrl.isEmpty) return;
     final cleanUrl = rawUrl
         .replaceFirst(RegExp(r'^https?://'), '')
         .replaceFirst(RegExp(r'/$'), '');
@@ -424,26 +494,21 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
                   const SizedBox(width: 11),
                   Expanded(
                     child: InkWell(
-                      onTap: _canSave ? _saveSource : null,
+                      onTap: _handleSavePressed,
                       borderRadius: BorderRadius.circular(14),
                       child: Container(
                         height: 52,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: _canSave
-                              ? AppColors.accent
-                              : AppColors.switchTrackOff,
+                          color: AppColors.accent,
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Opacity(
-                          opacity: _canSave ? 1 : 0.5,
-                          child: Text(
-                            _isEdit ? 'Simpan Perubahan' : 'Simpan Sumber',
-                            style: AppTypography.jakarta(
-                              size: 14.5,
-                              weight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
+                        child: Text(
+                          _isEdit ? 'Simpan Perubahan' : 'Simpan Sumber',
+                          style: AppTypography.jakarta(
+                            size: 14.5,
+                            weight: FontWeight.w700,
+                            color: Colors.white,
                           ),
                         ),
                       ),
@@ -518,7 +583,34 @@ class _AddSourceScreenState extends ConsumerState<AddSourceScreen> {
             ],
           ),
         );
-      case _TestState.idle || _TestState.loading:
+      case _TestState.idle:
+        if (_urlController.text.trim().isNotEmpty && !_isEdit) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Row(
+              children: [
+                const Icon(
+                  AppIcons.browse,
+                  size: 14,
+                  color: AppColors.accentText,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tekan "Test Sumber" di bawah untuk menguji URL ini',
+                    style: AppTypography.jakarta(
+                      size: 12,
+                      weight: FontWeight.w600,
+                      color: AppColors.accentText,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return const SizedBox(height: 14);
+      case _TestState.loading:
         return const SizedBox(height: 14);
     }
   }

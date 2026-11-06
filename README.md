@@ -10,13 +10,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.12/kizen-v1.2.12.apk">
-    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.12)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.13/kizen-v1.2.13.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.13)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
   <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
-    <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru%20(v1.2.12)&style=for-the-badge" alt="Rilis Terbaru" />
+    <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru%20(v1.2.13)&style=for-the-badge" alt="Rilis Terbaru" />
   </a>
-  <img src="https://img.shields.io/badge/Versi-v1.2.12-6366f1?style=for-the-badge" alt="Versi Saat Ini" />
+  <img src="https://img.shields.io/badge/Versi-v1.2.13-6366f1?style=for-the-badge" alt="Versi Saat Ini" />
 </p>
 
 ---
@@ -58,8 +58,8 @@ Ada dua cara gampang buat nambahin komik di Kizen:
 
 ## 📲 Cara Download & Pasang (Android)
 
-1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.12/kizen-v1.2.12.apk)** di atas (Versi 1.2.12).
-2. Buka file `kizen-v1.2.12.apk` yang sudah didownload di HP kamu.
+1. Klik tombol **[Download APK](https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.13/kizen-v1.2.13.apk)** di atas (Versi 1.2.13).
+2. Buka file `kizen-v1.2.13.apk` yang sudah didownload di HP kamu.
 3. Kalau ada peringatan *"Izinkan instalasi dari sumber tidak dikenal"*, centang izinkan/lanjutkan.
 4. Buka **Kizen** dan langsung nikmati maraton komik favoritmu tanpa gangguan!
 
