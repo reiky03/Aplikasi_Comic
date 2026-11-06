@@ -27,6 +27,38 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-06 — Kizen v1.2.16: Sinkronisasi Internal kAppVersion & Pembersihan Catatan Rilis Publik
+
+Permintaan user:
+"beb balek lagi padahal dah diupdate tapi malah balek lagi ke versi 1.2.14 knp itu, dan bagian yang imhentai jgn taruhlah agak sensitif soalnya"
+
+Root Cause & Analisis:
+1. **Versi Internal Aplikasi Tertahan di 1.2.14**:
+   - Di `lib/features/settings/about_screen.dart`, terdapat konstanta `kAppVersion = '1.2.14'` dan `kAppBuild = '26'`.
+   - Pada rilis `v1.2.15`, yang diperbarui baru `pubspec.yaml` dan `README.md`, sedangkan `kAppVersion` di `about_screen.dart` belum ikut dinaikkan.
+   - Akibatnya, saat user menginstal APK rilis terbaru di HP:
+     a. Tampilan Pengaturan & Tentang Aplikasi tetap menampilkan `Kizen v1.2.14`.
+     b. Logika `checkForAppUpdate` membandingkan versi lokal (`kAppVersion` = 1.2.14) dengan versi rilis GitHub (1.2.15), sehingga aplikasi terus memunculkan dialog update *"Versi baru tersedia: v1.2.15 (kamu v1.2.14)"*, membuat kesan aplikasi balik lagi ke 1.2.14.
+2. **Penyebutan Nama Sumber Sensitif di Catatan Rilis**:
+   - Di release notes GitHub sebelumnya, nama sumber sensitif sempat tercantum secara eksplisit. User meminta agar hal-hal sensitif tidak ditaruh di tempat publik.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Sinkronisasi Versi Internal (`lib/features/settings/about_screen.dart`)**:
+   - Menyamakan `kAppVersion = '1.2.16'` dan `kAppBuild = '28'`.
+   - Menaikkan `pubspec.yaml` ke `1.2.16+28`.
+   - Memperbarui seluruh badge, link unduhan, dan referensi nomor versi di `README.md` ke `v1.2.16`.
+2. **Pembersihan Catatan Rilis & GitHub Release**:
+   - Mengubah judul dan catatan rilis GitHub `v1.2.15` dan `v1.2.16` menjadi deskripsi umum dan netral (*"Perbaikan Scraper Galeri (Single-Gallery & Viewer URL)"*).
+   - Memastikan tidak ada nama situs sensitif di catatan publik GitHub maupun antarmuka aplikasi.
+3. **Build & Rilis APK Baru (`kizen-v1.2.16.apk`)**:
+   - Membangun APK rilis dan mengunggahnya ke GitHub Release `v1.2.16`.
+
+Cara Verifikasi:
+- `flutter analyze` — 0 issues (bersih).
+- `flutter test -j 1` — 192/192 lolos (3 skipped safe-mode), termasuk `settings_screen_test.dart` yang memverifikasi sinkronisasi `kAppVersion` dan `kAppBuild`.
+- `flutter build apk --release` — APK `kizen-v1.2.16.apk` berhasil terkompilasi dan diunggah ke rilis GitHub.
+
+
 ### 2026-11-06 — Kizen v1.2.15: Audit Menyeluruh Performa, Network Resiliency, RepaintBoundary, & Silent Bug Fix IMHentai
 
 Permintaan user:
@@ -189,6 +221,38 @@ Verifikasi:
 ---
 
 ## Log
+
+### 2026-11-06 — Kizen v1.2.16: Sinkronisasi Internal kAppVersion & Pembersihan Catatan Rilis Publik
+
+Permintaan user:
+"beb balek lagi padahal dah diupdate tapi malah balek lagi ke versi 1.2.14 knp itu, dan bagian yang imhentai jgn taruhlah agak sensitif soalnya"
+
+Root Cause & Analisis:
+1. **Versi Internal Aplikasi Tertahan di 1.2.14**:
+   - Di `lib/features/settings/about_screen.dart`, terdapat konstanta `kAppVersion = '1.2.14'` dan `kAppBuild = '26'`.
+   - Pada rilis `v1.2.15`, yang diperbarui baru `pubspec.yaml` dan `README.md`, sedangkan `kAppVersion` di `about_screen.dart` belum ikut dinaikkan.
+   - Akibatnya, saat user menginstal APK rilis terbaru di HP:
+     a. Tampilan Pengaturan & Tentang Aplikasi tetap menampilkan `Kizen v1.2.14`.
+     b. Logika `checkForAppUpdate` membandingkan versi lokal (`kAppVersion` = 1.2.14) dengan versi rilis GitHub (1.2.15), sehingga aplikasi terus memunculkan dialog update *"Versi baru tersedia: v1.2.15 (kamu v1.2.14)"*, membuat kesan aplikasi balik lagi ke 1.2.14.
+2. **Penyebutan Nama Sumber Sensitif di Catatan Rilis**:
+   - Di release notes GitHub sebelumnya, nama sumber sensitif sempat tercantum secara eksplisit. User meminta agar hal-hal sensitif tidak ditaruh di tempat publik.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Sinkronisasi Versi Internal (`lib/features/settings/about_screen.dart`)**:
+   - Menyamakan `kAppVersion = '1.2.16'` dan `kAppBuild = '28'`.
+   - Menaikkan `pubspec.yaml` ke `1.2.16+28`.
+   - Memperbarui seluruh badge, link unduhan, dan referensi nomor versi di `README.md` ke `v1.2.16`.
+2. **Pembersihan Catatan Rilis & GitHub Release**:
+   - Mengubah judul dan catatan rilis GitHub `v1.2.15` dan `v1.2.16` menjadi deskripsi umum dan netral (*"Perbaikan Scraper Galeri (Single-Gallery & Viewer URL)"*).
+   - Memastikan tidak ada nama situs sensitif di catatan publik GitHub maupun antarmuka aplikasi.
+3. **Build & Rilis APK Baru (`kizen-v1.2.16.apk`)**:
+   - Membangun APK rilis dan mengunggahnya ke GitHub Release `v1.2.16`.
+
+Cara Verifikasi:
+- `flutter analyze` — 0 issues (bersih).
+- `flutter test -j 1` — 192/192 lolos (3 skipped safe-mode), termasuk `settings_screen_test.dart` yang memverifikasi sinkronisasi `kAppVersion` dan `kAppBuild`.
+- `flutter build apk --release` — APK `kizen-v1.2.16.apk` berhasil terkompilasi dan diunggah ke rilis GitHub.
+
 
 ### 2026-11-06 — Kizen v1.2.15: Audit Menyeluruh Performa, Network Resiliency, RepaintBoundary, & Silent Bug Fix IMHentai
 
