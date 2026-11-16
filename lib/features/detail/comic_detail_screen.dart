@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -532,15 +534,24 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                 ),
                 child: current.coverUrl == null
                     ? null
-                    : Image.network(
-                        current.coverUrl!,
-                        fit: BoxFit.cover,
-                        cacheWidth:
-                            (MediaQuery.sizeOf(context).width *
+                    : (kIsWeb
+                        ? Image.network(
+                            current.coverUrl!,
+                            fit: BoxFit.cover,
+                            cacheWidth: (MediaQuery.sizeOf(context).width *
                                     MediaQuery.devicePixelRatioOf(context))
                                 .round(),
-                        errorBuilder: (_, _, _) => const SizedBox(),
-                      ),
+                            errorBuilder: (_, _, _) => const SizedBox(),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: current.coverUrl!,
+                            fit: BoxFit.cover,
+                            memCacheWidth: (MediaQuery.sizeOf(context).width *
+                                    MediaQuery.devicePixelRatioOf(context))
+                                .round(),
+                            fadeInDuration: const Duration(milliseconds: 150),
+                            errorWidget: (_, _, _) => const SizedBox(),
+                          )),
               ),
               const Expanded(child: ColoredBox(color: AppColors.bg)),
             ],
@@ -793,10 +804,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
 
   /// Entri history untuk komik ini (posisi baca terakhir), kalau ada.
   HistoryEntry? _inProgressEntry(Comic comic) {
-    for (final h in ref.watch(historyProvider)) {
-      if (h.comicId == comic.id) return h;
-    }
-    return null;
+    return ref.watch(
+      historyProvider.select(
+        (list) => list.where((h) => h.comicId == comic.id).firstOrNull,
+      ),
+    );
   }
 
   _Chapter _buildChapter({
@@ -1058,8 +1070,11 @@ class _ChapterRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final downloads = ref.watch(downloadsProvider);
-    final downloaded = downloads.contains('${comic.id}-${chapter.num}');
+    final downloaded = ref.watch(
+      downloadsProvider.select(
+        (set) => set.contains('${comic.id}-${chapter.num}'),
+      ),
+    );
 
     return InkWell(
       onTap: onTap,

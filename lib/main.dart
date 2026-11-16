@@ -36,23 +36,39 @@ class KizenApp extends ConsumerStatefulWidget {
   ConsumerState<KizenApp> createState() => _KizenAppState();
 }
 
-class _KizenAppState extends ConsumerState<KizenApp> {
+class _KizenAppState extends ConsumerState<KizenApp> with WidgetsBindingObserver {
   late final AppLifecycleListener _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _lifecycleListener = AppLifecycleListener(
       onResume: () {
         // Saat aplikasi kembali dibuka atau beralih ke foreground,
         // sinkronkan status VPN dengan service native (misal dimatikan dari notifikasi)
         ref.read(vpnProvider.notifier).refreshStatus();
       },
+      onHide: () {
+        // Bebaskan gambar yang tidak lagi tampil saat aplikasi di-minimize/background
+        // agar memori RAM tidak membebani sistem operasi
+        PaintingBinding.instance.imageCache.clearLiveImages();
+      },
     );
   }
 
   @override
+  void didHaveMemoryPressure() {
+    super.didHaveMemoryPressure();
+    // Tangani sinyal low-memory dari OS (Android TrimMemory) agar proses app
+    // tidak di-kill secara paksa oleh kernel LMK (Low Memory Killer)
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _lifecycleListener.dispose();
     super.dispose();
   }

@@ -574,13 +574,16 @@ class _RepoSourceRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final installedPackages = ref.watch(installedExtensionPackagesProvider);
     final packageName = data.source.pkg;
     final installedPackage = packageName == null
         ? null
-        : installedPackages.maybeWhen(
-            data: (packages) => packages[packageName],
-            orElse: () => null,
+        : ref.watch(
+            installedExtensionPackagesProvider.select(
+              (packages) => packages.maybeWhen(
+                data: (map) => map[packageName],
+                orElse: () => null,
+              ),
+            ),
           );
     final installed = installedPackage != null;
     final updateAvailable =
@@ -662,7 +665,11 @@ class _RepoSourceRow extends ConsumerWidget {
                   data: data,
                   installed: installed,
                   updateAvailable: updateAvailable,
-                  loading: installedPackages.isLoading,
+                  loading: ref.watch(
+                    installedExtensionPackagesProvider.select(
+                      (packages) => packages.isLoading,
+                    ),
+                  ),
                 ),
               ],
               const Icon(

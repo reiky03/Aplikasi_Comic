@@ -27,6 +27,46 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-16 — Kizen v1.2.17: Peningkatan Performa Ekstrem (Disk Image Caching, Large Heap, Memory Pressure Handler & Granular Riverpod Select)
+
+Permintaan user:
+"coba cek lagi beb   buat ningkatin performa"
+
+Root Cause & Temuan Audit Mendalam:
+1. **Cover Komik Belum Tersimpan di Cache Disk**:
+   - Fungsi `comicCoverContent()` sebelumnya memakai `Image.network` bawaan Flutter yang hanya menyimpan bitmap di RAM (`PaintingBinding.imageCache`).
+   - Akibatnya, setiap kali user membuka ulang aplikasi atau scroll kembali setelah RAM dibersihkan, ratusan cover komik harus diunduh ulang lewat HTTP, memboroskan kuota internet, memperlambat rendering, dan boros baterai.
+2. **Potensi OOM (Out Of Memory) Tanpa `largeHeap` pada Android**:
+   - Di `AndroidManifest.xml`, tag `<application>` belum memiliki `android:largeHeap="true"`. Pada HP Android dengan batas heap default 192MB/256MB, maraton membaca webtoon panjang dengan banyak strip gambar resolusi tinggi rawan memicu force-close OOM.
+3. **Absennya Handler `didHaveMemoryPressure`**:
+   - Saat Android mengirim sinyal kehabisan memori (*TrimMemory / memory pressure*), aplikasi sebelumnya tidak membersihkan cache bitmap gambar, sehingga berisiko dihentikan paksa oleh kernel Low Memory Killer (LMK).
+4. **Rebuild Masif Tanpa `select` di Baris Chapter & Ekstensi**:
+   - Di `ComicDetailScreen` (`_ChapterRow`), setiap baris melakukan `ref.watch(downloadsProvider)`. Jika komik memiliki ratusan chapter (mis. One Piece dengan 1100 chapter), perubahan status download 1 chapter saja memicu rebuild ke SEMUA baris chapter.
+   - Hal serupa terjadi di `_RepoSourceRow` (`installedExtensionPackagesProvider`) saat user menginstal atau memperbarui ekstensi di katalog repositori.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Disk Cache Cover Komik Otomatis (`lib/core/widgets/comic_cover_content.dart` & `comic_detail_screen.dart`)**:
+   - Mengintegrasikan `CachedNetworkImage` dengan `memCacheWidth` dan fade animation halus.
+   - Cover komik di Library, Updates, History, Browse, dan Detail kini tersimpan otomatis di disk cache: hanya diunduh 1 kali, selanjutnya terbuka instan secara offline/tanpa loading.
+2. **Aktivasi Android Large Heap (`android/app/src/main/AndroidManifest.xml`)**:
+   - Menambahkan `android:largeHeap="true"` pada konfigurasi aplikasi Android untuk melipatgandakan batas memori heap aplikasi.
+3. **Penyelamatan Low-Memory OS (`lib/main.dart`)**:
+   - Mengimplementasikan `WidgetsBindingObserver.didHaveMemoryPressure()` untuk membersihkan cache bitmap saat OS mengirim sinyal RAM kritis, mencegah crash LMK.
+   - Menambahkan listener `onHide` saat app diminimize agar gambar yang tidak tampak dilepas dari memori live.
+4. **Optimasi Granular Rebuild (`ref.watch(...select(...))`)**:
+   - `_ChapterRow`: Menggunakan `downloadsProvider.select((set) => set.contains('$comicId-$num'))`. Rebuild hanya terjadi pada baris yang statusnya benar-benar berubah.
+   - `_ComicDetailScreenState`: Menggunakan `historyProvider.select(...)` spesifik per ID komik yang sedang dibuka.
+   - `_RepoSourceRow`: Menggunakan `installedExtensionPackagesProvider.select(...)` spesifik per package name extension.
+5. **Bump Versi ke v1.2.17 (Build 29)**:
+   - Memperbarui `pubspec.yaml`, `README.md`, `about_screen.dart`, dan `PROGRESS.md`.
+
+Cara Verifikasi:
+- `flutter analyze` — 0 issues (bersih).
+- `flutter test -j 1` — 192/192 lolos (3 skipped safe-mode).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn` — kompilasi sukses dalam 45.9 detik.
+- `flutter build apk --release` — APK rilis Android terkompilasi sukses.
+
+
 ### 2026-11-06 — Kizen v1.2.16: Sinkronisasi Internal kAppVersion & Pembersihan Catatan Rilis Publik
 
 Permintaan user:
@@ -221,6 +261,46 @@ Verifikasi:
 ---
 
 ## Log
+
+### 2026-11-16 — Kizen v1.2.17: Peningkatan Performa Ekstrem (Disk Image Caching, Large Heap, Memory Pressure Handler & Granular Riverpod Select)
+
+Permintaan user:
+"coba cek lagi beb   buat ningkatin performa"
+
+Root Cause & Temuan Audit Mendalam:
+1. **Cover Komik Belum Tersimpan di Cache Disk**:
+   - Fungsi `comicCoverContent()` sebelumnya memakai `Image.network` bawaan Flutter yang hanya menyimpan bitmap di RAM (`PaintingBinding.imageCache`).
+   - Akibatnya, setiap kali user membuka ulang aplikasi atau scroll kembali setelah RAM dibersihkan, ratusan cover komik harus diunduh ulang lewat HTTP, memboroskan kuota internet, memperlambat rendering, dan boros baterai.
+2. **Potensi OOM (Out Of Memory) Tanpa `largeHeap` pada Android**:
+   - Di `AndroidManifest.xml`, tag `<application>` belum memiliki `android:largeHeap="true"`. Pada HP Android dengan batas heap default 192MB/256MB, maraton membaca webtoon panjang dengan banyak strip gambar resolusi tinggi rawan memicu force-close OOM.
+3. **Absennya Handler `didHaveMemoryPressure`**:
+   - Saat Android mengirim sinyal kehabisan memori (*TrimMemory / memory pressure*), aplikasi sebelumnya tidak membersihkan cache bitmap gambar, sehingga berisiko dihentikan paksa oleh kernel Low Memory Killer (LMK).
+4. **Rebuild Masif Tanpa `select` di Baris Chapter & Ekstensi**:
+   - Di `ComicDetailScreen` (`_ChapterRow`), setiap baris melakukan `ref.watch(downloadsProvider)`. Jika komik memiliki ratusan chapter (mis. One Piece dengan 1100 chapter), perubahan status download 1 chapter saja memicu rebuild ke SEMUA baris chapter.
+   - Hal serupa terjadi di `_RepoSourceRow` (`installedExtensionPackagesProvider`) saat user menginstal atau memperbarui ekstensi di katalog repositori.
+
+Solusi & Perubahan yang Diterapkan:
+1. **Disk Cache Cover Komik Otomatis (`lib/core/widgets/comic_cover_content.dart` & `comic_detail_screen.dart`)**:
+   - Mengintegrasikan `CachedNetworkImage` dengan `memCacheWidth` dan fade animation halus.
+   - Cover komik di Library, Updates, History, Browse, dan Detail kini tersimpan otomatis di disk cache: hanya diunduh 1 kali, selanjutnya terbuka instan secara offline/tanpa loading.
+2. **Aktivasi Android Large Heap (`android/app/src/main/AndroidManifest.xml`)**:
+   - Menambahkan `android:largeHeap="true"` pada konfigurasi aplikasi Android untuk melipatgandakan batas memori heap aplikasi.
+3. **Penyelamatan Low-Memory OS (`lib/main.dart`)**:
+   - Mengimplementasikan `WidgetsBindingObserver.didHaveMemoryPressure()` untuk membersihkan cache bitmap saat OS mengirim sinyal RAM kritis, mencegah crash LMK.
+   - Menambahkan listener `onHide` saat app diminimize agar gambar yang tidak tampak dilepas dari memori live.
+4. **Optimasi Granular Rebuild (`ref.watch(...select(...))`)**:
+   - `_ChapterRow`: Menggunakan `downloadsProvider.select((set) => set.contains('$comicId-$num'))`. Rebuild hanya terjadi pada baris yang statusnya benar-benar berubah.
+   - `_ComicDetailScreenState`: Menggunakan `historyProvider.select(...)` spesifik per ID komik yang sedang dibuka.
+   - `_RepoSourceRow`: Menggunakan `installedExtensionPackagesProvider.select(...)` spesifik per package name extension.
+5. **Bump Versi ke v1.2.17 (Build 29)**:
+   - Memperbarui `pubspec.yaml`, `README.md`, `about_screen.dart`, dan `PROGRESS.md`.
+
+Cara Verifikasi:
+- `flutter analyze` — 0 issues (bersih).
+- `flutter test -j 1` — 192/192 lolos (3 skipped safe-mode).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn` — kompilasi sukses dalam 45.9 detik.
+- `flutter build apk --release` — APK rilis Android terkompilasi sukses.
+
 
 ### 2026-11-06 — Kizen v1.2.16: Sinkronisasi Internal kAppVersion & Pembersihan Catatan Rilis Publik
 
