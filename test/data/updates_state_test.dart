@@ -137,4 +137,40 @@ void main() {
       ['hari-ini'],
     );
   });
+
+  test('UpdateEntry operator == dan hashCode mendeteksi kesamaan', () {
+    final d = DateTime(2026, 11, 20, 10, 0);
+    final u1 = UpdateEntry(
+      comicId: 'c1',
+      title: 'Solo Leveling',
+      src: 'Shinigami',
+      hue: 200,
+      ch: 10,
+      detectedAt: d,
+      chapterUrl: 'https://s1.shinigami.mx/ch/10',
+    );
+    final u2 = UpdateEntry(
+      comicId: 'c1',
+      title: 'Solo Leveling',
+      src: 'Shinigami',
+      hue: 200,
+      ch: 10,
+      detectedAt: d,
+      chapterUrl: 'https://s1.shinigami.mx/ch/10',
+    );
+
+    expect(u1 == u2, isTrue);
+    expect(u1.hashCode, u2.hashCode);
+
+    final u3 = UpdateEntry(
+      comicId: 'c1',
+      title: 'Solo Leveling',
+      src: 'Shinigami',
+      hue: 200,
+      ch: 11,
+      detectedAt: d,
+      chapterUrl: 'https://s1.shinigami.mx/ch/11',
+    );
+    expect(u1 == u3, isFalse);
+  });
 }

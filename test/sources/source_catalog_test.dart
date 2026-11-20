@@ -6,9 +6,13 @@ import 'package:aplikasi_komik/sources/source_catalog.dart';
 void main() {
   test('URL Shinigami tetap dikenali sebagai parser native', () {
     final source = SourceCatalog.matchByUrl('https://g.shinigami.asia');
+    final s1Mx = SourceCatalog.matchByUrl('https://s1.shinigami.mx');
+    final mx = SourceCatalog.matchByUrl('https://shinigami.mx/series/123');
 
     expect(source, isNotNull);
     expect(source!.name, 'Shinigami');
+    expect(s1Mx?.name, 'Shinigami');
+    expect(mx?.name, 'Shinigami');
   });
 
   test(

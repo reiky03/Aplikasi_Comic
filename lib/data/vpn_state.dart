@@ -242,7 +242,7 @@ class VpnNotifier extends Notifier<VpnState> {
       'Hong Kong HK': 'doh.dns.sb',
       'Doujindesu': 'doujindesu.tv',
       'E-Hentai': 'e-hentai.org',
-      'Shinigami': 'shinigami.cx',
+      'Shinigami': 's1.shinigami.mx',
       'Komiku': 'api.komiku.id',
       'Asura Comic': 'asuracomic.net',
     };

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_scope.dart';
@@ -96,6 +96,34 @@ class UpdateEntry {
       coverUrl: map['coverUrl'] as String?,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is UpdateEntry &&
+        other.comicId == comicId &&
+        other.title == title &&
+        other.src == src &&
+        other.hue == hue &&
+        other.ch == ch &&
+        other.detectedAt == detectedAt &&
+        other.chapterLabel == chapterLabel &&
+        other.chapterUrl == chapterUrl &&
+        other.coverUrl == coverUrl;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        comicId,
+        title,
+        src,
+        hue,
+        ch,
+        detectedAt,
+        chapterLabel,
+        chapterUrl,
+        coverUrl,
+      );
 }
 
 /// Ringkasan hasil [UpdatesNotifier.refresh] — dipakai UI buat kasih tau
@@ -222,7 +250,9 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
       final list =
           snap.docs.map((d) => UpdateEntry.fromMap(d.id, d.data())).toList()
             ..sort((a, b) => b.detectedAt.compareTo(a.detectedAt));
-      state = list;
+      if (!listEquals(list, state)) {
+        state = list;
+      }
     }, onError: (Object e) => debugPrint('updates stream error: $e'));
     return const [];
   }

@@ -77,7 +77,7 @@ class AdaptiveSource implements MangaSource {
       return AsuraSource();
     }
     if (lower.contains('shinigami') || host.contains('shinigami') || host.contains('shngm')) {
-      return ShinigamiSource();
+      return ShinigamiSource(baseUrl: baseUrl.isNotEmpty ? baseUrl : null);
     }
     if (lower.contains('komiku') || host.contains('komiku')) {
       return KomikuSource();

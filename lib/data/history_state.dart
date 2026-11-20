@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_scope.dart';
@@ -114,6 +114,38 @@ class HistoryEntry {
       coverUrl: map['coverUrl'] as String?,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is HistoryEntry &&
+        other.comicId == comicId &&
+        other.title == title &&
+        other.src == src &&
+        other.hue == hue &&
+        other.chNum == chNum &&
+        other.page == page &&
+        other.pages == pages &&
+        other.readAt == readAt &&
+        other.chapterLabel == chapterLabel &&
+        other.chapterUrl == chapterUrl &&
+        other.coverUrl == coverUrl;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        comicId,
+        title,
+        src,
+        hue,
+        chNum,
+        page,
+        pages,
+        readAt,
+        chapterLabel,
+        chapterUrl,
+        coverUrl,
+      );
 }
 
 String _twoDigits(int n) => n.toString().padLeft(2, '0');
@@ -196,7 +228,9 @@ class HistoryNotifier extends Notifier<List<HistoryEntry>> {
       final list =
           snap.docs.map((d) => HistoryEntry.fromMap(d.id, d.data())).toList()
             ..sort((a, b) => b.readAt.compareTo(a.readAt));
-      state = list;
+      if (!listEquals(list, state)) {
+        state = list;
+      }
     }, onError: (Object e) => debugPrint('history stream error: $e'));
     return const [];
   }

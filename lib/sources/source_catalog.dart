@@ -34,7 +34,17 @@ abstract final class SourceCatalog {
     // Shinigami rutin memakai subdomain bernomor (contoh yang tersimpan di HP
     // user: 11.shinigami.asia), sedangkan parser API kanonis memakai
     // g.shinigami.asia. Cocokkan domain induknya supaya keduanya satu sumber.
-    'Shinigami': ['shinigami.asia', 'shngm.io', 'shngm.id'],
+    'Shinigami': [
+      's1.shinigami.mx',
+      'shinigami.mx',
+      'shinigami.io',
+      'api.shinigami.io',
+      'shinigami.asia',
+      'shngm.io',
+      'shngm.id',
+      'shinigami.cx',
+      'shinigami.moe',
+    ],
     'Ikiru': ['09.ikiru.wtf', 'ikiru.id', '07.ikiru.wtf', 'ikiru.wtf'],
     'ToonGod': ['www.toongod.org', 'toongod.org', 'toongod.cc'],
     'SoulScans': ['v1.soulscans.asia', 'soulscans.asia', 'img.soulscans.asia'],
@@ -235,7 +245,7 @@ abstract final class SourceCatalog {
       return AsuraSource();
     }
     if (lower.contains('shinigami') || host.contains('shinigami') || host.contains('shngm')) {
-      return ShinigamiSource();
+      return ShinigamiSource(baseUrl: baseUrl.isNotEmpty ? baseUrl : null);
     }
     if (lower.contains('komiku') || host.contains('komiku')) {
       return KomikuSource();

@@ -129,4 +129,18 @@ void main() {
     expect(pages[0].imageUrl, 'https://cdn.shngm.io/manga/abc123/ch1/001.jpg');
     expect(pages[2].imageUrl, 'https://cdn.shngm.io/manga/abc123/ch1/003.jpg');
   });
+
+  test('ShinigamiSource mendukung parsing link web baru s1.shinigami.mx', () async {
+    expect(ShinigamiSource.extractId('https://s1.shinigami.mx/series/abc123/'), 'abc123');
+    expect(ShinigamiSource.extractId('https://s1.shinigami.mx/chapter/ch1?utm=1'), 'ch1');
+
+    final details = await source.fetchMangaDetails('https://s1.shinigami.mx/series/abc123');
+    expect(details.description, 'Cerita tentang pemburu terlemah.');
+
+    final chapters = await source.fetchChapterList('https://s1.shinigami.mx/series/abc123');
+    expect(chapters, hasLength(2));
+
+    final pages = await source.fetchPageList('https://s1.shinigami.mx/chapter/ch1');
+    expect(pages, hasLength(3));
+  });
 }

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'source_url.dart';
@@ -35,6 +36,19 @@ class ChapterProgress {
     chapterUrl: map['chapterUrl'] as String?,
     chapterLabel: map['chapterLabel'] as String?,
   );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ChapterProgress &&
+        other.page == page &&
+        other.pages == pages &&
+        other.chapterUrl == chapterUrl &&
+        other.chapterLabel == chapterLabel;
+  }
+
+  @override
+  int get hashCode => Object.hash(page, pages, chapterUrl, chapterLabel);
 }
 
 /// Bentuk URL chapter yang cukup stabil buat pencocokan data lama/baru.
@@ -275,6 +289,44 @@ class Comic {
       addedAt: _dateTime(map['addedAt']),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Comic &&
+        other.id == id &&
+        other.title == title &&
+        other.src == src &&
+        other.hue == hue &&
+        other.ch == ch &&
+        other.unread == unread &&
+        other.read == read &&
+        other.col == col &&
+        other.coverUrl == coverUrl &&
+        other.sourceMangaUrl == sourceMangaUrl &&
+        other.lastChapterUrl == lastChapterUrl &&
+        other.addedAt == addedAt &&
+        setEquals(other.readChapters, readChapters) &&
+        setEquals(other.readChapterUrls, readChapterUrls) &&
+        mapEquals(other.coverHeaders, coverHeaders) &&
+        mapEquals(other.chapterProgress, chapterProgress);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        title,
+        src,
+        hue,
+        ch,
+        unread,
+        read,
+        col,
+        coverUrl,
+        sourceMangaUrl,
+        lastChapterUrl,
+        addedAt,
+      );
 }
 
 /// Koleksi (kategori) buatan user di Library.
@@ -288,6 +340,15 @@ class ComicCollection {
 
   factory ComicCollection.fromMap(String id, Map<String, dynamic> map) =>
       ComicCollection(id: id, name: map['name'] as String? ?? '');
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ComicCollection && other.id == id && other.name == name;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name);
 }
 
 /// Gradient placeholder cover dari prototipe:

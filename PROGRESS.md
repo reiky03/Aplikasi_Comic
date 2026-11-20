@@ -27,6 +27,53 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-20 — Kizen v1.2.21 (Build 33): Dukungan Domain & URL Baru Shinigami (https://s1.shinigami.mx/), Dual API Endpoint (api.shinigami.io), Lazy Tab Mounting, Shadow Overdraw Elimination, dan Optimalisasi Rebuild State
+
+**Keluhan & Permintaan User**:
+"masih agak lag walau udah lumayan dari sebelumnya, perbaiki lagi performanya dan itu ternyata shinigami dah ganti web dari sebelumnya, coba parsing link barunya shinigami beb https://s1.shinigami.mx/"
+
+**Root Cause**:
+1. **Perubahan Domain & Format URL Shinigami**:
+   - Shinigami berpindah ke domain web baru `https://s1.shinigami.mx/` (React SPA) dan API backend baru `https://api.shinigami.io/v1`. Endpoint API lama (`https://api.shngm.io`) mengembalikan error 502 Bad Gateway.
+   - Format routing web Shinigami menggunakan `/series/:id` untuk detail komik dan `/chapter/:chapterId` untuk reader. Parser sebelumnya hanya menerima raw UUID dan host `shinigami.io`/`shngm.io`, sehingga URL web baru tidak dapat di-parse secara langsung.
+2. **Overdraw Rendering Bayangan Grid & SaveLayer GPU**:
+   - `ComicGridCard` membungkus container dengan `BoxDecoration` (boxShadow + borderRadius) sekaligus child `ClipRRect`. Di Skia/Impeller, kombinasi clipping pada layer berbayangan memicu pemanggilan offscreen `saveLayer` berulang setiap kali grid 3-kolom di-scroll, menyebabkan micro-stuttering/lag saat scrolling Library.
+3. **Eager Mounting Seluruh Tab di `HomeShell`**:
+   - `IndexedStack` di `HomeShell` sebelumnya langsung menginstansiasi ke-5 tab (`LibraryScreen`, `UpdatesScreen`, `HistoryScreen`, `BrowseScreen`, `SettingsScreen`) sekaligus pada saat awal startup aplikasi. Hal ini memicu listener Firestore, query awal, dan alokasi memori berlebih saat app baru dibuka.
+4. **Redundant State Rebuilds Tanpa Value Equality di Model**:
+   - `ChapterProgress`, `Comic`, `ComicCollection`, `UpdateEntry`, dan `HistoryEntry` belum memiliki `operator ==` dan `hashCode` lengkap. Setiap kali snapshot Firestore atau in-memory update terjadi, Riverpod memperlakukan state list sebagai objek baru dan me-rebuild widget tree secara berlebihan meskipun isinya identik.
+
+**Perubahan Per-File**:
+1. `lib/sources/shinigami_source.dart`:
+   - Menambahkan konfigurasi `baseUrl` fleksibel (default: `https://s1.shinigami.mx`).
+   - Menerapkan dual API endpoints: primary `https://api.shinigami.io/v1` dan fallback `https://api.shngm.io/v1`.
+   - Mengimplementasikan `extractId(String raw)` cerdas yang otomatis mengekstrak UUID baik dari raw ID maupun path URL web (`/series/:id`, `/chapter/:id`).
+   - Menambahkan header `Referer: $baseUrl/` dan `Origin: $baseUrl` pada HTTP request untuk konsistensi sesi.
+2. `lib/sources/source_catalog.dart`:
+   - Mendaftarkan alias host baru: `s1.shinigami.mx`, `shinigami.mx`, `shinigami.io`, `api.shinigami.io`.
+   - Mengoperasikan `baseUrl` aktual ke instansiasi `ShinigamiSource`.
+3. `lib/sources/adaptive_source.dart`, `lib/data/vpn_state.dart`, `lib/data/repository_state.dart`:
+   - Memperbarui probe domain dan seed data Shinigami ke `https://s1.shinigami.mx`.
+4. `lib/features/home/home_shell.dart`:
+   - Mengimplementasikan lazy tab mounting dengan set `_visitedTabs`. Hanya tab aktif yang di-mount ke widget tree, tab lain tetap `SizedBox.shrink()` sampai dikunjungi pertama kali oleh pengguna.
+5. `lib/features/library/library_screen.dart`:
+   - Menambahkan `scrollCacheExtent: const ScrollCacheExtent.viewport(1.5)` pada `GridView.builder` untuk prefetching kartu halus tanpa lonjakan memori.
+   - Merefaktor `ComicGridCard` untuk memisahkan container bayangan (tanpa clip) dengan child `ClipRRect`, mengeliminasi layer overdraw GPU.
+6. `lib/data/models.dart`, `lib/data/updates_state.dart`, `lib/data/history_state.dart`:
+   - Mengimplementasikan `operator ==` dan `hashCode` pada `ChapterProgress`, `Comic`, `ComicCollection`, `UpdateEntry`, dan `HistoryEntry`.
+   - Menambahkan guard `!listEquals(list, state)` pada notifiers agar tidak me-rebuild listener saat isi data identik.
+7. `lib/features/browse/repo_browse_tab.dart`:
+   - Menghilangkan auto `refreshAll()` latar belakang yang agresif saat tab repositori dibuka.
+8. `lib/core/widgets/comic_cover_content.dart`:
+   - Menetapkan batas resolusi disk cache (`maxWidthDiskCache: 800`, `maxHeightDiskCache: 1200`) untuk mencegah konsumsi RAM membengkak akibat gambar beresolusi super tinggi.
+9. `test/sources/shinigami_source_test.dart` & `test/data/updates_state_test.dart`:
+   - Menambahkan unit test komprehensif untuk penguraian format URL baru `s1.shinigami.mx` dan verifikasi equality operator.
+
+**Verifikasi**:
+- `flutter analyze` bersih (0 issues).
+- Unit test suite: 168 unit tests passed (100% pass rate).
+- Build release APK Android berhasil (`kizen-v1.2.21.apk`).
+
 ### 2026-11-20 — Kizen v1.2.20 (Build 32): Optimasi Performa Ekstrem, Eliminasi Infinite Loop Firestore & Rebuild Spike, Safe Overlay Mount, Timeouts Fallback Probing, dan Perbaikan Stabilitas Anti-Crash (Force Close)
 
 **Keluhan & Permintaan User**:

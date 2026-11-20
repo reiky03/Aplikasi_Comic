@@ -136,7 +136,11 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     final col = _col;
     if (col == null) return _seedLibrary;
     _sub = col.snapshots().listen((snap) {
-      state = snap.docs.map((d) => Comic.fromMap(d.id, d.data())).toList();
+      final list =
+          snap.docs.map((d) => Comic.fromMap(d.id, d.data())).toList();
+      if (!listEquals(list, state)) {
+        state = list;
+      }
     });
     return const [];
   }
@@ -714,9 +718,12 @@ class CollectionsNotifier extends Notifier<List<ComicCollection>> {
     final col = _col;
     if (col == null) return _seedCollections;
     _sub = col.snapshots().listen((snap) {
-      state = snap.docs
+      final list = snap.docs
           .map((d) => ComicCollection.fromMap(d.id, d.data()))
           .toList();
+      if (!listEquals(list, state)) {
+        state = list;
+      }
     });
     return const [];
   }

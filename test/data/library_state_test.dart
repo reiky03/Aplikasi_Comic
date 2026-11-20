@@ -326,4 +326,37 @@ void main() {
     expect(unrelated.sourceMangaUrl, 'https://komikstation.example/manga/test/');
     expect(unrelated.coverUrl, 'https://komikstation.example/cover.jpg');
   });
+
+  test('Comic dan ChapterProgress operator == dan hashCode mendeteksi kesamaan', () {
+    const c1 = Comic(
+      id: 'c1',
+      title: 'Solo Leveling',
+      src: 'Shinigami',
+      hue: 200,
+      ch: 100,
+      readChapters: {1, 2},
+      readChapterUrls: {'https://s1.shinigami.mx/ch/1'},
+      chapterProgress: {
+        1: ChapterProgress(page: 10, pages: 20, chapterUrl: 'ch1', chapterLabel: 'Ch. 1'),
+      },
+    );
+    const c2 = Comic(
+      id: 'c1',
+      title: 'Solo Leveling',
+      src: 'Shinigami',
+      hue: 200,
+      ch: 100,
+      readChapters: {1, 2},
+      readChapterUrls: {'https://s1.shinigami.mx/ch/1'},
+      chapterProgress: {
+        1: ChapterProgress(page: 10, pages: 20, chapterUrl: 'ch1', chapterLabel: 'Ch. 1'),
+      },
+    );
+
+    expect(c1 == c2, isTrue);
+    expect(c1.hashCode, c2.hashCode);
+
+    final c3 = c1.copyWith(unread: 5);
+    expect(c1 == c3, isFalse);
+  });
 }

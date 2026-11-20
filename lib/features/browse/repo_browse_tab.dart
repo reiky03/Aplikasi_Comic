@@ -178,7 +178,9 @@ class _RepoBrowseTabState extends ConsumerState<RepoBrowseTab>
       orElse: () => const <String>{},
     );
 
-    if (!_autoRefreshScheduled && repositories.isNotEmpty) {
+    final needsInitialFetch = repositories.isNotEmpty &&
+        repositories.every((r) => r.sources.isEmpty);
+    if (!_autoRefreshScheduled && needsInitialFetch) {
       _autoRefreshScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _refreshRepositories(silent: true);

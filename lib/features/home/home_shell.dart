@@ -42,6 +42,7 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   static bool _updateCheckedThisSession = false;
   static bool _repoSyncedThisSession = false;
+  final Set<int> _visitedTabs = {0};
   Timer? _updateTimer;
   Timer? _syncTimer;
 
@@ -136,6 +137,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     });
 
     final tab = ref.watch(activeTabProvider);
+    _visitedTabs.add(tab.index);
     final browseSubTab = ref.watch(browseSubTabProvider);
     final showFab =
         tab == AppTab.browse && browseSubTab == BrowseSubTab.own;
@@ -146,12 +148,20 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           Positioned.fill(
             child: IndexedStack(
               index: tab.index,
-              children: const [
-                LibraryScreen(),
-                UpdatesScreen(),
-                HistoryScreen(),
-                BrowseScreen(),
-                SettingsScreen(),
+              children: [
+                const LibraryScreen(),
+                _visitedTabs.contains(1)
+                    ? const UpdatesScreen()
+                    : const SizedBox.shrink(),
+                _visitedTabs.contains(2)
+                    ? const HistoryScreen()
+                    : const SizedBox.shrink(),
+                _visitedTabs.contains(3)
+                    ? const BrowseScreen()
+                    : const SizedBox.shrink(),
+                _visitedTabs.contains(4)
+                    ? const SettingsScreen()
+                    : const SizedBox.shrink(),
               ],
             ),
           ),

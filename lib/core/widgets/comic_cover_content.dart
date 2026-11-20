@@ -56,6 +56,8 @@ Widget comicCoverContent({
     httpHeaders: headers.isEmpty ? null : headers,
     memCacheWidth: cacheWidth,
     memCacheHeight: effectiveMemCacheHeight,
+    maxWidthDiskCache: 800,
+    maxHeightDiskCache: 1200,
     fadeInDuration: const Duration(milliseconds: 150),
     fadeOutDuration: const Duration(milliseconds: 150),
     placeholder: (_, _) => placeholder,

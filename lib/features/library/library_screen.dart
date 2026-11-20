@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -497,6 +498,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final gridCacheWidth = (cellWidth * dpr).round();
 
     return GridView.builder(
+      scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
       padding: const EdgeInsets.fromLTRB(18, 6, 18, 120),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: AppDimens.gridColumns,
@@ -1252,9 +1254,8 @@ class ComicGridCard extends StatelessWidget {
             // ulang tiap frame (gradient + shadow + gambar bakal lumayan
             // berat kalau diulang terus buat semua kartu yang kelihatan).
             child: RepaintBoundary(
-              child: Container(
+              child: DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: comicCover(comic.hue),
                   borderRadius: BorderRadius.circular(13),
                   border: selected
                       ? Border.all(color: AppColors.accent, width: 2.2)
@@ -1268,10 +1269,15 @@ class ComicGridCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: comicCover(comic.hue),
+                    ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
                     comicCoverContent(
                       coverUrl: comic.coverUrl,
                       headers: comic.coverHeaders,
@@ -1360,6 +1366,8 @@ class ComicGridCard extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
           const SizedBox(height: 7),
           Text(
             comic.title,

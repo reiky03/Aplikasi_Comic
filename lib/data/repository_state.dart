@@ -258,7 +258,7 @@ const _seedRepositories = [
         name: 'Shinigami',
         hue: 210,
         lang: 'ID',
-        baseUrl: 'https://shinigami.moe',
+        baseUrl: 'https://s1.shinigami.mx',
       ),
       RepoSource(
         id: 'rps3',
