@@ -1493,7 +1493,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
-          scrollCacheExtent: const ScrollCacheExtent.viewport(4.0),
+          // Viewport cache 2.0 cukup untuk scrolling super mulus tanpa lag,
+          // menghemat alokasi memori tekstur decoded hingga 50% dibanding 4.0.
+          scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
           itemCount: _totalPages + 2,
           itemBuilder: (context, index) {
             if (index == 0) {

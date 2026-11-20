@@ -23,9 +23,16 @@ class HistoryScreen extends ConsumerWidget {
     final history = demoEmpty
         ? const <HistoryEntry>[]
         : ref.watch(historyProvider);
-    final libraryById = {
-      for (final comic in ref.watch(libraryProvider)) comic.id: comic,
-    };
+    // Gunakan select untuk hanya memetakan coverUrl komik Library yang dibutuhkan,
+    // mencegah rebuild seluruh riwayat saat properti lain (lastReadAt, unread, dll) berubah.
+    final libraryCovers = ref.watch(
+      libraryProvider.select(
+        (comics) => {
+          for (final comic in comics)
+            if (comic.coverUrl != null) comic.id: comic.coverUrl!,
+        },
+      ),
+    );
 
     return SafeArea(
       bottom: false,
@@ -74,7 +81,7 @@ class HistoryScreen extends ConsumerWidget {
                           'mudah dilanjutkan.',
                     ),
                   )
-                : _buildFeed(context, ref, history, libraryById),
+                : _buildFeed(context, ref, history, libraryCovers),
           ),
         ],
       ),
@@ -92,7 +99,7 @@ class HistoryScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     List<HistoryEntry> history,
-    Map<String, Comic> libraryById,
+    Map<String, String> libraryCovers,
   ) {
     final rows = <Object>[];
     String? currentGroup;
@@ -127,7 +134,7 @@ class HistoryScreen extends ConsumerWidget {
         return _HistoryRow(
           key: ValueKey(entry.comicId),
           entry: entry,
-          coverUrl: entry.coverUrl ?? libraryById[entry.comicId]?.coverUrl,
+          coverUrl: entry.coverUrl ?? libraryCovers[entry.comicId],
           onTap: () => _openDetail(context, ref, entry),
           onPlay: () => _resumeReading(context, ref, entry),
           onLongPress: () => _openHistoryMenu(context, ref, entry),

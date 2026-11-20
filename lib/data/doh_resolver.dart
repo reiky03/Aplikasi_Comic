@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 /// Resolver DNS-over-HTTPS (DoH) untuk membypass pemblokiran DNS ISP di Indonesia.
 class DohResolver {
   static final Map<String, String> _cache = {};
+  static final Map<String, Future<String?>> _inFlight = {};
+  static final http.Client _dohClient = http.Client();
 
   /// Daftar endpoint DoH publik terpercaya
   static String _getEndpoint(String provider, String host) {
@@ -34,6 +36,30 @@ class DohResolver {
       return _cache[cleanHost];
     }
 
+    // Mencegah thundering-herd: jika host yang sama sedang di-resolve bersamaan,
+    // gabungkan ke dalam Future yang sama agar tidak menembak puluhan request DoH ganda.
+    final ongoing = _inFlight[cleanHost];
+    if (ongoing != null) {
+      return ongoing;
+    }
+
+    final future = _resolveHostInternal(cleanHost, provider: provider);
+    _inFlight[cleanHost] = future;
+    try {
+      final ip = await future;
+      if (ip != null) {
+        _cache[cleanHost] = ip;
+      }
+      return ip;
+    } finally {
+      _inFlight.remove(cleanHost);
+    }
+  }
+
+  static Future<String?> _resolveHostInternal(
+    String cleanHost, {
+    required String provider,
+  }) async {
     // Urutan endpoint: coba provider pilihan dulu, lalu fallback ke Cloudflare & Google
     final endpoints = <String>[
       _getEndpoint(provider, cleanHost),
@@ -43,7 +69,7 @@ class DohResolver {
 
     for (final endpoint in endpoints) {
       try {
-        final res = await http.get(
+        final res = await _dohClient.get(
           Uri.parse(endpoint),
           headers: {'Accept': 'application/dns-json'},
         ).timeout(const Duration(seconds: 4));
@@ -64,7 +90,6 @@ class DohResolver {
                     ip != '127.0.0.1' &&
                     ip != '0.0.0.0') {
                   // Pastikan bukan IP redirect blokir ISP / Nawala
-                  _cache[cleanHost] = ip;
                   return ip;
                 }
               }
@@ -86,7 +111,6 @@ class DohResolver {
       _ => null,
     };
     if (safeFallback != null) {
-      _cache[cleanHost] = safeFallback;
       return safeFallback;
     }
 
@@ -95,5 +119,6 @@ class DohResolver {
 
   static void clearCache() {
     _cache.clear();
+    _inFlight.clear();
   }
 }

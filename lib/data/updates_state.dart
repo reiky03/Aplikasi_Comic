@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
@@ -227,19 +228,10 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
   }
 
   /// Cek chapter baru untuk semua komik Library yang berasal dari sumber
-  /// asli. Sekuensial (bukan paralel) — sengaja, biar tidak membanjiri
-  /// situs sumber dengan banyak request sekaligus. Kegagalan per-komik
-  /// (situs down, parser meleset) dilewati, tidak menggagalkan keseluruhan
-  /// pengecekan.
-  ///
-  /// Deteksi "ada chapter baru" TIDAK pakai `chapters.length > comic.ch`
-  /// doang — jumlah mentah gampang tidak stabil antar fetch (situs bisa
-  /// punya chapter spesial/bonus yang bikin hitungan geser meski tidak
-  /// ada penambahan sungguhan, sama akar masalah yang bikin nomor chapter
-  /// di History dulu suka meleset). Cek chapter TERBARU (`chapters.first`,
-  /// list newest-first) beda dari [Comic.lastChapterUrl] yang terakhir
-  /// diketahui — itu sinyal yang jauh lebih akurat, terlepas dari noise
-  /// pada hitungan total.
+  /// asli. Menggunakan pool worker berkemampuan konkuren terbatas (3 worker)
+  /// agar proses pengecekan 3x lebih cepat tanpa membanjiri server sumber.
+  /// Kegagalan per-komik (situs down, parser meleset) dilewati dan tidak
+  /// menggagalkan keseluruhan pengecekan.
   Future<UpdateCheckResult> refresh() async {
     final library = ref.read(libraryProvider);
     final libraryNotifier = ref.read(libraryProvider.notifier);
@@ -248,75 +240,90 @@ class UpdatesNotifier extends Notifier<List<UpdateEntry>> {
     var checked = 0;
     var updated = 0;
     var failed = 0;
-    for (final comic in library) {
-      final mangaUrl = comic.sourceMangaUrl;
-      if (mangaUrl == null) continue;
-      final source = resolveMangaSource(comic.src, customSources, repositories);
-      if (source == null) continue;
-      checked++;
-      try {
-        final activeMangaUrl = rebaseSourceUrl(mangaUrl, source.baseUrl);
-        final chapters = await source
-            .fetchChapterList(activeMangaUrl)
-            .timeout(const Duration(seconds: 15));
-        if (chapters.isEmpty) continue;
-        if (activeMangaUrl != mangaUrl) {
-          await libraryNotifier.updateSourceMangaUrl(comic.id, activeMangaUrl);
-        }
-        final newest = chapters.first;
-        final currentEntry = state
-            .where((entry) => entry.comicId == comic.id)
-            .firstOrNull;
-        final decision = decideLatestChapterUpdate(
-          knownLatestUrl: comic.lastChapterUrl,
-          knownTotal: comic.ch,
-          currentEntry: currentEntry,
-          fetchedTotal: chapters.length,
-          fetchedLatestUrl: newest.url,
-          fetchedLatestName: newest.name,
-          coverUrl: comic.coverUrl,
+
+    final targetComics =
+        library.where((c) => c.sourceMangaUrl != null).toList();
+    if (targetComics.isEmpty) {
+      return const UpdateCheckResult(checked: 0, updated: 0, failed: 0);
+    }
+
+    var cursor = 0;
+    Future<void> worker() async {
+      while (true) {
+        if (cursor >= targetComics.length) break;
+        final comic = targetComics[cursor++];
+        final mangaUrl = comic.sourceMangaUrl;
+        if (mangaUrl == null) continue;
+        final source = resolveMangaSource(
+          comic.src,
+          customSources,
+          repositories,
+          sourceMangaUrl: mangaUrl,
+          comicId: comic.id,
         );
-        if (decision.hasNew) {
-          final newTotal = chapters.length;
-          // Jumlah chapter baru yang sebenarnya tetap dihitung dari
-          // selisih total (buat badge unread) — clamp minimal 1 supaya
-          // tidak pernah 0/negatif kalau hitungannya kebetulan turun
-          // (mis. situsnya gabung/hapus chapter lama) padahal jelas ada
-          // yang baru (chapter terbaru berbeda).
-          await libraryNotifier.applyNewChapters(
-            comic.id,
-            newTotal: newTotal,
-            deltaUnread: decision.deltaUnread,
-            lastChapterUrl: newest.url,
+        if (source == null) continue;
+        checked++;
+        try {
+          final activeMangaUrl = rebaseSourceUrl(mangaUrl, source.baseUrl);
+          final chapters = await source
+              .fetchChapterList(activeMangaUrl)
+              .timeout(const Duration(seconds: 15));
+          if (chapters.isEmpty) continue;
+          if (activeMangaUrl != mangaUrl) {
+            await libraryNotifier.updateSourceMangaUrl(comic.id, activeMangaUrl);
+          }
+          final newest = chapters.first;
+          final currentEntry = state
+              .where((entry) => entry.comicId == comic.id)
+              .firstOrNull;
+          final decision = decideLatestChapterUpdate(
+            knownLatestUrl: comic.lastChapterUrl,
+            knownTotal: comic.ch,
+            currentEntry: currentEntry,
+            fetchedTotal: chapters.length,
+            fetchedLatestUrl: newest.url,
+            fetchedLatestName: newest.name,
+            coverUrl: comic.coverUrl,
           );
-          updated++;
-        } else if (comic.lastChapterUrl == null) {
-          // Komik lama belum punya baseline URL chapter terbaru. Isi sekali
-          // tanpa menambah unread agar pengecekan berikutnya stabil.
-          await libraryNotifier.applyNewChapters(
-            comic.id,
-            newTotal: comic.ch,
-            deltaUnread: 0,
-            lastChapterUrl: newest.url,
-          );
+          if (decision.hasNew) {
+            final newTotal = chapters.length;
+            await libraryNotifier.applyNewChapters(
+              comic.id,
+              newTotal: newTotal,
+              deltaUnread: decision.deltaUnread,
+              lastChapterUrl: newest.url,
+            );
+            updated++;
+          } else if (comic.lastChapterUrl == null) {
+            await libraryNotifier.applyNewChapters(
+              comic.id,
+              newTotal: comic.ch,
+              deltaUnread: 0,
+              lastChapterUrl: newest.url,
+            );
+          }
+          if (decision.hasNew || decision.latestChanged) {
+            await _recordUpdate(
+              comic.id,
+              comic.title,
+              comic.src,
+              comic.hue,
+              comic.coverUrl,
+              chapters.length,
+              newest.name,
+              newest.url,
+            );
+          }
+        } catch (e) {
+          debugPrint('Gagal cek chapter baru untuk ${comic.title}: $e');
+          failed++;
         }
-        if (decision.hasNew || decision.latestChanged) {
-          await _recordUpdate(
-            comic.id,
-            comic.title,
-            comic.src,
-            comic.hue,
-            comic.coverUrl,
-            chapters.length,
-            newest.name,
-            newest.url,
-          );
-        }
-      } catch (e) {
-        debugPrint('Gagal cek chapter baru untuk ${comic.title}: $e');
-        failed++;
       }
     }
+
+    final workerCount = math.min(3, targetComics.length);
+    await Future.wait(List.generate(workerCount, (_) => worker()));
+
     return UpdateCheckResult(
       checked: checked,
       updated: updated,

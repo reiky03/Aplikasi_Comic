@@ -489,6 +489,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             : 'Pindahkan komik ke koleksi ini lewat menu tahan-lama.',
       );
     }
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cellWidth =
+        (screenWidth - 36 - AppDimens.gridGap * (AppDimens.gridColumns - 1)) /
+        AppDimens.gridColumns;
+    final gridCacheWidth = (cellWidth * dpr).round();
+
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(18, 6, 18, 120),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -504,6 +511,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         return ComicGridCard(
           key: ValueKey(comic.id),
           comic: comic,
+          cacheWidth: gridCacheWidth,
           selected: _selectedComicIds.contains(comic.id),
           selectionMode: _selectionMode,
           onTap: () {
@@ -1205,6 +1213,7 @@ class ComicGridCard extends StatelessWidget {
     this.caption,
     this.selected = false,
     this.selectionMode = false,
+    this.cacheWidth,
   });
 
   final Comic comic;
@@ -1215,6 +1224,7 @@ class ComicGridCard extends StatelessWidget {
   final String? caption;
   final bool selected;
   final bool selectionMode;
+  final int? cacheWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -1222,12 +1232,12 @@ class ComicGridCard extends StatelessWidget {
     // — dipakai buat `cacheWidth` di bawah, biar Image.network DECODE pas
     // ukuran tampil (bukan resolusi asli cover yang bisa jauh lebih besar),
     // jauh lebih ringan buat GPU/memory pas banyak kartu di-scroll sekaligus.
-    final cellWidth =
-        (MediaQuery.sizeOf(context).width -
-            36 -
-            AppDimens.gridGap * (AppDimens.gridColumns - 1)) /
-        AppDimens.gridColumns;
-    final cacheWidth = (cellWidth * MediaQuery.devicePixelRatioOf(context))
+    final effectiveCacheWidth = cacheWidth ??
+        (((MediaQuery.sizeOf(context).width -
+                    36 -
+                    AppDimens.gridGap * (AppDimens.gridColumns - 1)) /
+                AppDimens.gridColumns) *
+            MediaQuery.devicePixelRatioOf(context))
         .round();
     return GestureDetector(
       onTap: onTap,
@@ -1266,7 +1276,7 @@ class ComicGridCard extends StatelessWidget {
                       coverUrl: comic.coverUrl,
                       headers: comic.coverHeaders,
                       initial: comic.initial,
-                      cacheWidth: cacheWidth,
+                      cacheWidth: effectiveCacheWidth,
                     ),
                     if (selectionMode)
                       Positioned.fill(

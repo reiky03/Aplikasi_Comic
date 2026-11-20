@@ -20,6 +20,7 @@ Widget comicCoverContent({
   // pas banyak kartu ke-render sekaligus saat scroll. Null = biarkan
   // decode native (dipakai buat tampilan besar seperti hero cover Detail).
   int? cacheWidth,
+  int? cacheHeight,
 }) {
   final placeholder = Center(
     child: Text(
@@ -33,12 +34,18 @@ Widget comicCoverContent({
   );
   if (coverUrl == null || coverUrl.isEmpty) return placeholder;
 
+  // Batasi dimensi tinggi decode juga (rasio 2:3) agar cover vertikal beresolusi
+  // ekstrem tidak memakan memori GPU berlebihan di RAM
+  final effectiveMemCacheHeight = cacheHeight ??
+      (cacheWidth != null ? (cacheWidth * 1.5).round() : null);
+
   if (kIsWeb) {
     return Image.network(
       coverUrl,
       fit: BoxFit.cover,
       headers: headers.isEmpty ? null : headers,
       cacheWidth: cacheWidth,
+      cacheHeight: effectiveMemCacheHeight,
       errorBuilder: (_, _, _) => placeholder,
     );
   }
@@ -48,6 +55,7 @@ Widget comicCoverContent({
     fit: BoxFit.cover,
     httpHeaders: headers.isEmpty ? null : headers,
     memCacheWidth: cacheWidth,
+    memCacheHeight: effectiveMemCacheHeight,
     fadeInDuration: const Duration(milliseconds: 150),
     fadeOutDuration: const Duration(milliseconds: 150),
     placeholder: (_, _) => placeholder,
