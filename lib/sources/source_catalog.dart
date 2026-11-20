@@ -349,12 +349,14 @@ abstract final class SourceCatalog {
     }
   }
 
-  static String _originFromUrl(String raw) {
+  static String originFromUrl(String raw) {
     final normalized = normalizeSourceBaseUrl(raw);
     final uri = Uri.tryParse(normalized);
     if (uri == null || uri.host.isEmpty) return normalized;
     return uri.replace(path: '', query: null, fragment: null).toString();
   }
+
+  static String _originFromUrl(String raw) => originFromUrl(raw);
 
   /// Probe nyata untuk source repository. Metadata APK saja belum berarti
   /// source bisa mengambil daftar: Cloudflare/login bisa tetap memblokirnya.

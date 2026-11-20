@@ -27,6 +27,41 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-20 — Fix Chapter Gagal Dimuat dari Library (Async Provider Race Condition, Repo Null BaseUrl, Rebase Mirror Subdomain, & Detail Auto-Healing)
+
+**Keluhan User**:
+"loh kok ini tiba2 dilibrary yang udah ak simpan malah gagal memuat chapter padahal pas buka lsg diusmbernya bisa loh tampil chapternya, malah yang udah disimpan gak bisa kenapa itu"
+
+**Root Cause**:
+1. **Async Provider Race Condition saat Buka dari Library**: `sourcesProvider` dan `repositoriesProvider` di-load secara asinkron dari Firestore (`FirestoreScope.collection(...)`). Ketika user membuka komik dari layar Library sesaat setelah aplikasi dibuka, `ComicDetailScreen.initState()` langsung memanggil `_loadReal()`. Pada detik awal itu, snapshot Firestore belum tiba sehingga `ref.read(sourcesProvider)` menghasilkan list kosong `[]`. Akibatnya, `resolveMangaSource` gagal menemukan parser sumber yang tepat (atau jatuh ke built-in usang), dan layar detail tidak mendengarkan (`ref.listen`) perubahan provider ketika data Firestore akhirnya masuk. Di sisi lain, jika dibuka lewat Jelajahi (Browse), tab Browse sudah lebih dulu me-load `sourcesProvider` dan `repositoriesProvider`, sehingga sumber selalu ter-resolve dengan benar.
+2. **RepoSource dengan `baseUrl == null` Dilewati Total**: Pada `resolveMangaSource`, repo extensions yang tidak menyertakan `baseUrl` eksplisit di `repoSource` langsung di-skip dengan `if (repoSource.baseUrl == null) continue;`. Padahal di tab Browse, fallback menggunakan `repository.url` (`toSyntheticSource()`). Hal ini membuat komik dari repository dengan `baseUrl == null` tidak bisa di-resolve saat dibuka dari Library.
+3. **Rebase Subdomain Mirror Terblokir**: Fungsi `rebaseSourceUrl()` di `source_url.dart` memiliki guard `_sameSiteHost` yang menganggap subdomain dengan parent domain yang sama tidak perlu di-rebase. Akibatnya, pergantian mirror bernomor seperti `07.ikiru.wtf` ke `11.ikiru.wtf` atau `v6.kiryuu.to` ke `v7.kiryuu.to` tidak pernah di-rebase ke domain aktif terbaru sumber.
+4. **Coupling `Future.wait` & Kurangnya Fallback Tangguh di Detail Screen**:
+   - `_loadReal()` sebelumnya memanggil `Future.wait([details, chapters])`. Jika metadata detail (seperti sinopsis/genre) melempar error, daftar chapter ikut gagal dimuat seluruhnya.
+   - Tidak ada fallback parser darurat berbasis origin URL manga (`SourceCatalog.buildAutomatic`) jika resolver belum menemukan sumber.
+   - Tidak ada auto-probe healing domain jika domain manga yang tersimpan di Library sudah diblokir/mati.
+
+**Solusi & Perubahan**:
+1. **Pre-warming Provider di Splash & Home Shell** ([splash_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/onboarding/splash_screen.dart), [home_shell.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/home/home_shell.dart)):
+   - Melakukan pre-warm `sourcesProvider` dan `repositoriesProvider` sejak awal startup aplikasi bersamaan dengan library/history/collections.
+2. **Reactive Listener & Resilient Auto-Healing di Detail Screen** ([comic_detail_screen.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/features/detail/comic_detail_screen.dart)):
+   - Menambahkan `ref.listen` pada `sourcesProvider` dan `repositoriesProvider` sehingga saat data sumber selesai sinkronisasi dari cloud, `ComicDetailScreen` secara otomatis mencoba memuat ulang chapter tanpa perlu user back manual.
+   - Memisahkan fetch chapter dan fetch detail: chapter dimuat secara prioritas; detail dimuat non-blocking sehingga kegagalan metadata tidak menggugurkan chapter.
+   - Menambahkan fallback darurat parser instan dari origin URL manga (`SourceCatalog.buildAutomatic`) jika provider masih kosong.
+   - Jika request gagal karena domain mati/diblokir, sistem secara otomatis menjalankan `SourceCatalog.probeDomain()` untuk mencari mirror aktif, memperbarui URL, dan mencoba ulang pemuatan chapter.
+   - Menjaga `coverHeaders` saat membuka collection picker.
+3. **Penyempurnaan Resolver & Rebase Mirror** ([source_resolver.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/data/source_resolver.dart), [source_url.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/data/source_url.dart), [source_catalog.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/lib/sources/source_catalog.dart)):
+   - Menambahkan parameter `sourceMangaUrl` dan `comicId`, mendukung pencocokan via prefix ID (`src_${s.id}_`) dan host URL manga, mendukung repo source dengan `repoSource.baseUrl == null` (fallback ke `repository.url`), serta fallback parser otomatis saat customSources kosong.
+   - Memperbarui `_sameSiteHost` dan memisahkannya dengan `_isApiOrCdnHost` agar subdomain mirror bernomor tetap dapat di-rebase ke domain aktif sumber, sementara endpoint API/CDN asli tetap terjaga.
+   - Mengekspos fungsi `originFromUrl(raw)` sebagai fungsi publik.
+4. **Unit Test Tambahan** ([source_resolver_test.dart](file:///Users/reikypratama/aplikasi_komik/aplikasi_comic/test/data/source_resolver_test.dart)):
+   - Menambahkan 3 skenario pengujian unit untuk resolver (matching via comicId & host sourceMangaUrl, repo source dengan null baseUrl, serta fallback parser otomatis saat provider kosong).
+
+**Verifikasi**:
+- `flutter analyze`: Nol issue (0 errors, 0 warnings).
+- `flutter test -j 1`: 195/195 unit test lulus 100% (3 skipped).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Berhasil compile `✓ Built build/web`.
+
 ### 2026-11-16 — Kizen v1.2.17: Peningkatan Performa Ekstrem (Disk Image Caching, Large Heap, Memory Pressure Handler & Granular Riverpod Select)
 
 Permintaan user:

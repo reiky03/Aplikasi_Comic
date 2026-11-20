@@ -8,6 +8,8 @@ import '../../core/widgets/wave_background.dart';
 import '../../data/bookmarks_state.dart';
 import '../../data/history_state.dart';
 import '../../data/library_state.dart';
+import '../../data/repository_state.dart';
+import '../../data/sources_state.dart';
 import '../home/home_shell.dart';
 import '../auth/auth_repository.dart';
 import 'login_screen.dart';
@@ -47,6 +49,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       ref.read(historyProvider);
       ref.read(collectionsProvider);
       ref.read(bookmarksProvider);
+      ref.read(sourcesProvider);
+      ref.read(repositoriesProvider);
     }
 
     await delay;

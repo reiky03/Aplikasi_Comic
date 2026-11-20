@@ -9,6 +9,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_nav.dart';
 import '../../core/widgets/app_fab.dart';
 import '../../data/app_update_checker.dart';
+import '../../data/repository_state.dart';
+import '../../data/sources_state.dart';
 import '../browse/browse_screen.dart';
 import '../history/history_screen.dart';
 import '../library/library_screen.dart';
@@ -52,6 +54,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   void initState() {
     super.initState();
+    ref.read(sourcesProvider);
+    ref.read(repositoriesProvider);
     if (!_isTestEnv && !_updateCheckedThisSession) {
       _updateCheckedThisSession = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {

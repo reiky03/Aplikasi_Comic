@@ -292,4 +292,88 @@ void main() {
     expect(matchPortal, isNotNull);
     expect(matchPortal!.name, 'Ikiru');
   });
+
+  test(
+    'resolver mencocokkan custom source lewat comicId atau host sourceMangaUrl bila nama berbeda',
+    () {
+      const customSources = [
+        ComicSource(
+          id: 'src_custom_1',
+          name: 'Kiryuu ID Revamp',
+          url: 'https://v7.kiryuu.to',
+          lang: 'ID',
+          hue: 45,
+          parserKind: 'mangathemesia',
+        ),
+      ];
+
+      // Nama di komik hanya 'Kiryuu', tapi comicId membawa ID sumber
+      final byId = resolveMangaSource(
+        'Kiryuu',
+        customSources,
+        const [],
+        comicId: 'src_src_custom_1_https%3A%2F%2Fv7.kiryuu.to%2Fmanga%2Ftest',
+      );
+      expect(byId, isNotNull);
+      expect(byId?.baseUrl, 'https://v7.kiryuu.to');
+
+      // Nama di komik berbeda tapi URL host cocok
+      final byHost = resolveMangaSource(
+        'Situs Lain',
+        customSources,
+        const [],
+        sourceMangaUrl: 'https://v7.kiryuu.to/manga/solo-leveling',
+      );
+      expect(byHost, isNotNull);
+      expect(byHost?.baseUrl, 'https://v7.kiryuu.to');
+    },
+  );
+
+  test(
+    'resolver menyelesaikan repo source dengan repo.url saat repoSource.baseUrl null',
+    () {
+      const repositories = [
+        ComicRepository(
+          id: 'repo_keiyoushi',
+          name: 'Keiyoushi Extensions',
+          url: 'https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json',
+          sources: [
+            RepoSource(
+              id: 'repo_src_1',
+              name: 'Komikcast Extension',
+              hue: 200,
+              lang: 'ID',
+              baseUrl: null,
+              pkg: 'eu.kanade.tachiyomi.extension.id.komikcast',
+            ),
+          ],
+        ),
+      ];
+
+      final resolved = resolveMangaSource(
+        'Komikcast Extension',
+        const [],
+        repositories,
+      );
+      expect(resolved, isNotNull);
+      expect(resolved, isA<ExtensionRuntimeSource>());
+    },
+  );
+
+  test(
+    'resolver fallback otomatis ke origin sourceMangaUrl saat customSources & repositories kosong',
+    () {
+      // Skenario app baru dibuka di Library: snapshot Firestore belum selesai sync
+      final resolved = resolveMangaSource(
+        'Kiryuu',
+        const [],
+        const [],
+        sourceMangaUrl: 'https://v7.kiryuu.to/manga/solo-leveling/',
+      );
+
+      expect(resolved, isNotNull);
+      expect(resolved, isA<AdaptiveSource>());
+      expect(resolved?.baseUrl, 'https://v7.kiryuu.to');
+    },
+  );
 }

@@ -11,6 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/bookmarks_state.dart';
 import '../../data/downloads_state.dart';
+import '../../data/extension_runtime.dart';
 import '../../data/history_state.dart';
 import '../../data/library_state.dart';
 import '../../data/models.dart';
@@ -20,6 +21,7 @@ import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
 import '../../data/vpn_state.dart';
 import '../../sources/manga_source.dart';
+import '../../sources/source_catalog.dart';
 import '../browse/web_view_screen.dart';
 import '../reader/reader_screen.dart';
 
@@ -56,7 +58,11 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   ComicSource? get _comicSource {
     final sources = ref.read(sourcesProvider);
     for (final s in sources) {
-      if (s.name == widget.comic.src || s.id == widget.comic.src) return s;
+      if (s.name == widget.comic.src ||
+          s.id == widget.comic.src ||
+          widget.comic.id.startsWith('src_${s.id}_')) {
+        return s;
+      }
     }
     final matched = _matchedSource;
     if (matched != null) {
@@ -75,6 +81,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     widget.comic.src,
     ref.read(sourcesProvider),
     ref.read(repositoriesProvider),
+    sourceMangaUrl: widget.comic.sourceMangaUrl,
+    comicId: widget.comic.id,
   );
 
   @override
@@ -84,23 +92,57 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
   }
 
   Future<void> _loadReal({bool fromVpn = false}) async {
-    final source = _matchedSource;
+    var source = _matchedSource;
     final mangaUrl = widget.comic.sourceMangaUrl;
-    if (source == null || mangaUrl == null) return;
+    if (mangaUrl == null) return;
+
+    // Jika provider belum selesai sinkronisasi dari cloud, bangun parser otomatis
+    // dari origin URL manga yang tersimpan agar chapter tetap bisa terbuka
+    source ??= SourceCatalog.buildAutomatic(
+      widget.comic.src,
+      SourceCatalog.originFromUrl(mangaUrl),
+    );
+
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
       final activeMangaUrl = rebaseSourceUrl(mangaUrl, source.baseUrl);
-      final results = await Future.wait([
-        source.fetchMangaDetails(activeMangaUrl),
-        source.fetchChapterList(activeMangaUrl),
-      ]);
+      List<SourceChapter> chapters = const [];
+      SourceMangaDetails? details;
+
+      // Muat daftar chapter terlebih dahulu secara tangguh
+      try {
+        chapters = await source.fetchChapterList(activeMangaUrl);
+      } catch (chapterErr) {
+        if (activeMangaUrl != mangaUrl) {
+          try {
+            chapters = await source.fetchChapterList(mangaUrl);
+          } catch (_) {
+            rethrow;
+          }
+        } else {
+          rethrow;
+        }
+      }
+
+      // Metadata deskripsi bersifat pelengkap, jangan gagalkan tampilan chapter jika error
+      try {
+        details = await source.fetchMangaDetails(activeMangaUrl);
+      } catch (_) {
+        if (activeMangaUrl != mangaUrl) {
+          try {
+            details = await source.fetchMangaDetails(mangaUrl);
+          } catch (_) {}
+        }
+      }
+
       if (!mounted) return;
       setState(() {
-        _realDetails = results[0] as SourceMangaDetails;
-        _realChapters = results[1] as List<SourceChapter>;
+        _realDetails = details;
+        _realChapters = chapters;
         _loading = false;
       });
       if (fromVpn) {
@@ -122,6 +164,60 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         );
       }
     } catch (e) {
+      // Jika request gagal (mis. domain lama dialihkan saat komik dibuka dari library),
+      // probe apakah situs dialihkan dan perbarui URL secara otomatis
+      try {
+        final probe = await const ExtensionRuntimeBridge().probeUrl(source.baseUrl);
+        final finalUrl = probe.finalUrl;
+        if (finalUrl.isNotEmpty) {
+          final newUri = Uri.tryParse(finalUrl);
+          final oldUri = Uri.tryParse(source.baseUrl);
+          if (newUri != null &&
+              oldUri != null &&
+              newUri.host.isNotEmpty &&
+              oldUri.host != newUri.host &&
+              !newUri.host.contains('turnstile') &&
+              !newUri.host.contains('challenges.cloudflare') &&
+              !newUri.host.contains('internetpositif')) {
+            final newBaseUrl = '${newUri.scheme}://${newUri.host}';
+            final matchedComicSource = ref
+                .read(sourcesProvider)
+                .where(
+                  (s) =>
+                      s.matchesName(widget.comic.src) ||
+                      s.url.contains(oldUri.host),
+                )
+                .firstOrNull;
+            if (matchedComicSource != null) {
+              await ref
+                  .read(sourcesProvider.notifier)
+                  .updateSourceUrl(matchedComicSource.id, newBaseUrl);
+            }
+            final newActiveMangaUrl = rebaseSourceUrl(mangaUrl, newBaseUrl);
+            final newSource = SourceCatalog.buildAutomatic(
+              widget.comic.src,
+              newBaseUrl,
+            );
+            final healedChapters = await newSource.fetchChapterList(
+              newActiveMangaUrl,
+            );
+            if (mounted) {
+              setState(() {
+                _realChapters = healedChapters;
+                _loading = false;
+                _error = null;
+              });
+              unawaited(
+                ref
+                    .read(libraryProvider.notifier)
+                    .updateSourceMangaUrl(widget.comic.id, newActiveMangaUrl),
+              );
+              return;
+            }
+          }
+        }
+      } catch (_) {}
+
       if (!mounted) return;
       setState(() {
         _error = '$e';
@@ -157,6 +253,23 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Dengarkan perubahan sources dan repositories dari Firestore: jika chapter
+    // belum termuat karena saat initState data belum selesai sync, muat ulang otomatis.
+    ref.listen(sourcesProvider, (prev, next) {
+      if (_realChapters == null &&
+          widget.comic.sourceMangaUrl != null &&
+          !_loading) {
+        _loadReal();
+      }
+    });
+    ref.listen(repositoriesProvider, (prev, next) {
+      if (_realChapters == null &&
+          widget.comic.sourceMangaUrl != null &&
+          !_loading) {
+        _loadReal();
+      }
+    });
+
     final current = _current(ref);
     final library = ref.watch(libraryProvider);
     final inLibrary = library.any((c) => c.id == current.id);
@@ -980,6 +1093,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                 unread: current.unread,
                 read: current.read,
                 coverUrl: current.coverUrl,
+                coverHeaders: current.coverHeaders,
                 sourceMangaUrl: current.sourceMangaUrl,
                 lastChapterUrl: chapters.isNotEmpty ? chapters.first.url : null,
               );

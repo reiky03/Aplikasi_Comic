@@ -18,18 +18,46 @@ import 'sources_state.dart';
 MangaSource? resolveMangaSource(
   String sourceName,
   List<ComicSource> customSources,
-  List<ComicRepository> repositories,
-) {
+  List<ComicRepository> repositories, {
+  String? sourceMangaUrl,
+  String? comicId,
+}) {
   // Sumber yang diedit user harus menang atas domain built-in hardcode.
   // Sebelumnya nama seperti "Ikiru" selalu mengambil instance lama dulu,
   // sehingga URL baru yang sudah disimpan user justru tidak pernah dipakai.
-  final custom = customSources
+  ComicSource? custom = customSources
       .where(
         (source) =>
             source.matchesName(sourceName) ||
             sameLibraryTitle(source.name, sourceName),
       )
       .firstOrNull;
+
+  // Fallback 1: Cocokkan ID sumber dari ID komik (mis. src_s1_... atau src_rp-...)
+  if (custom == null && comicId != null) {
+    custom = customSources
+        .where((source) => comicId.startsWith('src_${source.id}_'))
+        .firstOrNull;
+  }
+
+  // Fallback 2: Cocokkan host URL komik dengan URL / aliases sumber
+  if (custom == null && sourceMangaUrl != null && sourceMangaUrl.isNotEmpty) {
+    final mangaUri = Uri.tryParse(sourceMangaUrl);
+    final mangaHost = mangaUri?.host.toLowerCase() ?? '';
+    if (mangaHost.isNotEmpty) {
+      custom = customSources.where((source) {
+        final uri = Uri.tryParse(
+          source.url.startsWith('http') ? source.url : 'https://${source.url}',
+        );
+        final host = uri?.host.toLowerCase() ?? '';
+        return host == mangaHost ||
+            source.urlAliases.any(
+              (alias) => alias.toLowerCase().contains(mangaHost),
+            );
+      }).firstOrNull;
+    }
+  }
+
   if (custom != null) {
     final customBaseUrl = custom.url.startsWith('http')
         ? custom.url
@@ -79,17 +107,43 @@ MangaSource? resolveMangaSource(
   // `Comic.src`. Cari kembali metadata repo supaya detail, chapter, dan
   // reader tetap memakai extension runtime yang sama.
   for (final repository in repositories) {
-    final repoSource = repository.sources
+    RepoSource? repoSource = repository.sources
         .where(
           (source) =>
               source.matchesName(sourceName) ||
               sameLibraryTitle(source.name, sourceName),
         )
         .firstOrNull;
-    if (repoSource == null || repoSource.baseUrl == null) continue;
-    final baseUrl = repoSource.baseUrl!.startsWith('http')
-        ? repoSource.baseUrl!
-        : 'https://${repoSource.baseUrl}';
+
+    if (repoSource == null && comicId != null) {
+      repoSource = repository.sources
+          .where(
+            (source) =>
+                comicId.startsWith('src_rp-${repository.id}-${source.id}_'),
+          )
+          .firstOrNull;
+    }
+
+    if (repoSource == null && sourceMangaUrl != null && sourceMangaUrl.isNotEmpty) {
+      final mangaUri = Uri.tryParse(sourceMangaUrl);
+      final mangaHost = mangaUri?.host.toLowerCase() ?? '';
+      if (mangaHost.isNotEmpty) {
+        repoSource = repository.sources.where((source) {
+          final uri = Uri.tryParse(source.baseUrl ?? '');
+          final host = uri?.host.toLowerCase() ?? '';
+          return host == mangaHost ||
+              source.baseUrlAliases.any(
+                (alias) => alias.toLowerCase().contains(mangaHost),
+              );
+        }).firstOrNull;
+      }
+    }
+
+    if (repoSource == null) continue;
+    final repoBase = repoSource.baseUrl ?? repository.url;
+    final baseUrl = repoBase.startsWith('http')
+        ? repoBase
+        : 'https://$repoBase';
     final kind = repoSource.pkg == null
         ? repoSource.parserKind
         : 'extension-runtime:${repoSource.pkg}';
@@ -109,6 +163,23 @@ MangaSource? resolveMangaSource(
             sameLibraryTitle(source.name, sourceName),
       )
       .firstOrNull;
-  if (builtIn == null) return null;
-  return SourceCatalog.buildAutomatic(sourceName, builtIn.baseUrl);
+  if (builtIn != null) {
+    final effectiveBaseUrl =
+        sourceMangaUrl != null && sourceMangaUrl.trim().isNotEmpty
+            ? SourceCatalog.originFromUrl(sourceMangaUrl)
+            : builtIn.baseUrl;
+    return SourceCatalog.buildAutomatic(sourceName, effectiveBaseUrl);
+  }
+
+  // Fallback darurat: jika nama tidak cocok di database manapun (misal saat
+  // provider belum selesai sync atau komik web baru), gunakan langsung origin
+  // URL komik yang tersimpan di library agar chapter tetap bisa dibuka.
+  if (sourceMangaUrl != null && sourceMangaUrl.trim().isNotEmpty) {
+    final origin = SourceCatalog.originFromUrl(sourceMangaUrl);
+    if (origin.isNotEmpty) {
+      return SourceCatalog.buildAutomatic(sourceName, origin);
+    }
+  }
+
+  return null;
 }

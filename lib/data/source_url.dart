@@ -84,7 +84,30 @@ String _stableQuery(Map<String, List<String>> values) {
 bool _sameSiteHost(String first, String second) {
   final a = first.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
   final b = second.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
-  return a == b || a.endsWith('.$b') || b.endsWith('.$a');
+  if (a == b) return true;
+  // Subdomain utilitas khusus (API, CDN, media) sengaja dipertahankan agar tidak
+  // teralihkan ke root web HTML.
+  if (_isApiOrCdnHost(a) || _isApiOrCdnHost(b)) {
+    return a.endsWith('.$b') || b.endsWith('.$a');
+  }
+  // Subdomain mirror bernomor (mis. 07.ikiru.wtf vs 11.ikiru.wtf atau v6 vs v7)
+  // bukan endpoint API, sehingga harus di-rebase ke domain aktif.
+  return false;
+}
+
+bool _isApiOrCdnHost(String host) {
+  final prefix = host.split('.').first;
+  return const {
+    'api',
+    'cdn',
+    'img',
+    'images',
+    'image',
+    'static',
+    'media',
+    'assets',
+    'ws',
+  }.contains(prefix);
 }
 
 String _trimTrailingSlash(String value) {
