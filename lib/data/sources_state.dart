@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_colors.dart';
 import '../sources/source_catalog.dart';
 import 'firestore_scope.dart';
+import 'library_state.dart';
 import 'repository_state.dart';
 import 'source_url.dart';
 
@@ -66,8 +67,21 @@ class ComicSource {
   /// Bisa dibaca otomatis (grid discover tampil) — logika prototipe.
   bool get readable => active && (status == SourceStatus.normal || session);
 
-  bool matchesName(String value) =>
-      name == value || nameAliases.any((alias) => alias == value);
+  bool matchesName(String value) {
+    final cleanName = name.trim().toLowerCase();
+    final cleanValue = value.trim().toLowerCase();
+    if (cleanName == cleanValue) return true;
+    if (nameAliases.any((alias) => alias.trim().toLowerCase() == cleanValue)) {
+      return true;
+    }
+    final normName = cleanName.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final normVal = cleanValue.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (normName.isNotEmpty && normName == normVal) return true;
+    if (normName.startsWith(normVal) || normVal.startsWith(normName)) {
+      if ((normName.length - normVal.length).abs() <= 3) return true;
+    }
+    return false;
+  }
 
   /// Label + warna status — logika prototipe (statusMeta).
   ({String label, Color color}) get statusMeta {
@@ -224,6 +238,14 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
       state = snap.docs
           .map((d) => ComicSource.fromMap(d.id, d.data()))
           .toList();
+      final repos = ref.read(repositoriesProvider);
+      if (repos.isNotEmpty && state.isNotEmpty) {
+        Future.microtask(() {
+          try {
+            syncWithRepositories(repos);
+          } catch (_) {}
+        });
+      }
     });
     return const [];
   }
@@ -299,7 +321,7 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
 
   /// Perbarui URL sumber (misalnya ketika situs melakukan migrasi/redirect domain).
   /// Membawa URL lama ke dalam `urlAliases` sehingga komik-komik lama di Library
-  /// tetap dapat dibuka dan dicocokkan.
+  /// tetap dapat dibuka dan dicocokkan, serta memigrasikan URL komik yang tersimpan.
   Future<bool> updateSourceUrl(String id, String newUrl) async {
     final current = state.where((s) => s.id == id).firstOrNull;
     if (current == null) return false;
@@ -324,6 +346,28 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
       urlAliases: updatedAliases,
     );
     await update(updated);
+
+    try {
+      final affected = await ref
+          .read(libraryProvider.notifier)
+          .migrateComicsForDomainChange(
+            sourceName: current.name,
+            oldUrl: current.url,
+            newUrl: normalizedNew,
+            oldUrlAliases: updatedAliases,
+          );
+      ref.read(domainChangesProvider.notifier).notifyChanges([
+        DomainChange(
+          sourceId: current.id,
+          sourceName: current.name,
+          oldUrl: current.url,
+          newUrl: normalizedNew,
+          affectedComicsCount: affected,
+          timestamp: DateTime.now(),
+        ),
+      ]);
+    } catch (_) {}
+
     return true;
   }
 
@@ -336,6 +380,7 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
     if (repositories.isEmpty || state.isEmpty) return 0;
     var syncedCount = 0;
     final updatedList = <ComicSource>[];
+    final domainChanges = <DomainChange>[];
 
     for (final source in state) {
       final match = findRepoSource(
@@ -428,23 +473,32 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
         );
         updatedList.add(updatedSource);
         syncedCount++;
+
+        if (isDifferentUrl) {
+          domainChanges.add(
+            DomainChange(
+              sourceId: source.id,
+              sourceName: source.name,
+              oldUrl: source.url,
+              newUrl: repoBaseUrl,
+              affectedComicsCount: 0,
+              timestamp: DateTime.now(),
+            ),
+          );
+        }
       } else {
         updatedList.add(source);
       }
     }
 
     if (syncedCount > 0) {
+      final previousState = List<ComicSource>.of(state);
+      state = updatedList;
       final col = _col;
-      if (col == null) {
-        state = updatedList;
-      } else {
-        state = updatedList;
+      if (col != null) {
         for (final s in updatedList) {
-          final original = state.firstWhere(
-            (o) => o.id == s.id,
-            orElse: () => s,
-          );
-          if (original != s) {
+          final original = previousState.where((o) => o.id == s.id).firstOrNull;
+          if (original == null || original != s) {
             await col.doc(s.id).update({
               ...s.toMap(),
               'updatedAt': FieldValue.serverTimestamp(),
@@ -452,10 +506,76 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
           }
         }
       }
+
+      // Migrasikan seluruh komik di Library yang terpengaruh pergantian domain
+      if (domainChanges.isNotEmpty) {
+        try {
+          final libraryNotifier = ref.read(libraryProvider.notifier);
+          final finalChanges = <DomainChange>[];
+          for (final change in domainChanges) {
+            final source = updatedList.firstWhere((s) => s.id == change.sourceId);
+            final affected = await libraryNotifier.migrateComicsForDomainChange(
+              sourceName: change.sourceName,
+              oldUrl: change.oldUrl,
+              newUrl: change.newUrl,
+              oldUrlAliases: source.urlAliases,
+            );
+            finalChanges.add(
+              DomainChange(
+                sourceId: change.sourceId,
+                sourceName: change.sourceName,
+                oldUrl: change.oldUrl,
+                newUrl: change.newUrl,
+                affectedComicsCount: affected,
+                timestamp: change.timestamp,
+              ),
+            );
+          }
+          ref.read(domainChangesProvider.notifier).notifyChanges(finalChanges);
+        } catch (_) {}
+      }
     }
     return syncedCount;
   }
 }
+
+/// Riwayat/notifikasi perubahan domain sumber komik.
+class DomainChange {
+  final String sourceId;
+  final String sourceName;
+  final String oldUrl;
+  final String newUrl;
+  final int affectedComicsCount;
+  final DateTime timestamp;
+
+  const DomainChange({
+    required this.sourceId,
+    required this.sourceName,
+    required this.oldUrl,
+    required this.newUrl,
+    required this.affectedComicsCount,
+    required this.timestamp,
+  });
+}
+
+class DomainChangesNotifier extends Notifier<List<DomainChange>> {
+  @override
+  List<DomainChange> build() => const [];
+
+  void notifyChanges(List<DomainChange> changes) {
+    if (changes.isEmpty) return;
+    state = [...state, ...changes];
+  }
+
+  void clear() {
+    state = const [];
+  }
+}
+
+final domainChangesProvider =
+    NotifierProvider<DomainChangesNotifier, List<DomainChange>>(
+  DomainChangesNotifier.new,
+);
 
 final sourcesProvider = NotifierProvider<SourcesNotifier, List<ComicSource>>(
   SourcesNotifier.new,

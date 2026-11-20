@@ -6,7 +6,11 @@ import 'package:http/testing.dart';
 
 import 'package:aplikasi_komik/data/generated/repository_index.pb.dart'
     as repo_pb;
+import 'package:aplikasi_komik/data/library_state.dart';
+import 'package:aplikasi_komik/data/models.dart';
 import 'package:aplikasi_komik/data/repository_state.dart';
+import 'package:aplikasi_komik/data/sources_state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {
   test('fetchRepositoryIndex mengurai index Tachiyomi-style', () async {
@@ -405,6 +409,93 @@ void main() {
       name: 'asura-scans',
     );
     expect(matchByFuzzy?.source.id, 's-asura');
+
+    // Cocok lewat case-insensitivity & variasi penulisan nama
+    const repoSrc = RepoSource(
+      id: 's-komikcast',
+      name: 'KomikCast (ID)',
+      hue: 200,
+      lang: 'ID',
+      baseUrl: 'https://komikcast.ch',
+    );
+    expect(repoSrc.matchesName('komikcast'), isTrue);
+    expect(repoSrc.matchesName('KomikCast'), isTrue);
+    expect(repoSrc.matchesName('KomikCast ID'), isTrue);
+
+    // Cocok lewat domain stem (mis. komikcast01.com dengan komikcast.ch)
+    final reposWithStem = [
+      const ComicRepository(
+        id: 'r2',
+        name: 'Repo Dua',
+        url: 'https://repo.test/index.json',
+        sources: [repoSrc],
+      ),
+    ];
+    final matchByStem = findRepoSource(
+      repositories: reposWithStem,
+      rawUrl: 'https://komikcast01.com/manga/solo-leveling/',
+    );
+    expect(matchByStem?.source.id, 's-komikcast');
+    expect(matchByStem?.source.baseUrl, 'https://komikcast.ch');
+  });
+
+  test('SourcesNotifier syncWithRepositories memperbarui domain dan memicu notifikasi', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final sourcesNotifier = container.read(sourcesProvider.notifier);
+    await sourcesNotifier.add(const ComicSource(
+      id: 's-kc',
+      name: 'KomikCast',
+      url: 'https://komikcast01.com',
+      lang: 'ID',
+      hue: 200,
+    ));
+
+    final libraryNotifier = container.read(libraryProvider.notifier);
+    await libraryNotifier.add(const Comic(
+      id: 'cm1',
+      title: 'Solo Leveling',
+      src: 'KomikCast',
+      hue: 0,
+      ch: 10,
+      sourceMangaUrl: 'https://komikcast01.com/manga/solo-leveling/',
+    ));
+
+    final repos = [
+      const ComicRepository(
+        id: 'r1',
+        name: 'Official Repo',
+        url: 'https://repo.test/index.json',
+        sources: [
+          RepoSource(
+            id: 'rp-kc',
+            name: 'KomikCast',
+            hue: 200,
+            lang: 'ID',
+            baseUrl: 'https://komikcast02.ch',
+          ),
+        ],
+      ),
+    ];
+
+    final syncedCount = await sourcesNotifier.syncWithRepositories(repos);
+    expect(syncedCount, 1);
+
+    final updatedSources = container.read(sourcesProvider);
+    final kc = updatedSources.firstWhere((s) => s.id == 's-kc');
+    expect(kc.url, 'https://komikcast02.ch');
+    expect(kc.urlAliases, contains('https://komikcast01.com'));
+
+    final lib = container.read(libraryProvider);
+    final cm = lib.firstWhere((c) => c.id == 'cm1');
+    expect(cm.sourceMangaUrl, 'https://komikcast02.ch/manga/solo-leveling/');
+
+    final domainChanges = container.read(domainChangesProvider);
+    expect(domainChanges.isNotEmpty, isTrue);
+    expect(domainChanges.last.sourceName, 'KomikCast');
+    expect(domainChanges.last.newUrl, 'https://komikcast02.ch');
+    expect(domainChanges.last.affectedComicsCount, 1);
   });
 }
 

@@ -44,8 +44,21 @@ class RepoSource {
 
   String get initial => name.isEmpty ? '?' : name[0];
 
-  bool matchesName(String value) =>
-      name == value || nameAliases.any((alias) => alias == value);
+  bool matchesName(String value) {
+    final cleanName = name.trim().toLowerCase();
+    final cleanValue = value.trim().toLowerCase();
+    if (cleanName == cleanValue) return true;
+    if (nameAliases.any((alias) => alias.trim().toLowerCase() == cleanValue)) {
+      return true;
+    }
+    final normName = cleanName.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final normVal = cleanValue.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (normName.isNotEmpty && normName == normVal) return true;
+    if (normName.startsWith(normVal) || normVal.startsWith(normName)) {
+      if ((normName.length - normVal.length).abs() <= 3) return true;
+    }
+    return false;
+  }
 
   RepoSource copyWith({
     String? name,
@@ -511,8 +524,20 @@ String? _hostOf(String raw) {
   return host == null || host.isEmpty ? null : host;
 }
 
-bool _sameDomain(String a, String b) =>
-    a == b || a.endsWith('.$b') || b.endsWith('.$a');
+bool _sameDomain(String a, String b) {
+  if (a == b || a.endsWith('.$b') || b.endsWith('.$a')) return true;
+  final stemA = _domainStem(a);
+  final stemB = _domainStem(b);
+  if (stemA.length >= 4 && stemA == stemB) return true;
+  return false;
+}
+
+String _domainStem(String host) {
+  final parts = host.split('.');
+  if (parts.isEmpty) return '';
+  final mainPart = parts.length >= 2 ? parts[parts.length - 2] : parts.first;
+  return mainPart.replaceAll(RegExp(r'\d+$'), '');
+}
 
 Future<RepositoryIndexResult> fetchRepositoryIndex(
   String rawUrl, {
@@ -959,6 +984,13 @@ class RepositoriesNotifier extends Notifier<List<ComicRepository>> {
       state = snap.docs
           .map((d) => ComicRepository.fromMap(d.id, d.data()))
           .toList();
+      if (state.isNotEmpty) {
+        Future.microtask(() {
+          try {
+            ref.read(sourcesProvider.notifier).syncWithRepositories(state);
+          } catch (_) {}
+        });
+      }
     });
     return const [];
   }

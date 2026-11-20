@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_nav.dart';
 import '../../core/widgets/app_fab.dart';
+import '../../core/widgets/app_toast.dart';
 import '../../data/app_update_checker.dart';
 import '../../data/repository_state.dart';
 import '../../data/sources_state.dart';
@@ -41,6 +42,7 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   static bool _updateCheckedThisSession = false;
   Timer? _updateTimer;
+  Timer? _syncTimer;
 
   bool get _isTestEnv {
     if (kIsWeb) return false;
@@ -56,6 +58,17 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     super.initState();
     ref.read(sourcesProvider);
     ref.read(repositoriesProvider);
+    if (!_isTestEnv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _syncTimer = Timer(const Duration(seconds: 1), () {
+          if (!mounted) return;
+          final repos = ref.read(repositoriesProvider);
+          if (repos.isNotEmpty) {
+            ref.read(sourcesProvider.notifier).syncWithRepositories(repos);
+          }
+        });
+      });
+    }
     if (!_isTestEnv && !_updateCheckedThisSession) {
       _updateCheckedThisSession = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -69,6 +82,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   void dispose() {
     _updateTimer?.cancel();
+    _syncTimer?.cancel();
     super.dispose();
   }
 
@@ -99,6 +113,23 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(domainChangesProvider, (prev, next) {
+      if (next.isNotEmpty && next.length != (prev?.length ?? 0)) {
+        final last = next.last;
+        final oldHost = Uri.tryParse(last.oldUrl)?.host ?? last.oldUrl;
+        final newHost = Uri.tryParse(last.newUrl)?.host ?? last.newUrl;
+        final countText = last.affectedComicsCount > 0
+            ? ' · ${last.affectedComicsCount} komik library disesuaikan'
+            : '';
+        AppToast.show(
+          context,
+          '🌐 Link ${last.sourceName} diperbarui ($oldHost → $newHost)$countText',
+          icon: AppIcons.globe,
+          iconColor: AppColors.accent,
+        );
+      }
+    });
+
     final tab = ref.watch(activeTabProvider);
     final browseSubTab = ref.watch(browseSubTabProvider);
     final showFab =

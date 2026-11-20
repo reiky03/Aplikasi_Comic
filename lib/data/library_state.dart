@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_scope.dart';
 import 'models.dart';
+import 'source_url.dart';
 
 /// Data demo — dipakai saat belum login/Firebase tak tersedia (mode
 /// `FAKE_AUTH`, web preview, widget test).
@@ -207,6 +209,131 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       'sourceMangaUrl': normalized,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  static String? _extractHost(String raw) {
+    final clean = raw.trim();
+    if (clean.isEmpty) return null;
+    final uri = Uri.tryParse(clean.startsWith('http') ? clean : 'https://$clean');
+    return uri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+  }
+
+  /// Migrasikan URL komik-komik di library saat sebuah sumber mengalami perubahan domain.
+  /// Memperbarui [sourceMangaUrl], [coverUrl], [lastChapterUrl], dan link chapter ke [newUrl].
+  Future<int> migrateComicsForDomainChange({
+    required String sourceName,
+    required String oldUrl,
+    required String newUrl,
+    List<String> oldUrlAliases = const [],
+  }) async {
+    final oldHosts = <String>{
+      if (_extractHost(oldUrl) != null) _extractHost(oldUrl)!,
+      for (final alias in oldUrlAliases)
+        if (_extractHost(alias) != null) _extractHost(alias)!,
+    }.where((h) => h.isNotEmpty).toSet();
+
+    final newUri = Uri.tryParse(normalizeSourceBaseUrl(newUrl));
+    final newHost = newUri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    if (newUri == null || newHost == null || newHost.isEmpty) return 0;
+
+    var count = 0;
+    final updatedList = <Comic>[];
+    final toUpdateInFirestore = <Comic>[];
+
+    for (final comic in state) {
+      final matchesSource = comic.src.trim().toLowerCase() == sourceName.trim().toLowerCase() ||
+          sameLibraryTitle(comic.src, sourceName);
+      final mangaUri = comic.sourceMangaUrl != null ? Uri.tryParse(comic.sourceMangaUrl!) : null;
+      final mangaHost = mangaUri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+      final matchesHost = mangaHost != null && oldHosts.contains(mangaHost);
+
+      if (!matchesSource && !matchesHost) {
+        updatedList.add(comic);
+        continue;
+      }
+
+      var changed = false;
+      String? newMangaUrl = comic.sourceMangaUrl;
+      if (comic.sourceMangaUrl != null && comic.sourceMangaUrl!.isNotEmpty) {
+        final rebased = rebaseSourceUrl(comic.sourceMangaUrl!, newUrl);
+        if (rebased != comic.sourceMangaUrl) {
+          newMangaUrl = rebased;
+          changed = true;
+        }
+      }
+
+      String? newCoverUrl = comic.coverUrl;
+      if (comic.coverUrl != null && comic.coverUrl!.isNotEmpty) {
+        final coverUri = Uri.tryParse(comic.coverUrl!);
+        final coverHost = coverUri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+        if (coverHost != null && (oldHosts.contains(coverHost) || matchesSource)) {
+          final rebased = rebaseSourceUrl(comic.coverUrl!, newUrl);
+          if (rebased != comic.coverUrl) {
+            newCoverUrl = rebased;
+            changed = true;
+          }
+        }
+      }
+
+      String? newLastChapterUrl = comic.lastChapterUrl;
+      if (comic.lastChapterUrl != null && comic.lastChapterUrl!.isNotEmpty) {
+        final rebased = rebaseSourceUrl(comic.lastChapterUrl!, newUrl);
+        if (rebased != comic.lastChapterUrl) {
+          newLastChapterUrl = rebased;
+          changed = true;
+        }
+      }
+
+      Set<String> newReadChapterUrls = comic.readChapterUrls;
+      if (comic.readChapterUrls.isNotEmpty) {
+        final updatedUrls = comic.readChapterUrls.map((url) => rebaseSourceUrl(url, newUrl)).toSet();
+        if (updatedUrls.length == comic.readChapterUrls.length && !setEquals(updatedUrls, comic.readChapterUrls)) {
+          newReadChapterUrls = updatedUrls;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        final updatedComic = comic.copyWith(
+          sourceMangaUrl: newMangaUrl,
+          coverUrl: newCoverUrl,
+          lastChapterUrl: newLastChapterUrl,
+          readChapterUrls: newReadChapterUrls,
+        );
+        updatedList.add(updatedComic);
+        toUpdateInFirestore.add(updatedComic);
+        count++;
+      } else {
+        updatedList.add(comic);
+      }
+    }
+
+    if (count > 0) {
+      state = updatedList;
+      final col = _col;
+      if (col != null && toUpdateInFirestore.isNotEmpty) {
+        try {
+          for (var i = 0; i < toUpdateInFirestore.length; i += 400) {
+            final end = (i + 400 < toUpdateInFirestore.length) ? i + 400 : toUpdateInFirestore.length;
+            final batch = FirebaseFirestore.instance.batch();
+            for (var j = i; j < end; j++) {
+              final c = toUpdateInFirestore[j];
+              batch.update(col.doc(c.id), {
+                if (c.sourceMangaUrl != null) 'sourceMangaUrl': c.sourceMangaUrl,
+                if (c.coverUrl != null) 'coverUrl': c.coverUrl,
+                if (c.lastChapterUrl != null) 'lastChapterUrl': c.lastChapterUrl,
+                'readChapterUrls': c.readChapterUrls.toList(),
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+            }
+            await batch.commit();
+          }
+        } catch (e) {
+          debugPrint('Gagal commit batch migrasi library: $e');
+        }
+      }
+    }
+    return count;
   }
 
   /// Ganti semua entri beda-source yang judul normalnya sama dengan [comic].

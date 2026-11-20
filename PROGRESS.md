@@ -27,6 +27,62 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-20 — Kizen v1.2.19 (Build 31): Sinkronisasi Otomatis Perubahan Domain Repo-Sumber, Migrasi Domain Komik Library, Notifikasi Global Perubahan Link, & Auto-Healing Chapter Fallback
+
+**Keluhan & Permintaan User**:
+"kok masih gagal memuat chapter sih setelah diperbarui, dan ini ternyata domainnya sudah berubah, dan yang dari sumber sendiri gak keupdate padhal yang dari repositoery dah updtat link webnya aduh2 malah gak isnkron, perbaiki lagi, dan pastikan ketika ad perubahan link web kasih tau dan setelah diperbarui yang disimpan di library dari sebelumnya juga ikur menyesuaikan biar lancar"
+
+**Root Cause**:
+1. **Bug Fatal Pembanding State di `syncWithRepositories` (`sources_state.dart`)**:
+   Sebelumnya ada kesalahan baris kode `state = updatedList;` yang dipanggil *sebelum* iterasi pembanding:
+   `for (final s in updatedList) { final original = state.firstWhere(...); if (original != s) { await col.doc(s.id).update(...) } }`.
+   Karena `state` sudah ditimpa duluan oleh `updatedList`, `original == s` selalu menghasilkan `true` (identik). Akibatnya, Firestore **tidak pernah di-update** dengan URL baru hasil sinkronisasi repositori ekstensi! Sumber terpasang tetap memakai URL/domain usang di database.
+2. **Komik Library Tidak Ikut Dimigrasikan Saat Domain Sumber Berubah**:
+   Ketika sumber berubah URL/domain (baik lewat repo sync maupun edit manual), komik-komik yang sudah tersimpan di koleksi Library (`libraryProvider`) tetap menyimpan `sourceMangaUrl`, `coverUrl`, `lastChapterUrl`, dan `readChapterUrls` dengan domain lama yang sudah mati/diblokir. Akibatnya saat user membuka komik dari Library, request chapter selalu gagal/timeout karena menembak domain usang.
+3. **Pencocokan Nama Sumber Kaku & Gagal Mendeteksi Domain Stem**:
+   Pencocokan nama sumber repo dengan sumber terpasang sebelumnya belum toleran terhadap variasi spasi, tanda kurung bahasa `(ID)`, atau casing. Selain itu, domain mirror bertingkat/perubahan TLD dengan brand stem yang sama (seperti `komikcast01.com` ke `komikcast.ch`) dianggap domain berbeda total.
+4. **Ketiadaan Notifikasi/Alert Visual Perubahan Domain**:
+   User tidak mendapatkan pemberitahuan transparan saat aplikasi mendeteksi domain sumber berubah dan memperbarui komik-komik di library mereka.
+5. **Detail & Reader Screen Kurang Resilien Terhadap Domain Mati**:
+   Jika URL komik tersimpan di library menembak domain yang mati total, layar detail dan reader belum memiliki fallback otomatis untuk mencoba kandidat URL cermin/repo dan langsung memulihkan (auto-heal) library dan sumber.
+
+**Fix per-File**:
+1. `lib/data/sources_state.dart`:
+   - Simpan `final previousState = List<ComicSource>.of(state);` sebelum `state = updatedList;`.
+   - Bandingkan item terhadap `previousState` sehingga setiap perubahan `sourceUrl`, mirror, dan metadata langsung di-write ke Firestore.
+   - Panggil `libraryNotifier.migrateComicsForDomainChange(s.name, oldDomain: original.sourceUrl, newDomain: s.sourceUrl)` secara otomatis saat domain berubah.
+   - Buat model `DomainChange` dan provider `domainChangesProvider` (`DomainChangesNotifier`) untuk broadcast notifikasi domain berubah secara real-time ke UI.
+   - Perbarui `updateSourceUrl()` agar otomatis memicu migrasi komik library dan broadcast domain change.
+2. `lib/data/library_state.dart`:
+   - Tambahkan method `migrateComicsForDomainChange(String sourceName, {required String oldDomain, required String newDomain})`.
+   - Rebase otomatis seluruh field URL (`sourceMangaUrl`, `coverUrl`, `lastChapterUrl`, `readChapterUrls`) ke domain baru.
+   - Lakukan commit batch ke Firestore dalam chunk aman (maksimal 400 dokumen per batch, di bawah batas keras Firestore 500) agar tidak terjadi crash saat komik library berjumlah banyak.
+3. `lib/data/models.dart`:
+   - Tambahkan parameter opsional `String? coverUrl` pada method `Comic.copyWith` untuk mendukung migrasi URL cover.
+4. `lib/data/repository_state.dart`:
+   - Tingkatkan `RepoSource.matchesName` dan `ComicSource.matchesName` dengan normalisasi teks (lowercase, hapus spasi/simbol non-alfanumerik, hilangkan suffix bahasa seperti "(ID)").
+   - Perluas helper `_sameDomain` dengan deteksi `_domainStem` (misal `komikcast01` vs `komikcast`).
+   - Trigger otomatis `syncWithRepositories` di background saat `RepositoriesNotifier.build()` selesai memuat data.
+5. `lib/features/home/home_shell.dart`:
+   - Pasang listener `ref.listen(domainChangesProvider, ...)` di `HomeShell` untuk menampilkan toast informatif:
+     `AppToast.show('🌐 Link $sourceName diperbarui ($oldHost → $newHost) · $count komik library disesuaikan', icon: AppIcons.globe)`.
+   - Panggil sinkronisasi repository terpasang saat `initState` dengan guard test environment (`_isTestEnv`) dan timer cancelation yang aman pada `dispose()`.
+6. `lib/features/detail/comic_detail_screen.dart`:
+   - Sebelum memuat detail komik, periksa apakah domain URL komik berbeda dengan domain aktif di `repositoriesProvider`. Jika ada pembaruan, langsung rebase dan sinkronkan library.
+   - Jika pemanggilan `fetchChapterList` gagal/timeout (domain mati), aktifkan auto-healing: telusuri kandidat domain mirror dari repositori, katalog sumber kustom, dan mirror built-in. Begitu berhasil memuat chapter dari kandidat yang sehat, langsung simpan URL baru ke sumber dan migrasikan komik library.
+7. `lib/features/reader/reader_screen.dart`:
+   - Teruskan `sourceMangaUrl` dan `comicId` ke `_matchedSource` dan pasang fallback candidate recovery serupa saat `_loadChapterList()` gagal memuat chapter.
+8. `test/data/library_state_test.dart` & `test/data/repository_state_test.dart`:
+   - Tambahkan unit test verifikasi migrasi domain library (`migrateComicsForDomainChange`), pencocokan nama & domain stem, serta emisi event `domainChangesProvider`.
+9. `pubspec.yaml`, `lib/features/settings/about_screen.dart`, `README.md`:
+   - Bump versi aplikasi ke `v1.2.19` (Build 31).
+
+**Verifikasi**:
+- `flutter analyze`: 0 issues found.
+- `flutter test -j 1`: 197/197 lolos (3 skipped).
+- `flutter build web --dart-define=FAKE_AUTH=true --no-web-resources-cdn`: Sanity compilation lolos tanpa error (`✓ Built build/web`).
+- Unit tests spesifik migrasi library dan domain change lolos 100%.
+
 ### 2026-11-20 — Kizen v1.2.18 (Build 30): Fix Chapter Gagal Dimuat dari Library & Optimasi Performa Jaringan/Memori (DoH Request Deduplication, Shared HTTP Keep-Alive, Bounded Concurrency Updates, Webtoon Cache Extent, & MemCacheHeight Bounds)
 
 **Keluhan & Permintaan User**:

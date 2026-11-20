@@ -103,6 +103,38 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
       SourceCatalog.originFromUrl(mangaUrl),
     );
 
+    // Cek apakah repository sudah memiliki baseUrl baru yang lebih mutakhir
+    final repos = ref.read(repositoriesProvider);
+    final repoMatch = findRepoSource(
+      repositories: repos,
+      rawUrl: source.baseUrl,
+      name: widget.comic.src,
+      urlAliases: [source.baseUrl, mangaUrl, ...?_comicSource?.urlAliases],
+    );
+    if (repoMatch != null && repoMatch.source.baseUrl != null) {
+      final repoBaseUrl = repoMatch.source.baseUrl!.trim();
+      final currentOrigin = SourceCatalog.originFromUrl(source.baseUrl);
+      final repoOrigin = SourceCatalog.originFromUrl(repoBaseUrl);
+      if (normalizeSourceBaseUrl(currentOrigin) != normalizeSourceBaseUrl(repoOrigin)) {
+        source = SourceCatalog.buildAutomatic(
+          widget.comic.src,
+          repoBaseUrl,
+          preferredKind: repoMatch.source.parserKind ?? _comicSource?.parserKind,
+          fallbackBaseUrls: [
+            currentOrigin,
+            ...repoMatch.source.baseUrlAliases,
+            ...?_comicSource?.urlAliases,
+          ],
+        );
+        final matchedSource = ref.read(sourcesProvider).where(
+          (s) => s.matchesName(widget.comic.src) || s.id == widget.comic.src,
+        ).firstOrNull;
+        if (matchedSource != null) {
+          unawaited(ref.read(sourcesProvider.notifier).updateSourceUrl(matchedSource.id, repoBaseUrl));
+        }
+      }
+    }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -164,8 +196,68 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         );
       }
     } catch (e) {
-      // Jika request gagal (mis. domain lama dialihkan saat komik dibuka dari library),
-      // probe apakah situs dialihkan dan perbarui URL secara otomatis
+      // 1. Coba pulihkan dari repository atau mirror kanonis jika domain utama tidak bisa diakses
+      final candidateBaseUrls = <String>[
+        if (repoMatch?.source.baseUrl != null) repoMatch!.source.baseUrl!,
+        for (final r in repos)
+          for (final rs in r.sources)
+            if (rs.matchesName(widget.comic.src) && rs.baseUrl != null)
+              rs.baseUrl!,
+        ...?_comicSource?.urlAliases,
+        ...SourceCatalog.sources
+            .where((s) => s.name.toLowerCase() == widget.comic.src.toLowerCase())
+            .map((s) => s.baseUrl),
+      ];
+
+      for (final candidate in candidateBaseUrls) {
+        final normCand = normalizeSourceBaseUrl(candidate);
+        if (normCand.isEmpty || normCand == normalizeSourceBaseUrl(source.baseUrl)) continue;
+        try {
+          final candidateSource = SourceCatalog.buildAutomatic(
+            widget.comic.src,
+            normCand,
+            preferredKind: _comicSource?.parserKind,
+          );
+          final candidateMangaUrl = rebaseSourceUrl(mangaUrl, normCand);
+          final healedChapters = await candidateSource.fetchChapterList(candidateMangaUrl);
+          if (healedChapters.isNotEmpty) {
+            final matchedComicSource = ref
+                .read(sourcesProvider)
+                .where(
+                  (s) =>
+                      s.matchesName(widget.comic.src) ||
+                      s.id == widget.comic.src,
+                )
+                .firstOrNull;
+            if (matchedComicSource != null) {
+              await ref
+                  .read(sourcesProvider.notifier)
+                  .updateSourceUrl(matchedComicSource.id, normCand);
+            }
+            if (mounted) {
+              setState(() {
+                _realChapters = healedChapters;
+                _loading = false;
+                _error = null;
+              });
+              unawaited(
+                ref
+                    .read(libraryProvider.notifier)
+                    .updateSourceMangaUrl(widget.comic.id, candidateMangaUrl),
+              );
+              AppToast.show(
+                context,
+                '🌐 Domain otomatis dialihkan ke ${Uri.tryParse(normCand)?.host ?? normCand}',
+                icon: AppIcons.globe,
+                iconColor: AppColors.accent,
+              );
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Jika request gagal, probe apakah situs melakukan 301/302 redirect
       try {
         final probe = await const ExtensionRuntimeBridge().probeUrl(source.baseUrl);
         final finalUrl = probe.finalUrl;

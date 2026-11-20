@@ -20,6 +20,7 @@ import '../../data/source_url.dart';
 import '../../data/sources_state.dart';
 import '../../data/vpn_state.dart';
 import '../../sources/manga_source.dart';
+import '../../sources/source_catalog.dart';
 import '../detail/comic_detail_screen.dart';
 import '../browse/web_view_screen.dart';
 import 'reader_session_image_cache.dart';
@@ -160,6 +161,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     widget.comic.src,
     ref.read(sourcesProvider),
     ref.read(repositoriesProvider),
+    sourceMangaUrl: widget.comic.sourceMangaUrl,
+    comicId: widget.comic.id,
   );
 
   @override
@@ -292,9 +295,38 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   /// Fallback ke posisi cuma untuk data lama yang belum punya URL
   /// tersimpan (dari sebelum fix ini).
   Future<void> _loadChapterList({bool fromVpn = false}) async {
-    final source = _matchedSource;
+    var source = _matchedSource;
     final mangaUrl = widget.comic.sourceMangaUrl;
-    if (source == null || mangaUrl == null) return;
+    if (mangaUrl == null) return;
+    source ??= SourceCatalog.buildAutomatic(
+      widget.comic.src,
+      SourceCatalog.originFromUrl(mangaUrl),
+    );
+
+    final repos = ref.read(repositoriesProvider);
+    final repoMatch = findRepoSource(
+      repositories: repos,
+      rawUrl: source.baseUrl,
+      name: widget.comic.src,
+      urlAliases: [source.baseUrl, mangaUrl],
+    );
+    if (repoMatch != null && repoMatch.source.baseUrl != null) {
+      final repoBaseUrl = repoMatch.source.baseUrl!.trim();
+      final currentOrigin = SourceCatalog.originFromUrl(source.baseUrl);
+      final repoOrigin = SourceCatalog.originFromUrl(repoBaseUrl);
+      if (normalizeSourceBaseUrl(currentOrigin) != normalizeSourceBaseUrl(repoOrigin)) {
+        source = SourceCatalog.buildAutomatic(
+          widget.comic.src,
+          repoBaseUrl,
+          preferredKind: repoMatch.source.parserKind,
+          fallbackBaseUrls: [
+            currentOrigin,
+            ...repoMatch.source.baseUrlAliases,
+          ],
+        );
+      }
+    }
+
     setState(() {
       _chaptersLoading = true;
       _chaptersError = null;
@@ -331,11 +363,59 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       }
       _loadRealPages(fromVpn: fromVpn);
     } catch (e) {
+      // Coba pulihkan dari kandidat repositori/mirror bila domain lama mati
+      final candidateBaseUrls = <String>[
+        if (repoMatch?.source.baseUrl != null) repoMatch!.source.baseUrl!,
+        for (final r in repos)
+          for (final rs in r.sources)
+            if (rs.matchesName(widget.comic.src) && rs.baseUrl != null)
+              rs.baseUrl!,
+        ...SourceCatalog.sources
+            .where((s) => s.name.toLowerCase() == widget.comic.src.toLowerCase())
+            .map((s) => s.baseUrl),
+      ];
+      for (final candidate in candidateBaseUrls) {
+        final normCand = normalizeSourceBaseUrl(candidate);
+        if (normCand.isEmpty || normCand == normalizeSourceBaseUrl(source.baseUrl)) continue;
+        try {
+          final candidateSource = SourceCatalog.buildAutomatic(
+            widget.comic.src,
+            normCand,
+          );
+          final candidateMangaUrl = rebaseSourceUrl(mangaUrl, normCand);
+          final healedChapters = await candidateSource.fetchChapterList(candidateMangaUrl);
+          if (healedChapters.isNotEmpty) {
+            final byUrl = widget.initialChapterUrl == null
+                ? -1
+                : healedChapters.indexWhere(
+                    (chapter) =>
+                        sameChapterIdentity(chapter.url, widget.initialChapterUrl),
+                  );
+            final index = byUrl != -1 ? byUrl : healedChapters.length - widget.chapter;
+            if (mounted) {
+              setState(() {
+                final target = (index >= 0 && index < healedChapters.length) ? index : 0;
+                _chapters = healedChapters;
+                _sourceChapterIndex = target;
+                _chapter = healedChapters.length - target;
+                _chaptersLoading = false;
+                _chaptersError = null;
+              });
+              unawaited(
+                _libraryNotifier.updateSourceMangaUrl(widget.comic.id, candidateMangaUrl),
+              );
+              _loadRealPages(fromVpn: fromVpn);
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       setState(() {
         _chaptersError = '$e';
         _chaptersLoading = false;
-        _chaptersWebViewUrl = _resolveWebViewUrl(mangaUrl, source.baseUrl);
+        _chaptersWebViewUrl = _resolveWebViewUrl(mangaUrl, source?.baseUrl ?? mangaUrl);
       });
       if (fromVpn) {
         AppToast.show(

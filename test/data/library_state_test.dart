@@ -239,4 +239,48 @@ void main() {
     expect(lib.any((c) => c.id == 's2'), isFalse);
     expect(lib.any((c) => c.id == 'k1'), isTrue);
   });
+
+  test('LibraryNotifier migrateComicsForDomainChange merebase mangaUrl, cover, dan chapter', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(libraryProvider.notifier);
+
+    await notifier.add(const Comic(
+      id: 'cm1',
+      title: 'Solo Leveling',
+      src: 'KomikCast',
+      hue: 0,
+      ch: 100,
+      sourceMangaUrl: 'https://komikcast01.com/manga/solo-leveling/',
+      coverUrl: 'https://komikcast01.com/covers/sl.jpg',
+      lastChapterUrl: 'https://komikcast01.com/manga/solo-leveling-ch-100/',
+      readChapterUrls: {'https://komikcast01.com/manga/solo-leveling-ch-1/'},
+    ));
+    await notifier.add(const Comic(
+      id: 'cm2',
+      title: 'Martial Peak',
+      src: 'KomikIndo',
+      hue: 0,
+      ch: 500,
+      sourceMangaUrl: 'https://komikindo.ch/manga/martial-peak/',
+    ));
+
+    final count = await notifier.migrateComicsForDomainChange(
+      sourceName: 'KomikCast',
+      oldUrl: 'https://komikcast01.com',
+      newUrl: 'https://komikcast02.me',
+      oldUrlAliases: ['komikcast.bz'],
+    );
+
+    expect(count, 1);
+    final lib = container.read(libraryProvider);
+    final sl = lib.firstWhere((c) => c.id == 'cm1');
+    expect(sl.sourceMangaUrl, 'https://komikcast02.me/manga/solo-leveling/');
+    expect(sl.coverUrl, 'https://komikcast02.me/covers/sl.jpg');
+    expect(sl.lastChapterUrl, 'https://komikcast02.me/manga/solo-leveling-ch-100/');
+    expect(sl.readChapterUrls, {'https://komikcast02.me/manga/solo-leveling-ch-1/'});
+
+    final mp = lib.firstWhere((c) => c.id == 'cm2');
+    expect(mp.sourceMangaUrl, 'https://komikindo.ch/manga/martial-peak/');
+  });
 }

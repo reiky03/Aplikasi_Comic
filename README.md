@@ -10,13 +10,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.18/kizen-v1.2.18.apk">
-    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.18)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  <a href="https://github.com/reiky03/Aplikasi_Comic/releases/download/v1.2.19/kizen-v1.2.19.apk">
+    <img src="https://img.shields.io/badge/Download-APK%20Android%20(v1.2.19)-38bdf8?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
   </a>
   <a href="https://github.com/reiky03/Aplikasi_Comic/releases/latest">
-    <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru%20(v1.2.18)&style=for-the-badge" alt="Rilis Terbaru" />
+    <img src="https://img.shields.io/github/v/release/reiky03/Aplikasi_Comic?color=10b981&label=Rilis%20Terbaru%20(v1.2.19)&style=for-the-badge" alt="Rilis Terbaru" />
   </a>
-  <img src="https://img.shields.io/badge/Versi-v1.2.18-6366f1?style=for-the-badge" alt="Versi Saat Ini" />
+  <img src="https://img.shields.io/badge/Versi-v1.2.19-6366f1?style=for-the-badge" alt="Versi Saat Ini" />
 </p>
 
 ---
