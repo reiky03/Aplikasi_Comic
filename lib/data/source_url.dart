@@ -112,7 +112,7 @@ bool _isApiOrCdnHost(String host) {
 
 String _trimTrailingSlash(String value) {
   var result = value;
-  while (result.length > 1 && result.endsWith('/')) {
+  while (result.endsWith('/')) {
     result = result.substring(0, result.length - 1);
   }
   return result;

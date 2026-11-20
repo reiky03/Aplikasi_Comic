@@ -9,7 +9,6 @@ import 'package:http/http.dart' as http;
 
 import 'firestore_scope.dart';
 import 'generated/repository_index.pb.dart' as repo_pb;
-import 'library_state.dart';
 import 'sources_state.dart';
 
 /// Sumber yang tersedia dari sebuah repository.
@@ -54,9 +53,10 @@ class RepoSource {
     final normName = cleanName.replaceAll(RegExp(r'[^a-z0-9]'), '');
     final normVal = cleanValue.replaceAll(RegExp(r'[^a-z0-9]'), '');
     if (normName.isNotEmpty && normName == normVal) return true;
-    if (normName.startsWith(normVal) || normVal.startsWith(normName)) {
-      if ((normName.length - normVal.length).abs() <= 3) return true;
-    }
+    final stripSuffix = RegExp(r'(id|en|scans?|komik|manga)$');
+    final baseName = normName.replaceFirst(stripSuffix, '');
+    final baseVal = normVal.replaceFirst(stripSuffix, '');
+    if (baseName.length >= 4 && baseName == baseVal) return true;
     return false;
   }
 
@@ -504,8 +504,7 @@ RepoSourceMatch? findRepoSource({
     for (final repository in repositories) {
       for (final source in repository.sources) {
         for (final queryName in candidateNames) {
-          if (source.matchesName(queryName) ||
-              sameLibraryTitle(source.name, queryName)) {
+          if (source.matchesName(queryName)) {
             return RepoSourceMatch(repository: repository, source: source);
           }
         }
@@ -984,13 +983,6 @@ class RepositoriesNotifier extends Notifier<List<ComicRepository>> {
       state = snap.docs
           .map((d) => ComicRepository.fromMap(d.id, d.data()))
           .toList();
-      if (state.isNotEmpty) {
-        Future.microtask(() {
-          try {
-            ref.read(sourcesProvider.notifier).syncWithRepositories(state);
-          } catch (_) {}
-        });
-      }
     });
     return const [];
   }

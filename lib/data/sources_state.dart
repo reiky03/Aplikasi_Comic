@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_colors.dart';
@@ -171,6 +172,43 @@ class ComicSource {
     urlAliases:
         (map['urlAliases'] as List?)?.whereType<String>().toList() ?? const [],
   );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ComicSource &&
+        other.id == id &&
+        other.name == name &&
+        normalizeSourceBaseUrl(other.url) == normalizeSourceBaseUrl(url) &&
+        other.lang == lang &&
+        other.hue == hue &&
+        other.active == active &&
+        other.status == status &&
+        other.session == session &&
+        other.parserKind == parserKind &&
+        other.repoPackage == repoPackage &&
+        other.repoSourceId == repoSourceId &&
+        setEquals(other.nameAliases.toSet(), nameAliases.toSet()) &&
+        setEquals(
+          other.urlAliases.map(normalizeSourceBaseUrl).toSet(),
+          urlAliases.map(normalizeSourceBaseUrl).toSet(),
+        );
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        name,
+        normalizeSourceBaseUrl(url),
+        lang,
+        hue,
+        active,
+        status,
+        session,
+        parserKind,
+        repoPackage,
+        repoSourceId,
+      );
 }
 
 /// Data demo — dipakai saat belum login/Firebase tak tersedia.
@@ -225,6 +263,8 @@ const _seedSources = [
 
 class SourcesNotifier extends Notifier<List<ComicSource>> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
+  bool _isSyncing = false;
+  DateTime? _lastSyncTime;
 
   CollectionReference<Map<String, dynamic>>? get _col =>
       FirestoreScope.collection('sources');
@@ -238,14 +278,6 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
       state = snap.docs
           .map((d) => ComicSource.fromMap(d.id, d.data()))
           .toList();
-      final repos = ref.read(repositoriesProvider);
-      if (repos.isNotEmpty && state.isNotEmpty) {
-        Future.microtask(() {
-          try {
-            syncWithRepositories(repos);
-          } catch (_) {}
-        });
-      }
     });
     return const [];
   }
@@ -377,12 +409,19 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
   /// simpan URL/nama lama ke dalam aliases, dan gunakan extension-runtime parser
   /// bila extension APK tersedia, agar tidak ada tabrakan versi atau broken link.
   Future<int> syncWithRepositories(List<ComicRepository> repositories) async {
-    if (repositories.isEmpty || state.isEmpty) return 0;
-    var syncedCount = 0;
-    final updatedList = <ComicSource>[];
-    final domainChanges = <DomainChange>[];
+    if (_isSyncing || repositories.isEmpty || state.isEmpty) return 0;
+    final now = DateTime.now();
+    if (_lastSyncTime != null &&
+        now.difference(_lastSyncTime!).inMilliseconds < 3000) {
+      return 0;
+    }
+    _isSyncing = true;
+    try {
+      var syncedCount = 0;
+      final updatedList = <ComicSource>[];
+      final domainChanges = <DomainChange>[];
 
-    for (final source in state) {
+      for (final source in state) {
       final match = findRepoSource(
         repositories: repositories,
         rawUrl: source.url,
@@ -536,6 +575,10 @@ class SourcesNotifier extends Notifier<List<ComicSource>> {
       }
     }
     return syncedCount;
+    } finally {
+      _lastSyncTime = DateTime.now();
+      _isSyncing = false;
+    }
   }
 }
 

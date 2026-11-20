@@ -41,6 +41,7 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   static bool _updateCheckedThisSession = false;
+  static bool _repoSyncedThisSession = false;
   Timer? _updateTimer;
   Timer? _syncTimer;
 
@@ -58,9 +59,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     super.initState();
     ref.read(sourcesProvider);
     ref.read(repositoriesProvider);
-    if (!_isTestEnv) {
+    if (!_isTestEnv && !_repoSyncedThisSession) {
+      _repoSyncedThisSession = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _syncTimer = Timer(const Duration(seconds: 1), () {
+        _syncTimer = Timer(const Duration(seconds: 2), () {
           if (!mounted) return;
           final repos = ref.read(repositoriesProvider);
           if (repos.isNotEmpty) {
@@ -121,12 +123,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         final countText = last.affectedComicsCount > 0
             ? ' · ${last.affectedComicsCount} komik library disesuaikan'
             : '';
-        AppToast.show(
-          context,
-          '🌐 Link ${last.sourceName} diperbarui ($oldHost → $newHost)$countText',
-          icon: AppIcons.globe,
-          iconColor: AppColors.accent,
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!context.mounted) return;
+          AppToast.show(
+            context,
+            '🌐 Link ${last.sourceName} diperbarui ($oldHost → $newHost)$countText',
+            icon: AppIcons.globe,
+            iconColor: AppColors.accent,
+          );
+        });
       }
     });
 

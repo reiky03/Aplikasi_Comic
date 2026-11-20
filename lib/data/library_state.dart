@@ -79,6 +79,20 @@ const _seedCollections = [
   ComicCollection(id: 'later', name: 'Nanti Dibaca'),
 ];
 
+bool isSameSourceName(String a, String b) {
+  final cleanA = a.trim().toLowerCase();
+  final cleanB = b.trim().toLowerCase();
+  if (cleanA == cleanB) return true;
+  final normA = cleanA
+      .replaceAll(RegExp(r'\s*\([a-z0-9_-]+\)\s*'), '')
+      .replaceAll(RegExp(r'[^a-z0-9]'), '');
+  final normB = cleanB
+      .replaceAll(RegExp(r'\s*\([a-z0-9_-]+\)\s*'), '')
+      .replaceAll(RegExp(r'[^a-z0-9]'), '');
+  if (normA.isNotEmpty && normA == normB) return true;
+  return false;
+}
+
 /// Bentuk judul yang stabil buat mendeteksi komik sama dari source berbeda.
 /// Tanda baca dan variasi spasi diabaikan, tetapi huruf non-Latin tetap utuh.
 String normalizeLibraryTitle(String title) {
@@ -241,8 +255,7 @@ class LibraryNotifier extends Notifier<List<Comic>> {
     final toUpdateInFirestore = <Comic>[];
 
     for (final comic in state) {
-      final matchesSource = comic.src.trim().toLowerCase() == sourceName.trim().toLowerCase() ||
-          sameLibraryTitle(comic.src, sourceName);
+      final matchesSource = isSameSourceName(comic.src, sourceName);
       final mangaUri = comic.sourceMangaUrl != null ? Uri.tryParse(comic.sourceMangaUrl!) : null;
       final mangaHost = mangaUri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
       final matchesHost = mangaHost != null && oldHosts.contains(mangaHost);
@@ -266,7 +279,8 @@ class LibraryNotifier extends Notifier<List<Comic>> {
       if (comic.coverUrl != null && comic.coverUrl!.isNotEmpty) {
         final coverUri = Uri.tryParse(comic.coverUrl!);
         final coverHost = coverUri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
-        if (coverHost != null && (oldHosts.contains(coverHost) || matchesSource)) {
+        // HANYA rebase coverUrl jika cover memang di-host di domain lama sumber ini
+        if (coverHost != null && oldHosts.contains(coverHost)) {
           final rebased = rebaseSourceUrl(comic.coverUrl!, newUrl);
           if (rebased != comic.coverUrl) {
             newCoverUrl = rebased;

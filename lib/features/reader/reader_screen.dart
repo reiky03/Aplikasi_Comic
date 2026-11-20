@@ -364,7 +364,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       _loadRealPages(fromVpn: fromVpn);
     } catch (e) {
       // Coba pulihkan dari kandidat repositori/mirror bila domain lama mati
-      final candidateBaseUrls = <String>[
+      final candidateBaseUrls = <String>{
         if (repoMatch?.source.baseUrl != null) repoMatch!.source.baseUrl!,
         for (final r in repos)
           for (final rs in r.sources)
@@ -373,7 +373,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         ...SourceCatalog.sources
             .where((s) => s.name.toLowerCase() == widget.comic.src.toLowerCase())
             .map((s) => s.baseUrl),
-      ];
+      }.take(3);
       for (final candidate in candidateBaseUrls) {
         final normCand = normalizeSourceBaseUrl(candidate);
         if (normCand.isEmpty || normCand == normalizeSourceBaseUrl(source.baseUrl)) continue;
@@ -383,7 +383,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
             normCand,
           );
           final candidateMangaUrl = rebaseSourceUrl(mangaUrl, normCand);
-          final healedChapters = await candidateSource.fetchChapterList(candidateMangaUrl);
+          final healedChapters = await candidateSource
+              .fetchChapterList(candidateMangaUrl)
+              .timeout(const Duration(seconds: 4));
           if (healedChapters.isNotEmpty) {
             final byUrl = widget.initialChapterUrl == null
                 ? -1

@@ -129,7 +129,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         final matchedSource = ref.read(sourcesProvider).where(
           (s) => s.matchesName(widget.comic.src) || s.id == widget.comic.src,
         ).firstOrNull;
-        if (matchedSource != null) {
+        if (matchedSource != null &&
+            normalizeSourceBaseUrl(matchedSource.url) !=
+                normalizeSourceBaseUrl(repoBaseUrl)) {
           unawaited(ref.read(sourcesProvider.notifier).updateSourceUrl(matchedSource.id, repoBaseUrl));
         }
       }
@@ -197,7 +199,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
       }
     } catch (e) {
       // 1. Coba pulihkan dari repository atau mirror kanonis jika domain utama tidak bisa diakses
-      final candidateBaseUrls = <String>[
+      final candidateBaseUrls = <String>{
         if (repoMatch?.source.baseUrl != null) repoMatch!.source.baseUrl!,
         for (final r in repos)
           for (final rs in r.sources)
@@ -207,7 +209,7 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
         ...SourceCatalog.sources
             .where((s) => s.name.toLowerCase() == widget.comic.src.toLowerCase())
             .map((s) => s.baseUrl),
-      ];
+      }.take(3);
 
       for (final candidate in candidateBaseUrls) {
         final normCand = normalizeSourceBaseUrl(candidate);
@@ -219,7 +221,9 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
             preferredKind: _comicSource?.parserKind,
           );
           final candidateMangaUrl = rebaseSourceUrl(mangaUrl, normCand);
-          final healedChapters = await candidateSource.fetchChapterList(candidateMangaUrl);
+          final healedChapters = await candidateSource
+              .fetchChapterList(candidateMangaUrl)
+              .timeout(const Duration(seconds: 4));
           if (healedChapters.isNotEmpty) {
             final matchedComicSource = ref
                 .read(sourcesProvider)
@@ -229,7 +233,8 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                       s.id == widget.comic.src,
                 )
                 .firstOrNull;
-            if (matchedComicSource != null) {
+            if (matchedComicSource != null &&
+                normalizeSourceBaseUrl(matchedComicSource.url) != normCand) {
               await ref
                   .read(sourcesProvider.notifier)
                   .updateSourceUrl(matchedComicSource.id, normCand);
@@ -245,12 +250,16 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     .read(libraryProvider.notifier)
                     .updateSourceMangaUrl(widget.comic.id, candidateMangaUrl),
               );
-              AppToast.show(
-                context,
-                '🌐 Domain otomatis dialihkan ke ${Uri.tryParse(normCand)?.host ?? normCand}',
-                icon: AppIcons.globe,
-                iconColor: AppColors.accent,
-              );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  AppToast.show(
+                    context,
+                    '🌐 Domain otomatis dialihkan ke ${Uri.tryParse(normCand)?.host ?? normCand}',
+                    icon: AppIcons.globe,
+                    iconColor: AppColors.accent,
+                  );
+                }
+              });
               return;
             }
           }
@@ -350,14 +359,16 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
     ref.listen(sourcesProvider, (prev, next) {
       if (_realChapters == null &&
           widget.comic.sourceMangaUrl != null &&
-          !_loading) {
+          !_loading &&
+          _error == null) {
         _loadReal();
       }
     });
     ref.listen(repositoriesProvider, (prev, next) {
       if (_realChapters == null &&
           widget.comic.sourceMangaUrl != null &&
-          !_loading) {
+          !_loading &&
+          _error == null) {
         _loadReal();
       }
     });

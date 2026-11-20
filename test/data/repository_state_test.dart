@@ -497,6 +497,34 @@ void main() {
     expect(domainChanges.last.newUrl, 'https://komikcast02.ch');
     expect(domainChanges.last.affectedComicsCount, 1);
   });
+
+  test('ComicSource operator == dan hashCode mendeteksi kesamaan data tanpa false positive', () {
+    const s1 = ComicSource(
+      id: 'src1',
+      name: 'KomikCast',
+      url: 'https://komikcast.ch/',
+      lang: 'ID',
+      hue: 200,
+      urlAliases: ['https://komikcast01.com', 'https://komikcast.me'],
+      nameAliases: ['KomikCast ID'],
+    );
+
+    const s2 = ComicSource(
+      id: 'src1',
+      name: 'KomikCast',
+      url: 'https://komikcast.ch', // Beda trailing slash tapi domain sama
+      lang: 'ID',
+      hue: 200,
+      urlAliases: ['https://komikcast.me', 'https://komikcast01.com'], // Beda urutan list
+      nameAliases: ['KomikCast ID'],
+    );
+
+    expect(s1 == s2, isTrue);
+    expect(s1.hashCode, s2.hashCode);
+
+    final s3 = s1.copyWith(url: 'https://komikcast03.com');
+    expect(s1 == s3, isFalse);
+  });
 }
 
 repo_pb.Extension _protoExtension() => repo_pb.Extension(

@@ -283,4 +283,47 @@ void main() {
     final mp = lib.firstWhere((c) => c.id == 'cm2');
     expect(mp.sourceMangaUrl, 'https://komikindo.ch/manga/martial-peak/');
   });
+
+  test('LibraryNotifier migrateComicsForDomainChange tidak merusak cover CDN eksternal dan tidak memigrasikan sumber berbeda', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(libraryProvider.notifier);
+
+    await notifier.add(const Comic(
+      id: 'cm-ext',
+      title: 'Manga with Cloudinary Cover',
+      src: 'KomikCast',
+      hue: 0,
+      ch: 10,
+      sourceMangaUrl: 'https://komikcast01.com/manga/test-ext/',
+      coverUrl: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
+    ));
+
+    await notifier.add(const Comic(
+      id: 'cm-unrelated',
+      title: 'Unrelated Manga',
+      src: 'KomikStation', // Bukan KomikCast
+      hue: 0,
+      ch: 5,
+      sourceMangaUrl: 'https://komikstation.example/manga/test/',
+      coverUrl: 'https://komikstation.example/cover.jpg',
+    ));
+
+    final count = await notifier.migrateComicsForDomainChange(
+      sourceName: 'KomikCast',
+      oldUrl: 'https://komikcast01.com',
+      newUrl: 'https://komikcast02.me',
+    );
+
+    expect(count, 1);
+    final lib = container.read(libraryProvider);
+    final ext = lib.firstWhere((c) => c.id == 'cm-ext');
+    expect(ext.sourceMangaUrl, 'https://komikcast02.me/manga/test-ext/');
+    // Cover eksternal di Cloudinary tidak boleh tersentuh atau di-rebase
+    expect(ext.coverUrl, 'https://res.cloudinary.com/demo/image/upload/sample.jpg');
+
+    final unrelated = lib.firstWhere((c) => c.id == 'cm-unrelated');
+    expect(unrelated.sourceMangaUrl, 'https://komikstation.example/manga/test/');
+    expect(unrelated.coverUrl, 'https://komikstation.example/cover.jpg');
+  });
 }
