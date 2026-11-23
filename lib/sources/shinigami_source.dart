@@ -106,7 +106,7 @@ class ShinigamiSource implements MangaSource {
     final mangas = data
         .map(
           (m) => SourceManga(
-            url: m['manga_id'] as String? ?? '',
+            url: (m['manga_id'] ?? m['id'] ?? '') as String,
             title: m['title'] as String? ?? '',
             thumbnailUrl:
                 (m['cover_image_url'] ?? m['cover_portrait_url']) as String?,
@@ -233,7 +233,7 @@ class ShinigamiSource implements MangaSource {
       if (list.isEmpty) break;
 
       for (final c in list) {
-        final chapterId = c['chapter_id'] as String? ?? '';
+        final chapterId = (c['chapter_id'] ?? c['id'] ?? '') as String;
         if (chapterId.isNotEmpty && !seenChapterIds.add(chapterId)) {
           continue;
         }
@@ -250,7 +250,7 @@ class ShinigamiSource implements MangaSource {
             ? number.toInt().toString()
             : number.toString();
         final title = c['chapter_title'] as String? ?? '';
-        final date = c['release_date'] as String?;
+        final date = (c['release_date'] ?? c['created_at'] ?? c['updated_at']) as String?;
         chapters.add(
           SourceChapter(
             url: chapterId,
@@ -286,7 +286,10 @@ class ShinigamiSource implements MangaSource {
     final chapterBaseUrl = data['base_url'] as String? ?? '';
     final chapter = data['chapter'] as Map<String, dynamic>? ?? {};
     final path = chapter['path'] as String? ?? '';
-    final pages = (chapter['data'] as List<dynamic>? ?? []).cast<String>();
+    final pages = (chapter['data'] as List<dynamic>? ?? [])
+        .map((e) => e?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
     return [
       for (var i = 0; i < pages.length; i++)
         SourcePage(index: i, imageUrl: '$chapterBaseUrl$path${pages[i]}'),

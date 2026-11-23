@@ -48,10 +48,11 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 1. `lib/sources/shinigami_source.dart`:
    - Menambahkan `_uuidPattern` dan `_resolveCanonicalId`: jika URL/ID yang masuk berupa slug non-UUID, parser secara otomatis melakukan lookup cepat via Search API untuk mendapatkan UUID kanonis dan memperbarui URL manga.
    - Memperbaiki parsing `chapter_number` agar mendukung tipe `num`, `String`, dan fallback regex ekstraksi angka desimal.
+   - Menambahkan fallback kunci `m['manga_id'] ?? m['id']` dan `c['chapter_id'] ?? c['id']` serta parsing safe list pada `fetchPageList` tanpa `.cast<String>()` untuk mencegah TypeError runtime jika format data berubah.
 2. `lib/data/models.dart`:
    - Memperluas fungsi `sameChapterIdentity` agar dapat mencocokkan bare ID (tanpa skema/slash) dengan terminal segment dari full URL yang valid secara akurat tanpa false positive.
 3. `lib/features/detail/comic_detail_screen.dart`:
-   - Pada `_loadReal()`, jika komik sudah ada di Library (`inLibrary == true`) dan jumlah chapter riil berbeda dari `widget.comic.ch`, aplikasi otomatis memicu `libraryNotifier.applyNewChapters` untuk menyelaraskan jumlah chapter di Library tanpa perlu intervensi manual.
+   - Pada `_loadReal()`, jika komik sudah ada di Library (`inLibrary == true`) dan jumlah chapter riil berbeda dari `widget.comic.ch`, aplikasi otomatis memicu `libraryNotifier.applyNewChapters` untuk menyelaraskan jumlah chapter di Library tanpa perlu intervensi manual (berlaku baik pada alur pemuatan normal maupun alur pemulihan kandidat domain repo).
 4. `lib/data/vpn_state.dart`:
    - Memperbarui probe endpoint Asura dari `asuracomic.net` ke `asurascans.com`.
 5. `test/sources/shinigami_source_test.dart`:

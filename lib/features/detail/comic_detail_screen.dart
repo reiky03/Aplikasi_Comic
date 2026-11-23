@@ -263,6 +263,17 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     .read(libraryProvider.notifier)
                     .updateSourceMangaUrl(widget.comic.id, candidateMangaUrl),
               );
+              final inLib = ref.read(libraryProvider).where((c) => c.id == widget.comic.id).firstOrNull;
+              if (inLib != null && healedChapters.isNotEmpty && (healedChapters.length != inLib.ch || inLib.lastChapterUrl != healedChapters.first.url)) {
+                unawaited(
+                  ref.read(libraryProvider.notifier).applyNewChapters(
+                    widget.comic.id,
+                    newTotal: healedChapters.length,
+                    deltaUnread: 0,
+                    lastChapterUrl: healedChapters.first.url,
+                  ),
+                );
+              }
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
                   AppToast.show(
