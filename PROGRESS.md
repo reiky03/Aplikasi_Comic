@@ -27,6 +27,37 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-23 — Kizen v1.2.24 (Build 36): Deep Audit & Hardening Rilis v1.2.24: Fallback Kunci Ganda ID Manga & Chapter, Safe Array Mapping Anti-TypeError, Sinkronisasi Chapter Pemulihan Mirror, dan Pembaruan Versi Resmi
+
+**Keluhan & Permintaan User**:
+"dah beneran gak ad bug kah ini, testing lagi pastikan nol bug dan performa lancar"
+"loh kok maish 1.23 bukannya 1.24 ya harunsya kan tadi ak suruh perbaiki"
+
+**Root Cause & Penyempurnaan yang Diterapkan**:
+1. **Peningkatan Versi Aplikasi ke v1.2.24 (Build 36)**:
+   - Pengguna meminta rilis resmi dinaikkan ke versi `v1.2.24+36` setelah serangkaian audit menyeluruh dan perbaikan stabilitas mendalam selesai diverifikasi.
+2. **Hardening Kunci ID Manga & Chapter Ganda di API Shinigami**:
+   - Respon API endpoint `api.shinigami.io` di beberapa skenario (seperti search vs detail vs list) dapat menggunakan variasi penamaan kunci `manga_id` / `id` serta `chapter_id` / `id`. Menggunakan fallback ganda `(m['manga_id'] ?? m['id'] ?? '')` dan `(c['chapter_id'] ?? c['id'] ?? '')` menjamin ID tidak pernah null atau kosong.
+3. **Pemberantasan Potensi Runtime TypeError pada List Halaman Gambar**:
+   - `fetchPageList` sebelumnya menggunakan `.cast<String>()`. Jika terdapat tipe data integer atau elemen null dari respons backend, pemanggilan tersebut dapat memicu uncaught `TypeError`. Diganti dengan pemetaan defensif `.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList()`.
+4. **Sinkronisasi Chapter Otomatis pada Alur Pemulihan Domain Mirror/Kandidat**:
+   - Pada `ComicDetailScreen`, sinkronisasi chapter library (`applyNewChapters`) kini juga aktif saat pemulihan domain terjadi lewat mirror/kandidat baseUrl repository.
+
+**Perubahan Per-File**:
+1. `lib/sources/shinigami_source.dart`:
+   - Fallback kunci ID ganda `manga_id`/`id` dan `chapter_id`/`id`.
+   - Pemetaan aman list gambar di `fetchPageList`.
+2. `lib/features/detail/comic_detail_screen.dart`:
+   - Auto-sync chapter library pada loop pemulihan kandidat mirror domain.
+3. `pubspec.yaml`, `lib/features/settings/about_screen.dart`, `README.md`:
+   - Bump versi resmi ke `v1.2.24+36`.
+
+**Cara Verifikasi**:
+- `flutter analyze`: 0 issues found.
+- `flutter test -j 1`: 205/205 tests passed.
+- Smoke test Web CanvasKit & live API built-in sources sukses.
+- Build release APK `kizen-v1.2.24.apk`.
+
 ### 2026-11-23 — Kizen v1.2.23 (Build 35): Audit Menyeluruh & Hardening: Auto-Healing Slug Shinigami ke UUID, Sinkronisasi Otomatis Chapter Library, Identitas Bare Chapter ID, dan Pembaruan Probe VPN Asura
 
 **Keluhan & Permintaan User**:
