@@ -673,12 +673,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     final viewportBox =
         _viewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.attached) return;
-    final targetY =
-        viewportBox.localToGlobal(Offset.zero).dy +
-        viewportBox.size.height * 0.4;
-    // Buang key halaman yang sudah tidak ter-mount (di luar cache
-    // extent) — biar peta tidak terus membesar sepanjang chapter panjang.
-    _pageKeys.removeWhere((_, key) => key.currentContext == null);
+    final targetY = viewportBox.size.height * 0.4;
+    // Buang key halaman yang sudah tidak ter-mount jika sudah menumpuk
+    // (>50 key) agar tidak iterasi map yang memicu garbage collection tiap frame.
+    if (_pageKeys.length > 50) {
+      _pageKeys.removeWhere((_, key) => key.currentContext == null);
+    }
     int? best;
     // Cek window di sekitar _page dulu untuk meminimalkan beban kalkulasi GPU/CPU
     final startWindow = math.max(0, _page - 2);
@@ -688,7 +688,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       if (key == null) continue;
       final box = key.currentContext?.findRenderObject() as RenderBox?;
       if (box == null || !box.attached) continue;
-      final top = box.localToGlobal(Offset.zero).dy;
+      double top;
+      try {
+        top = box.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+      } catch (_) {
+        top = box.localToGlobal(Offset.zero).dy -
+            viewportBox.localToGlobal(Offset.zero).dy;
+      }
       if (top <= targetY) {
         best = i;
       } else {
@@ -699,7 +705,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       for (final entry in _pageKeys.entries) {
         final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
         if (box == null || !box.attached) continue;
-        final top = box.localToGlobal(Offset.zero).dy;
+        double top;
+        try {
+          top = box.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+        } catch (_) {
+          top = box.localToGlobal(Offset.zero).dy -
+              viewportBox.localToGlobal(Offset.zero).dy;
+        }
         if (top <= targetY && (best == null || entry.key > best)) {
           best = entry.key;
         }
@@ -1432,8 +1444,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     );
     final decodeWidth = width * _webtoonDecodeScale;
     final imageProvider = _webtoonZoomed
-        ? _webtoonZoomImageProvider(page, decodeWidth, dpr)
-        : _pageImageProvider(page, width, dpr);
+        ? _webtoonZoomImageProvider(
+            page,
+            decodeWidth,
+            dpr,
+            measuredAspectRatio: stableAspectRatio,
+          )
+        : _pageImageProvider(
+            page,
+            width,
+            dpr,
+            measuredAspectRatio: stableAspectRatio,
+          );
     // RepaintBoundary + FilterQuality.low: raster tiap halaman diisolasi
     // (scroll tidak memicu repaint halaman lain) dan digambar lebih
     // ringan di GPU — penting untuk layar refresh rate tinggi (120Hz).
@@ -1441,6 +1463,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       key: ValueKey(page.imageUrl),
       imageProvider: imageProvider,
       initialAspectRatio: stableAspectRatio,
+      fallbackAspectRatio: 0.38,
       placeholder: DecoratedBox(
         decoration: BoxDecoration(gradient: _pageGradient(i)),
         child: const Center(
@@ -1459,10 +1482,20 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     );
   }
 
-  ImageProvider _pageImageProvider(SourcePage page, double width, double dpr) =>
+  ImageProvider _pageImageProvider(
+    SourcePage page,
+    double width,
+    double dpr, {
+    double? measuredAspectRatio,
+  }) =>
       _readerImageCache.rememberProvider(
         ResizeImage.resizeIfNeeded(
-          readerPageCacheWidth(page, width, dpr),
+          readerPageCacheWidth(
+            page,
+            width,
+            dpr,
+            measuredAspectRatio: measuredAspectRatio,
+          ),
           null,
           _readerImageCache.providerFor(page),
         ),
@@ -1471,14 +1504,21 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   ImageProvider _webtoonZoomImageProvider(
     SourcePage page,
     double width,
-    double dpr,
-  ) => _readerImageCache.rememberProvider(
-    ResizeImage.resizeIfNeeded(
-      readerWebtoonZoomCacheWidth(page, width, dpr),
-      null,
-      _readerImageCache.providerFor(page),
-    ),
-  );
+    double dpr, {
+    double? measuredAspectRatio,
+  }) =>
+      _readerImageCache.rememberProvider(
+        ResizeImage.resizeIfNeeded(
+          readerWebtoonZoomCacheWidth(
+            page,
+            width,
+            dpr,
+            measuredAspectRatio: measuredAspectRatio,
+          ),
+          null,
+          _readerImageCache.providerFor(page),
+        ),
+      );
 
   ImageProvider _mangaImageProvider(
     SourcePage page,
@@ -1536,23 +1576,46 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     if (pages == null || pages.isEmpty) return;
     final settings = ref.read(readerSettingsProvider);
     final webtoonZoomed = settings.isWebtoon && _webtoonZoomed;
+    final viewportWidth = _webtoonViewportSize.width > 0
+        ? _webtoonViewportSize.width
+        : MediaQuery.sizeOf(context).width;
     final width =
-        MediaQuery.sizeOf(context).width *
-        (webtoonZoomed ? _webtoonDecodeScale : 1);
+        viewportWidth * (webtoonZoomed ? _webtoonDecodeScale : 1);
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final current = (center ?? _page).clamp(0, pages.length - 1);
-    final start = (current - 2).clamp(0, pages.length - 1);
-    final end = (current + 6).clamp(0, pages.length - 1);
+    final start = (current - 1).clamp(0, pages.length - 1);
+    final end = (current + 5).clamp(0, pages.length - 1);
     for (var i = start; i <= end; i++) {
       final page = pages[i];
+      final measuredRatio = _measuredPageAspectRatios[page.imageUrl];
       final cacheWidth = webtoonZoomed
-          ? readerWebtoonZoomCacheWidth(page, width, dpr)
-          : readerPageCacheWidth(page, width, dpr);
+          ? readerWebtoonZoomCacheWidth(
+              page,
+              width,
+              dpr,
+              measuredAspectRatio: measuredRatio,
+            )
+          : readerPageCacheWidth(
+              page,
+              width,
+              dpr,
+              measuredAspectRatio: measuredRatio,
+            );
       final key = '${page.imageUrl}@$cacheWidth';
       if (!_precachedPageKeys.add(key)) continue;
       final provider = webtoonZoomed
-          ? _webtoonZoomImageProvider(page, width, dpr)
-          : _pageImageProvider(page, width, dpr);
+          ? _webtoonZoomImageProvider(
+              page,
+              width,
+              dpr,
+              measuredAspectRatio: measuredRatio,
+            )
+          : _pageImageProvider(
+              page,
+              width,
+              dpr,
+              measuredAspectRatio: measuredRatio,
+            );
       _measurePageGeometry(page, provider);
       precacheImage(provider, context).catchError((Object e) {
         _precachedPageKeys.remove(key);
@@ -1572,12 +1635,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
           controller: _scrollController,
           padding: EdgeInsets.zero,
           clipBehavior: Clip.none,
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          // Viewport cache 2.0 cukup untuk scrolling super mulus tanpa lag,
+          physics: const AlwaysScrollableScrollPhysics(),
+          // Viewport cache 1.5 cukup untuk scrolling super mulus tanpa lag,
           // menghemat alokasi memori tekstur decoded hingga 50% dibanding 4.0.
-          scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+          scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
           itemCount: _totalPages + 2,
           itemBuilder: (context, index) {
             if (index == 0) {
@@ -2394,12 +2455,14 @@ class StableReaderPageImage extends StatefulWidget {
     required this.onAspectRatioKnown,
     required this.onImageError,
     this.initialAspectRatio,
+    this.fallbackAspectRatio = 0.7,
   });
 
   final ImageProvider imageProvider;
   final Widget placeholder;
   final Widget errorPlaceholder;
   final double? initialAspectRatio;
+  final double fallbackAspectRatio;
   final ValueChanged<double> onAspectRatioKnown;
   final ValueChanged<Object> onImageError;
 
@@ -2485,7 +2548,7 @@ class _StableReaderPageImageState extends State<StableReaderPageImage> {
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: AspectRatio(
-        aspectRatio: _aspectRatio ?? 0.7,
+        aspectRatio: _aspectRatio ?? widget.fallbackAspectRatio,
         child: Image(
           image: widget.imageProvider,
           fit: BoxFit.contain,
@@ -2522,25 +2585,37 @@ double? readerPageAspectRatio(SourcePage page, {double? measured}) {
 /// 800px bisa di-upscale ke lebar DPR 1200px saat decode, memboroskan puluhan
 /// MB per strip dan membuat halaman lama cepat terlempar dari ImageCache.
 @visibleForTesting
-int readerPageCacheWidth(SourcePage page, double width, double dpr) {
+int readerPageCacheWidth(
+  SourcePage page,
+  double width,
+  double dpr, {
+  double? measuredAspectRatio,
+}) {
   final imageWidth = page.width;
   final imageHeight = page.height;
   final target = math.max(1.0, width * dpr);
-  if (imageWidth == null ||
-      imageHeight == null ||
-      imageWidth <= 0 ||
-      imageHeight <= 0) {
-    return target.round();
-  }
-  final aspectRatio = imageWidth / imageHeight;
+  final aspectRatio =
+      (imageWidth != null &&
+              imageHeight != null &&
+              imageWidth > 0 &&
+              imageHeight > 0)
+          ? imageWidth / imageHeight
+          : (measuredAspectRatio != null &&
+                  measuredAspectRatio.isFinite &&
+                  measuredAspectRatio > 0
+              ? measuredAspectRatio
+              : null);
+
   const maxDecodedHeight = 12000.0;
-  final cappedByHeight = maxDecodedHeight * aspectRatio;
-  return math
-      .max(
-        1.0,
-        math.min(target, math.min(imageWidth.toDouble(), cappedByHeight)),
-      )
-      .round();
+  var bound = target;
+  if (imageWidth != null && imageWidth > 0) {
+    bound = math.min(bound, imageWidth.toDouble());
+  }
+  if (aspectRatio != null) {
+    final cappedByHeight = maxDecodedHeight * aspectRatio;
+    bound = math.min(bound, cappedByHeight);
+  }
+  return math.max(1.0, bound).round();
 }
 
 /// Mode halaman menyimpan resolusi lebih tinggi daripada lebar layar karena
@@ -2561,9 +2636,22 @@ int readerMangaCacheWidth(SourcePage page, double width, double dpr) {
 /// strip vertikal jauh lebih tinggi daripada halaman manga biasa. Batas 2048
 /// px mencegah satu strip tanpa metadata didecode menjadi bitmap raksasa.
 @visibleForTesting
-int readerWebtoonZoomCacheWidth(SourcePage page, double width, double dpr) {
+int readerWebtoonZoomCacheWidth(
+  SourcePage page,
+  double width,
+  double dpr, {
+  double? measuredAspectRatio,
+}) {
   const maxDecodedWidth = 2048;
-  return math.min(maxDecodedWidth, readerPageCacheWidth(page, width, dpr));
+  return math.min(
+    maxDecodedWidth,
+    readerPageCacheWidth(
+      page,
+      width,
+      dpr,
+      measuredAspectRatio: measuredAspectRatio,
+    ),
+  );
 }
 
 /// Spacer simetris memberi ruang buat mencapai ujung awal/akhir chapter ketika

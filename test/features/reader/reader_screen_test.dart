@@ -66,6 +66,15 @@ void main() {
       ),
       1236,
     );
+    expect(
+      readerPageCacheWidth(
+        const SourcePage(index: 3, imageUrl: 'https://cdn.example/measured'),
+        412,
+        3,
+        measuredAspectRatio: 0.05,
+      ),
+      600,
+    );
   });
 
   test('decode manga menyiapkan detail zoom tanpa melewati batas memori', () {
@@ -124,6 +133,18 @@ void main() {
         3,
       ),
       2048,
+    );
+    expect(
+      readerWebtoonZoomCacheWidth(
+        const SourcePage(
+          index: 2,
+          imageUrl: 'https://cdn.example/measured.webp',
+        ),
+        1030,
+        3,
+        measuredAspectRatio: 0.05,
+      ),
+      600,
     );
   });
 

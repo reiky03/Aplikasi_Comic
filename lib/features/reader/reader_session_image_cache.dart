@@ -58,12 +58,12 @@ class ReaderSessionImageCache {
         if (position >= order.length) return;
         final page = pages[order[position]];
         try {
-          await _coordinator.manager.downloadFile(
+          await _coordinator.manager.getSingleFile(
             page.imageUrl,
-            authHeaders: page.headers.isEmpty ? null : page.headers,
+            headers: page.headers,
           );
-          // Beri jeda 60ms antar download agar tidak memicu HTTP 429
-          await Future<void>.delayed(const Duration(milliseconds: 60));
+          // Beri jeda 80ms antar download agar tidak memicu HTTP 429 dan hemat CPU/I/O
+          await Future<void>.delayed(const Duration(milliseconds: 80));
         } catch (error) {
           debugPrint(
             'Cache sementara gambar gagal: ${page.imageUrl} error=$error',

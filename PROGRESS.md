@@ -27,6 +27,53 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-23 — Kizen v1.2.25 (Build 37): Optimasi Kelancaran & Performa Reader — Eliminasi Frame-Drops/Stutter, Height-Bounding Webtoon Decoded, Sinkronisasi CacheWidth Precache, Native Android Scroll Physics, dan Tree Traversal Ringan
+
+**Keluhan & Permintaan User**:
+"agak kurang mulus beb pas ak coba baca chapter komiknya"
+
+**Root Cause Analisis & Solusi Komprehensif**:
+1. **Unconstrained Strip Height Decoding (Bottleneck Utama Memori GPU & Frame-Drops)**:
+   - *Masalah*: Di `readerPageCacheWidth`, jika `page.width` bernilai null (yang terjadi pada 100% chapter webtoon dari Shinigami, Kiryuu, Asura, Komiku), fungsi sebelumnya mengembalikan `(width * dpr).round()`. Batas tinggi `maxDecodedHeight = 12000.0 * aspectRatio` tadinya terkurung di dalam `if (imageWidth != null)`. Akibatnya pada layar HP modern (DPR 3.0+), strip panjang 800w x 10.000h didecode mentah ke `1236w x 15.450h` (~76 MB bitmap per strip tak terkompresi). Ukuran tekstur ini melampaui batas GPU hardware Android (8192px), memaksa engine render Skia/Impeller melakukan software tiling berat yang menyebabkan micro-stutter patah-patah saat scroll.
+   - *Solusi*: Menambahkan parameter `measuredAspectRatio` ke `readerPageCacheWidth` dan `readerWebtoonZoomCacheWidth`. Ketika rasio gambar diketahui (dari metadata maupun pengukuran stream di frame pertama/geometry load), `cappedByHeight = maxDecodedHeight * aspectRatio` aktif membatasi lebar decode sehingga tinggi bitmap yang dirender di GPU tidak pernah membengkak melewati batas aman tekstur hardware GPU dan memori RAM.
+2. **Sinkronisasi CacheWidth Antara Precache dan Render (100% Cache Hit)**:
+   - *Masalah*: `_precacheNearbyPages` sebelumnya menghitung lebar layar menggunakan `MediaQuery.sizeOf(context).width`, sedangkan builder webtoon di `_buildWebtoon` menggunakan `constraints.maxWidth` dari `LayoutBuilder`. Discrepansi fraksional/subpixel menyebabkan `cacheWidth` berbeda 1-2px, yang membuat `ResizeImage` menghasilkan kunci berbeda di Flutter `ImageCache`. Akibatnya, gambar yang sudah di-precache tidak terpakai dan widget terpaksa melakukan decode ulang saat discroll masuk layar.
+   - *Solusi*: Menggunakan `_webtoonViewportSize.width` yang sama persis dan meneruskan `measuredAspectRatio` yang sinkron di kedua tempat, menjamin 100% cache hit tanpa decode ganda.
+3. **Pemberian Fallback Aspect Ratio Webtoon (Anti-Layout Shift & Anti-Jumping)**:
+   - *Masalah*: `StableReaderPageImage` sebelumnya menggunakan fallback aspect ratio default `0.7` (rasio buku manga standar, ~570px di layar HP). Ketika strip vertikal webtoon dimuat (rasio rata-rata ~0.38, ~1050px), tinggi container tiba-tiba melonjak 480px per strip. Jika beberapa gambar termuat bersamaan saat scroll cepat, terjadi pergeseran layout (layout shifts) yang terasa melompat/tersendat.
+   - *Solusi*: Menambahkan parameter `fallbackAspectRatio` pada `StableReaderPageImage` dan mengisinya dengan `0.38` khusus untuk mode webtoon. Ukuran placeholder saat loading kini hampir identik dengan strip aslinya, menstabilkan scroll offset tanpa lonjakan layout.
+4. **Fling Scroll Physics Native Android (`AlwaysScrollableScrollPhysics`)**:
+   - *Masalah*: `_buildWebtoon` sebelumnya mengunci scroll physics ke `BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics())`. Di Android, fisika iOS bounce menggunakan gesekan pegas yang tinggi alih-alih kurva deselerasi spline alami Android, sehingga aksi scroll/fling cepat terasa lambat, berat, dan tertahan.
+   - *Solusi*: Mengubah ke `const AlwaysScrollableScrollPhysics()`. Di Android otomatis memakai kurva deselerasi flung standar dengan stretch overscroll mulus, sedangkan di iOS tetap mempertahankan karakteristik bounce alaminya. Cache extent juga diatur ke `1.5 viewport` untuk menyeimbangkan pre-render mulus tanpa membebani VRAM.
+5. **Optimasi Render Tree Traversal & Memory Cleanup pada `_computeCurrentPage`**:
+   - *Masalah*: Pada tiap frame scroll, `_computeCurrentPage` memanggil `box.localToGlobal(Offset.zero).dy` tanpa ancestor, menelusuri seluruh hierarki RenderObject ke root layar. Selain itu `_pageKeys.removeWhere` dijalankan setiap frame, menciptakan garbage collection (GC) churn saat fling kencang.
+   - *Solusi*: Membatasi penelusuran koordinat ke `ancestor: viewportBox` lokal yang jauh lebih cepat, dan membatasi pembersihan `_pageKeys` hanya ketika ukurannya sudah melebihi 50 item.
+6. **Optimasi Session Cache Worker (`reader_session_image_cache.dart`)**:
+   - *Masalah*: Worker preload sebelumnya memanggil `downloadFile` yang memaksa download ulang meskipun file sudah ada di disk, serta memberi beban contention pada database SQLite cache manager saat reader sedang aktif.
+   - *Solusi*: Menggunakan `getSingleFile(url, headers: ...)` dan jeda antar-file 80ms, sehingga file yang sudah ada langsung diakui dan I/O disk berjalan santai di background.
+
+**Perubahan Per-File**:
+1. `lib/features/reader/reader_screen.dart`:
+   - `readerPageCacheWidth` & `readerWebtoonZoomCacheWidth`: Tambah dukungan `measuredAspectRatio` untuk height-bounding.
+   - `_pageImageProvider` & `_webtoonZoomImageProvider`: Teruskan `measuredAspectRatio`.
+   - `_webtoonPage`: Lewatkan `stableAspectRatio` ke image provider dan gunakan `fallbackAspectRatio: 0.38`.
+   - `_precacheNearbyPages`: Selaraskan lebar dengan `_webtoonViewportSize.width` dan teruskan `measuredAspectRatio`.
+   - `_buildWebtoon`: Gunakan `AlwaysScrollableScrollPhysics` dan `scrollCacheExtent: viewport(1.5)`.
+   - `_computeCurrentPage`: Gunakan `ancestor: viewportBox` dan debounce pembersihan `_pageKeys`.
+   - `StableReaderPageImage`: Dukung `fallbackAspectRatio` configurable.
+2. `lib/features/reader/reader_session_image_cache.dart`:
+   - Ganti `downloadFile` ke `getSingleFile` dengan jeda 80ms.
+3. `test/features/reader/reader_screen_test.dart`:
+   - Tambah pengujian unit untuk `measuredAspectRatio` pada `readerPageCacheWidth` dan `readerWebtoonZoomCacheWidth`.
+4. `pubspec.yaml`, `lib/features/settings/about_screen.dart`, `README.md`:
+   - Bump versi resmi ke `v1.2.25+37`.
+
+**Cara Verifikasi**:
+- `flutter analyze`: 0 issues found (bersih).
+- `flutter test test/features/reader/reader_screen_test.dart`: 14/14 tests passed.
+- `flutter test -j 1`: 205/205 tests passed (3 skipped live network tests).
+- Build release APK `kizen-v1.2.25.apk` sukses.
+
 ### 2026-11-23 — Kizen v1.2.24 (Build 36): Deep Audit & Hardening Rilis v1.2.24: Fallback Kunci Ganda ID Manga & Chapter, Safe Array Mapping Anti-TypeError, Sinkronisasi Chapter Pemulihan Mirror, dan Pembaruan Versi Resmi
 
 **Keluhan & Permintaan User**:
