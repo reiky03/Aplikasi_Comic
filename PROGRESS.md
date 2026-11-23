@@ -27,6 +27,42 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-23 — Kizen v1.2.22 (Build 34): Perbaikan Chapter Shinigami Hanya Muncul 12 (Limit 2000 & Multi-Page Cursor Pagination)
+
+**Keluhan & Permintaan User**:
+"ada berita hancur yang parah kali, kok yang shinigami load chapternya semuanya hanya 12 sih, kok gak full sesuai jumlah chapter sebenarnya"
+
+**Root Cause**:
+1. **Query Parameter `page_size` Tidak Dikenali oleh API Baru Shinigami**:
+   - Endpoint baru Shinigami `https://api.shinigami.io/v1/chapter/:id/list` menggunakan parameter pagination `limit`, bukan `page_size`.
+   - Kode sebelumnya memanggil `/v1/chapter/$id/list?page_size=3000`. Karena `page_size` diabaikan oleh backend Golang Shinigami, API mengembalikan default page size yaitu **12 chapter** saja.
+   - Selain itu, validator backend menetapkan batas maksimum `limit` adalah 2000 (`retcode: 400001, Field validation for 'Limit' failed on the 'max' tag`).
+2. **Ketiadaan Cursor Pagination untuk Komik Ratusan/Ribuan Chapter**:
+   - Jika suatu komik memiliki chapter melebihi 2000, API menyediakan mekanisme cursor pagination (`meta.next_cursor` dan `meta.has_next`). Tanpa loop cursor, chapter hanya akan terpotong pada batas halaman pertama.
+3. **Parameter Pagination Manga List Menggunakan `offset` dan `limit`**:
+   - Endpoint `/v1/manga/list` pada web SPA resmi `s1.shinigami.mx` menggunakan query `offset` dan `limit=30` (bukan hanya `page`). Tanpa `offset`, navigasi halaman browse tetap kembali ke offset 0.
+
+**Perubahan Per-File**:
+1. `lib/sources/shinigami_source.dart`:
+   - `fetchChapterList`:
+     - Mengubah parameter request menjadi `limit=2000`, `sort_by=chapter_number`, dan `sort_order=desc` (persis seperti yang dipanggil oleh web app resmi `s1.shinigami.mx`).
+     - Mengimplementasikan `do ... while` cursor loop dengan `meta.next_cursor` dan `seenChapterIds` dedup guard untuk mendukung komik ber-chapter raksasa tanpa terpotong.
+     - Menambahkan fallback resilience jika pemanggilan batch lanjutan gagal agar chapter yang sudah terambil tidak hilang.
+   - `_list`:
+     - Menambahkan parameter `offset: (page - 1) * limit` dan `limit: 30` untuk konsistensi query browse dan search di katalog Shinigami.
+2. `test/sources/shinigami_source_test.dart`:
+   - Menambahkan unit test untuk memverifikasi request parameter `limit=2000`, `sort_by=chapter_number`, `sort_order=desc`, serta verifikasi penggabungan multi-page cursor pagination.
+   - Menambahkan unit test untuk pagination `offset` dan `limit` pada `fetchPopular`.
+3. `pubspec.yaml`, `lib/features/settings/about_screen.dart`, `README.md`:
+   - Bump versi aplikasi ke `v1.2.22+34`.
+
+**Cara Verifikasi**:
+- `flutter analyze`: 0 issues found.
+- `flutter test test/sources/shinigami_source_test.dart`: 7/7 test passed.
+- `flutter test test/sources/ test/data/`: 170/170 test passed.
+- `flutter test test/features/reader/reader_screen_test.dart`: 14/14 test passed.
+- Verifikasi curl langsung ke `api.shinigami.io`: Demonic Emperor yang memiliki 941 chapter berhasil diambil seluruhnya (941 chapter lengkap dari 939 sampai 1) dalam 1 request (8ms).
+
 ### 2026-11-20 — Kizen v1.2.21 (Build 33): Dukungan Domain & URL Baru Shinigami (https://s1.shinigami.mx/), Dual API Endpoint (api.shinigami.io), Lazy Tab Mounting, Shadow Overdraw Elimination, dan Optimalisasi Rebuild State
 
 **Keluhan & Permintaan User**:

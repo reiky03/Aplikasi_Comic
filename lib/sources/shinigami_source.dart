@@ -89,9 +89,13 @@ class ShinigamiSource implements MangaSource {
     String? sort,
     String? query,
   }) async {
+    const limit = 30;
+    final offset = (page - 1) * limit;
     final params = {
       'page': '$page',
-      'page_size': '30',
+      'offset': '$offset',
+      'limit': '$limit',
+      'page_size': '$limit',
       'sort': ?sort,
       if (query != null && query.isNotEmpty) 'q': query,
     };
@@ -113,7 +117,7 @@ class ShinigamiSource implements MangaSource {
     final currentPage = (meta['page'] as num?)?.toInt() ?? page;
     final totalPage = (meta['total_page'] as num?)?.toInt();
     final hasNextPage = (meta['has_next'] as bool?) ??
-        (totalPage != null && currentPage < totalPage);
+        (totalPage != null ? currentPage < totalPage : data.length >= limit);
     return SourceMangaPage(mangas: mangas, hasNextPage: hasNextPage);
   }
 
@@ -161,22 +165,73 @@ class ShinigamiSource implements MangaSource {
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
     final id = extractId(mangaUrl);
-    final json = await _getJson('/v1/chapter/$id/list?page_size=3000');
-    final list = (json['data'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
-    return list.map((c) {
-      final number = (c['chapter_number'] as num?)?.toDouble() ?? 0;
-      final numberLabel = number == number.roundToDouble()
-          ? number.toInt().toString()
-          : number.toString();
-      final title = c['chapter_title'] as String? ?? '';
-      final date = c['release_date'] as String?;
-      return SourceChapter(
-        url: c['chapter_id'] as String? ?? '',
-        name: 'Chapter $numberLabel${title.isNotEmpty ? ' $title' : ''}',
-        dateUpload: date == null ? null : DateTime.tryParse(date),
-      );
-    }).toList();
+    final chapters = <SourceChapter>[];
+    final seenChapterIds = <String>{};
+    String? cursor;
+    int pageCount = 0;
+    const maxPages = 20; // Batas pengaman s.d. 40.000 chapter
+
+    do {
+      final params = <String, String>{
+        'limit': '2000',
+        'sort_by': 'chapter_number',
+        'sort_order': 'desc',
+        'page_size': '2000',
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      };
+      final qs = Uri(queryParameters: params).query;
+      final Map<String, dynamic> json;
+      try {
+        json = await _getJson('/v1/chapter/$id/list?$qs');
+      } catch (e) {
+        if (chapters.isNotEmpty) {
+          // Jika sudah berhasil dapat batch sebelumnya, kembalikan yang ada
+          break;
+        }
+        rethrow;
+      }
+
+      final list = (json['data'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+
+      if (list.isEmpty) break;
+
+      for (final c in list) {
+        final chapterId = c['chapter_id'] as String? ?? '';
+        if (chapterId.isNotEmpty && !seenChapterIds.add(chapterId)) {
+          continue;
+        }
+        final number = (c['chapter_number'] as num?)?.toDouble() ?? 0;
+        final numberLabel = number == number.roundToDouble()
+            ? number.toInt().toString()
+            : number.toString();
+        final title = c['chapter_title'] as String? ?? '';
+        final date = c['release_date'] as String?;
+        chapters.add(
+          SourceChapter(
+            url: chapterId,
+            name: 'Chapter $numberLabel${title.isNotEmpty ? ' $title' : ''}',
+            dateUpload: date == null ? null : DateTime.tryParse(date),
+          ),
+        );
+      }
+
+      final meta = json['meta'] as Map<String, dynamic>? ?? {};
+      final hasNext = meta['has_next'] as bool? ?? false;
+      final nextCursor = meta['next_cursor'] as String?;
+
+      pageCount++;
+      if (!hasNext ||
+          nextCursor == null ||
+          nextCursor.isEmpty ||
+          nextCursor == cursor ||
+          pageCount >= maxPages) {
+        break;
+      }
+      cursor = nextCursor;
+    } while (true);
+
+    return chapters;
   }
 
   @override

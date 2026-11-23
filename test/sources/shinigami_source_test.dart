@@ -143,4 +143,76 @@ void main() {
     final pages = await source.fetchPageList('https://s1.shinigami.mx/chapter/ch1');
     expect(pages, hasLength(3));
   });
+
+  test('fetchChapterList mengirim limit=2000, sort_by=chapter_number, dan mendukung multi-page cursor', () async {
+    final recordedRequests = <http.Request>[];
+    final pagingClient = MockClient((request) async {
+      recordedRequests.add(request);
+      final cursor = request.url.queryParameters['cursor'];
+
+      if (cursor == null) {
+        // Halaman 1: return 2 chapter, has_next = true, next_cursor = "c2"
+        return jsonResponse({
+          'data': [
+            {'chapter_id': 'ch10', 'chapter_number': 10, 'chapter_title': 'Sepuluh'},
+            {'chapter_id': 'ch9', 'chapter_number': 9, 'chapter_title': 'Sembilan'},
+          ],
+          'meta': {
+            'has_next': true,
+            'limit': 2000,
+            'next_cursor': 'c2',
+          },
+        });
+      } else if (cursor == 'c2') {
+        // Halaman 2: return 2 chapter terakhir, has_next = false
+        return jsonResponse({
+          'data': [
+            {'chapter_id': 'ch8', 'chapter_number': 8, 'chapter_title': 'Delapan'},
+            {'chapter_id': 'ch7', 'chapter_number': 7, 'chapter_title': 'Tujuh'},
+          ],
+          'meta': {
+            'has_next': false,
+            'limit': 2000,
+            'next_cursor': null,
+          },
+        });
+      }
+      return http.Response('not found', 404);
+    });
+
+    final testSource = ShinigamiSource(client: pagingClient);
+    final chapters = await testSource.fetchChapterList('manga-large-id');
+
+    expect(recordedRequests, hasLength(2));
+    expect(recordedRequests[0].url.queryParameters['limit'], '2000');
+    expect(recordedRequests[0].url.queryParameters['sort_by'], 'chapter_number');
+    expect(recordedRequests[0].url.queryParameters['sort_order'], 'desc');
+    expect(recordedRequests[0].url.queryParameters['cursor'], isNull);
+
+    expect(recordedRequests[1].url.queryParameters['limit'], '2000');
+    expect(recordedRequests[1].url.queryParameters['cursor'], 'c2');
+
+    // Total 4 chapter tergabung sempurna dan berurutan
+    expect(chapters, hasLength(4));
+    expect(chapters.map((c) => c.url).toList(), ['ch10', 'ch9', 'ch8', 'ch7']);
+  });
+
+  test('fetchPopular mengirim offset dan limit pagination', () async {
+    http.Request? captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return jsonResponse({
+        'data': [],
+        'meta': {'has_next': false},
+      });
+    });
+
+    final testSource = ShinigamiSource(client: client);
+    await testSource.fetchPopular(3);
+
+    expect(captured, isNotNull);
+    expect(captured!.url.queryParameters['page'], '3');
+    expect(captured!.url.queryParameters['offset'], '60');
+    expect(captured!.url.queryParameters['limit'], '30');
+  });
 }
