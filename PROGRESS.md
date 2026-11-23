@@ -27,6 +27,45 @@ Legenda: ⬜ Belum · 🔨 Dikerjakan · 👀 Menunggu review · ✅ Approved
 
 ## Log
 
+### 2026-11-23 — Kizen v1.2.23 (Build 35): Audit Menyeluruh & Hardening: Auto-Healing Slug Shinigami ke UUID, Sinkronisasi Otomatis Chapter Library, Identitas Bare Chapter ID, dan Pembaruan Probe VPN Asura
+
+**Keluhan & Permintaan User**:
+"perbaiki lagi dan cek keseluruhan apa ad lagi bug atau gimana"
+
+**Root Cause & Potensi Masalah yang Ditemukan**:
+1. **Slug WordPress Lawas pada Komik Shinigami di Library**:
+   - Komik Shinigami yang disimpan pengguna di Library dari era sebelum migrasi API SPA (format slug `https://shinigami.id/manga/slug-judul/` atau `https://shinigami.moe/series/slug`) gagal memuat detail atau chapter karena endpoint API v1 Shinigami membutuhkan format UUID kanonis.
+2. **Ketiadaan Sinkronisasi Otomatis Chapter Count di Library**:
+   - Komik yang sempat disimpan ke Library ketika bug 12-chapter terjadi menyimpan field `comic.ch = 12`. Membuka layar detail komik sebelumnya tidak memperbarui data `ch` di Library secara otomatis kecuali terjadi update baru dari feed.
+3. **Inkonsistensi Identitas Chapter Bare UUID vs Full URL**:
+   - Sebagian alur (seperti API respons Shinigami atau bookmark) menyimpan ID chapter dalam bentuk bare UUID (`53a74bcd-xxxx`), sementara alur lain menyimpannya sebagai URL lengkap (`https://s1.shinigami.mx/chapter/53a74bcd-xxxx`). Fungsi `sameChapterIdentity` sebelumnya hanya memeriksa path exact atau terminal segment terbatas, berisiko menganggapnya sebagai chapter berbeda sehingga progress baca atau status unread tidak sinkron.
+4. **Variasi Tipe Data `chapter_number` pada Respon API Shinigami**:
+   - Respon API `api.shinigami.io` dapat mengembalikan `chapter_number` bertipe `num` (int/double) atau `String`. Jika hanya mengandalkan casting langsung `as num`, tipe data `String` dapat menyebabkan runtime exception.
+5. **Domain Probe VPN Asura Kedaluwarsa**:
+   - Status VPN probe untuk Asura masih merujuk ke domain lama `asuracomic.net`, yang berpotensi memberikan indikasi koneksi tidak akurat.
+
+**Perubahan Per-File**:
+1. `lib/sources/shinigami_source.dart`:
+   - Menambahkan `_uuidPattern` dan `_resolveCanonicalId`: jika URL/ID yang masuk berupa slug non-UUID, parser secara otomatis melakukan lookup cepat via Search API untuk mendapatkan UUID kanonis dan memperbarui URL manga.
+   - Memperbaiki parsing `chapter_number` agar mendukung tipe `num`, `String`, dan fallback regex ekstraksi angka desimal.
+2. `lib/data/models.dart`:
+   - Memperluas fungsi `sameChapterIdentity` agar dapat mencocokkan bare ID (tanpa skema/slash) dengan terminal segment dari full URL yang valid secara akurat tanpa false positive.
+3. `lib/features/detail/comic_detail_screen.dart`:
+   - Pada `_loadReal()`, jika komik sudah ada di Library (`inLibrary == true`) dan jumlah chapter riil berbeda dari `widget.comic.ch`, aplikasi otomatis memicu `libraryNotifier.applyNewChapters` untuk menyelaraskan jumlah chapter di Library tanpa perlu intervensi manual.
+4. `lib/data/vpn_state.dart`:
+   - Memperbarui probe endpoint Asura dari `asuracomic.net` ke `asurascans.com`.
+5. `test/sources/shinigami_source_test.dart`:
+   - Menambahkan unit test untuk auto-healing slug lama ke UUID kanonis.
+6. `test/data/library_state_test.dart`:
+   - Menambahkan unit test untuk `sameChapterIdentity` mencocokkan bare UUID dengan full URL.
+7. `pubspec.yaml`, `lib/features/settings/about_screen.dart`, `README.md`:
+   - Bump versi aplikasi ke `v1.2.23+35`.
+
+**Cara Verifikasi**:
+- `flutter analyze`: 0 issues found (bersih total).
+- `flutter test -j 1`: 205/205 test passed (seluruh test suite sukses).
+- Unit test slug auto-resolve dan bare ID matching terverifikasi lolos.
+
 ### 2026-11-23 — Kizen v1.2.22 (Build 34): Perbaikan Chapter Shinigami Hanya Muncul 12 (Limit 2000 & Multi-Page Cursor Pagination)
 
 **Keluhan & Permintaan User**:

@@ -68,10 +68,31 @@ String? normalizeChapterIdentity(String? url) {
 bool sameChapterIdentity(String? first, String? second) {
   final normalizedFirst = normalizeChapterIdentity(first);
   final normalizedSecond = normalizeChapterIdentity(second);
-  return normalizedFirst != null &&
-      normalizedSecond != null &&
-      (normalizedFirst == normalizedSecond ||
-          sameSourceResourceIdentity(normalizedFirst, normalizedSecond));
+  if (normalizedFirst == null || normalizedSecond == null) return false;
+  if (normalizedFirst == normalizedSecond) return true;
+  if (sameSourceResourceIdentity(normalizedFirst, normalizedSecond)) return true;
+
+  // Jika salah satu adalah bare ID (mis. UUID chapter Shinigami) dan yang lain URL lengkap:
+  final isBareA = !normalizedFirst.contains('://') && !normalizedFirst.startsWith('/');
+  final isBareB = !normalizedSecond.contains('://') && !normalizedSecond.startsWith('/');
+  if (isBareA || isBareB) {
+    final segA = _terminalSegment(normalizedFirst);
+    final segB = _terminalSegment(normalizedSecond);
+    if (segA.isNotEmpty && segA == segB) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+String _terminalSegment(String raw) {
+  var v = raw.split('?').first.split('#').first;
+  while (v.length > 1 && v.endsWith('/')) {
+    v = v.substring(0, v.length - 1);
+  }
+  final idx = v.lastIndexOf('/');
+  return idx >= 0 ? v.substring(idx + 1) : v;
 }
 
 /// Komik di library / hasil discover.

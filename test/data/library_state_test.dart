@@ -38,6 +38,21 @@ void main() {
       ),
       isFalse,
     );
+    // Bare ID (mis. UUID API Shinigami) cocok dengan URL web lengkap
+    expect(
+      sameChapterIdentity(
+        '53a74bcd-d3a9-449e-98fd-2f99d8926590',
+        'https://s1.shinigami.mx/chapter/53a74bcd-d3a9-449e-98fd-2f99d8926590/',
+      ),
+      isTrue,
+    );
+    expect(
+      sameChapterIdentity(
+        '/chapter/53a74bcd-d3a9-449e-98fd-2f99d8926590',
+        '53a74bcd-d3a9-449e-98fd-2f99d8926590',
+      ),
+      isTrue,
+    );
   });
 
   test('Comic mencari progres dan status baca lewat URL sebelum nomor', () {

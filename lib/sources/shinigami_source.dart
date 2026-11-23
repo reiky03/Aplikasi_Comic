@@ -133,10 +133,40 @@ class ShinigamiSource implements MangaSource {
   Future<SourceMangaPage> fetchSearch(String query, int page) =>
       _list(page: page, query: query);
 
+  static final _uuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
+  /// Mencari manga ID kanonis (UUID) jika diberikan slug atau judul lama.
+  Future<String?> _resolveCanonicalId(String rawId) async {
+    final clean = rawId.trim();
+    if (_uuidPattern.hasMatch(clean)) return clean;
+    final query = clean.replaceAll('-', ' ').replaceAll('_', ' ').trim();
+    if (query.isEmpty) return null;
+    try {
+      final searchPage = await _list(page: 1, query: query);
+      if (searchPage.mangas.isNotEmpty) {
+        return searchPage.mangas.first.url;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   @override
   Future<SourceMangaDetails> fetchMangaDetails(String mangaUrl) async {
-    final id = extractId(mangaUrl);
-    final json = await _getJson('/v1/manga/detail/$id');
+    var id = extractId(mangaUrl);
+    Map<String, dynamic> json;
+    try {
+      json = await _getJson('/v1/manga/detail/$id');
+    } catch (e) {
+      final resolved = await _resolveCanonicalId(id);
+      if (resolved != null && resolved != id) {
+        id = resolved;
+        json = await _getJson('/v1/manga/detail/$id');
+      } else {
+        rethrow;
+      }
+    }
     final data = json['data'] as Map<String, dynamic>? ?? {};
     final taxonomy = data['taxonomy'] as Map<String, dynamic>? ?? {};
 
@@ -164,7 +194,13 @@ class ShinigamiSource implements MangaSource {
 
   @override
   Future<List<SourceChapter>> fetchChapterList(String mangaUrl) async {
-    final id = extractId(mangaUrl);
+    var id = extractId(mangaUrl);
+    if (!_uuidPattern.hasMatch(id)) {
+      final resolved = await _resolveCanonicalId(id);
+      if (resolved != null) {
+        id = resolved;
+      }
+    }
     final chapters = <SourceChapter>[];
     final seenChapterIds = <String>{};
     String? cursor;
@@ -201,7 +237,15 @@ class ShinigamiSource implements MangaSource {
         if (chapterId.isNotEmpty && !seenChapterIds.add(chapterId)) {
           continue;
         }
-        final number = (c['chapter_number'] as num?)?.toDouble() ?? 0;
+        final rawNum = c['chapter_number'];
+        final double number;
+        if (rawNum is num) {
+          number = rawNum.toDouble();
+        } else if (rawNum is String) {
+          number = double.tryParse(rawNum.replaceAll(RegExp(r'[^\d.]'), '')) ?? 0;
+        } else {
+          number = 0;
+        }
         final numberLabel = number == number.roundToDouble()
             ? number.toInt().toString()
             : number.toString();

@@ -197,6 +197,19 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
               ),
         );
       }
+      if (mounted) {
+        final inLib = ref.read(libraryProvider).where((c) => c.id == widget.comic.id).firstOrNull;
+        if (inLib != null && chapters.isNotEmpty && (chapters.length != inLib.ch || inLib.lastChapterUrl != chapters.first.url)) {
+          unawaited(
+            ref.read(libraryProvider.notifier).applyNewChapters(
+              widget.comic.id,
+              newTotal: chapters.length,
+              deltaUnread: 0,
+              lastChapterUrl: chapters.first.url,
+            ),
+          );
+        }
+      }
     } catch (e) {
       // 1. Coba pulihkan dari repository atau mirror kanonis jika domain utama tidak bisa diakses
       final candidateBaseUrls = <String>{
@@ -313,6 +326,17 @@ class _ComicDetailScreenState extends ConsumerState<ComicDetailScreen> {
                     .read(libraryProvider.notifier)
                     .updateSourceMangaUrl(widget.comic.id, newActiveMangaUrl),
               );
+              final inLib = ref.read(libraryProvider).where((c) => c.id == widget.comic.id).firstOrNull;
+              if (inLib != null && healedChapters.isNotEmpty && (healedChapters.length != inLib.ch || inLib.lastChapterUrl != healedChapters.first.url)) {
+                unawaited(
+                  ref.read(libraryProvider.notifier).applyNewChapters(
+                    widget.comic.id,
+                    newTotal: healedChapters.length,
+                    deltaUnread: 0,
+                    lastChapterUrl: healedChapters.first.url,
+                  ),
+                );
+              }
               return;
             }
           }

@@ -244,7 +244,7 @@ class VpnNotifier extends Notifier<VpnState> {
       'E-Hentai': 'e-hentai.org',
       'Shinigami': 's1.shinigami.mx',
       'Komiku': 'api.komiku.id',
-      'Asura Comic': 'asuracomic.net',
+      'Asura Scans': 'asurascans.com',
     };
 
     final results = <String, bool>{};

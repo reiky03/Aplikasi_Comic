@@ -181,7 +181,7 @@ void main() {
     });
 
     final testSource = ShinigamiSource(client: pagingClient);
-    final chapters = await testSource.fetchChapterList('manga-large-id');
+    final chapters = await testSource.fetchChapterList('11111111-2222-3333-4444-555555555555');
 
     expect(recordedRequests, hasLength(2));
     expect(recordedRequests[0].url.queryParameters['limit'], '2000');
@@ -214,5 +214,51 @@ void main() {
     expect(captured!.url.queryParameters['page'], '3');
     expect(captured!.url.queryParameters['offset'], '60');
     expect(captured!.url.queryParameters['limit'], '30');
+  });
+
+  test('ShinigamiSource otomatis me-resolve slug lama ke UUID kanonis', () async {
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path == '/v1/manga/detail/slug-lama') {
+        return http.Response('not found', 404);
+      }
+      if (path == '/v1/manga/list' && request.url.queryParameters['q'] == 'slug lama') {
+        return jsonResponse({
+          'data': [
+            {
+              'manga_id': '11111111-2222-3333-4444-555555555555',
+              'title': 'Slug Lama Comic',
+            }
+          ],
+          'meta': {'has_next': false},
+        });
+      }
+      if (path == '/v1/manga/detail/11111111-2222-3333-4444-555555555555') {
+        return jsonResponse({
+          'data': {
+            'description': 'Manga berhasil di-heal!',
+            'status': 1,
+            'taxonomy': {},
+          },
+        });
+      }
+      if (path == '/v1/chapter/11111111-2222-3333-4444-555555555555/list') {
+        return jsonResponse({
+          'data': [
+            {'chapter_id': 'ch1', 'chapter_number': 1, 'chapter_title': 'Pertama'},
+          ],
+          'meta': {'has_next': false},
+        });
+      }
+      return http.Response('not found', 404);
+    });
+
+    final testSource = ShinigamiSource(client: client);
+    final details = await testSource.fetchMangaDetails('https://shinigami.id/manga/slug-lama');
+    expect(details.description, 'Manga berhasil di-heal!');
+
+    final chapters = await testSource.fetchChapterList('slug-lama');
+    expect(chapters, hasLength(1));
+    expect(chapters.first.url, 'ch1');
   });
 }
